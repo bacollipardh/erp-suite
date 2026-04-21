@@ -1,5 +1,5 @@
 import { PageHeader } from '@/components/page-header';
-import { DataTable } from '@/components/data-table';
+import { ServerDataTable } from '@/components/server-data-table';
 import { api } from '@/lib/api';
 import { PERMISSIONS } from '@/lib/permissions';
 import { requirePagePermission } from '@/lib/server-page-auth';
@@ -11,7 +11,7 @@ export default async function AuditLogsPage() {
   return (
     <div>
       <PageHeader title="Regjistri i Auditimit" description="Gjurmimi i veprimeve në sistem." />
-      <DataTable
+      <ServerDataTable
         data={logs}
         columns={[
           { key: 'entityType', title: 'Entiteti', render: (row: any) => row.entityType },

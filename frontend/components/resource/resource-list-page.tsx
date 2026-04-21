@@ -1,13 +1,14 @@
 import { PageHeader } from '@/components/page-header';
-import { DataTable } from '@/components/data-table';
+import { ServerDataTable } from '@/components/server-data-table';
 import { StatusBadge } from '@/components/status-badge';
 import { api } from '@/lib/api';
 import { getValueByPath, resources } from '@/lib/resources';
+import { hasPermission } from '@/lib/permissions';
 import { requirePagePermission } from '@/lib/server-page-auth';
 
 export async function ResourceListPage({ resourceKey }: { resourceKey: string }) {
   const config = resources[resourceKey];
-  await requirePagePermission(config.readPermission);
+  const user = await requirePagePermission(config.readPermission);
   const rows = await api.list(config.endpoint);
 
   return (
@@ -20,10 +21,10 @@ export async function ResourceListPage({ resourceKey }: { resourceKey: string })
         createPermission={config.managePermission}
       />
 
-      <DataTable
+      <ServerDataTable
         data={rows}
         detailsBasePath={`/${resourceKey}`}
-        detailsPermission={config.managePermission}
+        canOpenDetails={hasPermission(user.permissions, config.managePermission)}
         columns={config.listColumns.map((column) => ({
           key: column.key,
           title: column.title,
