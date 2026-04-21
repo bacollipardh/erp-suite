@@ -10,7 +10,7 @@ export default async function SalesReturnsPage() {
     <div>
       <PageHeader
         title="Kthimet e Shitjes"
-        description="Kthimet e artikujve të lidhura me faturat shitëse."
+        description="Kthimet e artikujve, statuset dhe fiskalizimi i tyre."
         createHref="/sales-returns/new"
         createLabel="Kthim i Ri Shitjeje"
       />
@@ -23,6 +23,7 @@ export default async function SalesReturnsPage() {
           { key: 'salesInvoice', title: 'Fatura e Shitjes', render: (row: any) => row.salesInvoice?.docNo ?? '-' },
           { key: 'docDate', title: 'Data', render: (row: any) => String(row.docDate).slice(0, 10) },
           { key: 'grandTotal', title: 'Totali', render: (row: any) => row.grandTotal },
+          { key: 'fiscalStatus', title: 'Fiskalizimi', render: (row: any) => <StatusBadge value={row.fiscalStatus} /> },
           { key: 'status', title: 'Statusi', render: (row: any) => <StatusBadge value={row.status} /> },
         ]}
       />

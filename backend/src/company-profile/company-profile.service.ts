@@ -14,10 +14,15 @@ export class CompanyProfileService {
   }
 
   async upsert(dto: UpsertCompanyProfileDto) {
+    const data = {
+      ...dto,
+      fiscalMode: dto.fiscalMode,
+    };
+
     return this.prisma.companyProfile.upsert({
       where: { id: PROFILE_ID },
-      create: { id: PROFILE_ID, ...dto },
-      update: { ...dto },
+      create: { id: PROFILE_ID, ...data },
+      update: data,
     });
   }
 }

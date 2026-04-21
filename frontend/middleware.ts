@@ -6,6 +6,11 @@ const PUBLIC_PATHS = ['/login'];
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Let API routes return structured JSON auth responses instead of browser redirects.
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   if (isPublic) return NextResponse.next();
 

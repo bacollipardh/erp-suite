@@ -1,16 +1,13 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16-alpine
-    container_name: erp-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: erpdb
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - erp_db_data:/var/lib/postgresql/data
     healthcheck:
@@ -22,18 +19,18 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: erp-backend
     restart: unless-stopped
+    env_file:
+      - ./backend/.env
     depends_on:
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/erpdb?schema=public
       PORT: 3000
-      CORS_ORIGIN: http://localhost:3001
-      JWT_SECRET: ${JWT_SECRET:-erp-jwt-dev-secret-change-in-production}
+      CORS_ORIGIN: http://localhost:${FRONTEND_PORT:-3001}
     ports:
-      - "3000:3000"
+      - "${BACKEND_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
       interval: 15s
@@ -44,17 +41,16 @@ services:
   frontend:
     build:
       context: ./frontend
-    container_name: erp-frontend
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
     environment:
       PORT: 3001
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:3000/api
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_PORT:-3000}/api
       INTERNAL_API_BASE_URL: http://backend:3000/api
     ports:
-      - "3001:3001"
+      - "${FRONTEND_PORT:-3001}:3001"
 
 volumes:
   erp_db_data:

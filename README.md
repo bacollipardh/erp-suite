@@ -1,229 +1,196 @@
-<<<<<<< HEAD
-# Kosovo ERP Suite
+# ERP Suite
 
-Enterprise-grade ERP for Kosovo businesses — purchase invoices, sales invoices, sales returns, stock management, and full audit logging, with a clean Next.js admin panel backed by NestJS and PostgreSQL.
+Single-company ERP for Kosovo-focused operations, built with NestJS, Prisma, PostgreSQL, and Next.js.
 
----
+## What is in the repo
 
-## Architecture
+- `backend/`: NestJS API, Prisma schema/migrations, auth, RBAC, documents, stock logic, reporting, fiscalization workflow, PDF generation.
+- `frontend/`: Next.js admin app with protected routes, httpOnly cookie auth, role-aware navigation, dashboard, reports, CRUD screens, POS, stock operations.
+- `docker-compose.yml`: local Docker stack for Postgres, backend, and frontend.
+- `scripts/smoke-auth.mjs`: smoke validation for health, login, session, and dashboard summary.
+- `scripts/smoke-suite.mjs`: end-to-end smoke validation for core document, stock, report, and frontend flows.
 
-```
-erp-suite/
-├── backend/           NestJS + Prisma + PostgreSQL
-│   ├── src/
-│   │   ├── auth/          JWT auth, guards, strategies
-│   │   ├── audit-logs/    Global audit log service
-│   │   ├── customers/
-│   │   ├── document-series/
-│   │   ├── health/        GET /api/health
-│   │   ├── item-categories/
-│   │   ├── items/
-│   │   ├── payment-methods/
-│   │   ├── pdf/           PDF generation (PDFKit)
-│   │   ├── prisma/        PrismaService
-│   │   ├── purchase-invoices/
-│   │   ├── roles/
-│   │   ├── sales-invoices/
-│   │   ├── sales-returns/
-│   │   ├── stock/
-│   │   ├── suppliers/
-│   │   ├── tax-rates/
-│   │   ├── units/
-│   │   ├── users/
-│   │   └── warehouses/
-│   └── prisma/
-│       ├── schema.prisma
-│       ├── seed.ts
-│       └── migrations/
-└── frontend/          Next.js 15 App Router + Tailwind
-    ├── app/
-    │   ├── (app)/     Protected pages with AppShell
-    │   └── login/     Public login page
-    └── components/
-```
+## Current implementation baseline
 
-**Stack:** NestJS 11 · TypeScript · Prisma 6 · PostgreSQL 16 · JWT (bcrypt) · Swagger · PDFKit · Next.js 15 · Tailwind CSS · Docker Compose
+- Fresh backend/frontend builds pass in this workspace.
+- Auth uses a safer flow: the frontend stores the JWT in an httpOnly cookie via Next route handlers instead of a JS-readable browser cookie.
+- RBAC is enforced on core API endpoints and reflected in sidebar visibility.
+- Sales, purchase, and return documents now have paginated list endpoints, better detail relations for PDF/detail pages, payment tracking, due dates, and fiscal status fields.
+- Dashboard and reports use backend aggregation endpoints instead of loading full datasets in the frontend.
+- Stock now has operational workflows for adjustments, warehouse transfers, and stock counting, with audit logging.
+- Fiscalization has a controlled internal workflow with audit logging and a sandbox adapter contract.
+- CI now covers install, build, tests, and a Docker smoke workflow.
 
----
+## Default users
 
-## Prerequisites
+All seeded users use password `Admin123!`.
 
-- Docker & Docker Compose (for Docker dev)
-- Node.js 22+ & npm (for local dev)
-- PostgreSQL 16 (for local dev without Docker)
+- `admin@erp.local`
+- `manager@erp.local`
+- `sales@erp.local`
+- `purchase@erp.local`
 
----
+## Local setup
 
-## Environment Setup
+### 1. Backend env
 
-### Backend — copy and edit
+Copy `backend/.env.example` to `backend/.env`.
 
-```bash
-cp backend/.env.example backend/.env
-```
+Recommended local values:
 
 ```env
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/erpdb?schema=public
 PORT=3000
 CORS_ORIGIN=http://localhost:3001
-JWT_SECRET=your-long-random-secret-here
+JWT_SECRET=change-this-to-a-long-random-secret
 ```
 
-### Frontend — copy and edit
+### 2. Frontend env
 
-```bash
-cp frontend/.env.example frontend/.env.local
-```
+Copy `frontend/.env.example` to `frontend/.env.local`.
+
+Recommended local values:
 
 ```env
 NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api
 INTERNAL_API_BASE_URL=http://localhost:3000/api
 ```
 
----
+### 3. Install dependencies
 
-## Docker Development (Recommended)
+From repo root:
 
 ```bash
-# Start all services (builds images on first run)
-docker compose up --build
-
-# Seed the database (first time only, after backend is healthy)
-docker exec erp-backend npx ts-node prisma/seed.ts
+npm run install:all
 ```
 
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:3001 |
-| Backend API | http://localhost:3000/api |
-| Swagger Docs | http://localhost:3000/api/docs |
-| Health | http://localhost:3000/api/health |
-
-**Default login:** `admin@erp.local` / `Admin123!`
-
----
-
-## Local Development
+### 4. Generate Prisma client
 
 ```bash
-# Backend
-cd backend
-npm install
-npx prisma generate
-npx prisma migrate dev
-npx ts-node prisma/seed.ts
-npm run start:dev
+npm run prisma:generate
+```
 
-# Frontend (separate terminal)
-cd frontend
-npm install
+### 5. Run migrations and seed
+
+```bash
+cd backend
+npx prisma migrate deploy
+npm run seed
+```
+
+### 6. Start locally
+
+In two terminals:
+
+```bash
+npm run dev:backend
+```
+
+```bash
+npm run dev:frontend
+```
+
+Frontend: `http://localhost:3001`
+
+Backend API: `http://localhost:3000/api`
+
+Swagger: `http://localhost:3000/api/docs`
+
+## Docker setup
+
+`docker-compose.yml` now reads the backend secret from `backend/.env`, so set `JWT_SECRET` there before starting the stack.
+
+To run the full stack with Docker:
+
+```bash
 npm run dev
 ```
 
----
-
-## Migrations & Seed
+After the containers are healthy, seed the database:
 
 ```bash
-# Create a new migration
-cd backend && npx prisma migrate dev --name <name>
-
-# Deploy pending migrations (production/Docker)
-npx prisma migrate deploy
-
-# Seed initial data
-npx ts-node prisma/seed.ts
+docker compose exec -T backend npm run seed
 ```
 
-Seed creates: roles, admin user, item categories, units, tax rates (18%/8%/0%), warehouses, payment methods, document series, sample items/suppliers/customers.
+## Useful scripts
 
----
-
-## Build
+From repo root:
 
 ```bash
-cd backend && npm run build     # outputs to dist/
-cd frontend && npm run build    # outputs to .next/standalone/
+npm run build
+npm run typecheck
+npm run test
+npm run seed
+npm run smoke:auth
+npm run smoke:full
 ```
 
----
+## API changes worth knowing
 
-## Auth
+- Document list endpoints now support paginated responses:
+  - `GET /purchase-invoices`
+  - `GET /sales-invoices`
+  - `GET /sales-returns`
+- New aggregated endpoints:
+  - `GET /dashboard/summary`
+  - `GET /reports/sales-summary`
+  - `GET /reports/receivables-aging`
+  - `GET /reports/payables-aging`
+- New payment endpoints:
+  - `POST /purchase-invoices/:id/payments`
+  - `POST /sales-invoices/:id/payments`
+- New fiscalization endpoints:
+  - `POST /fiscalization/sales-invoices/:id/submit`
+  - `POST /fiscalization/sales-returns/:id/submit`
+- New stock operation endpoints:
+  - `POST /stock/adjustments`
+  - `POST /stock/transfers`
+  - `POST /stock/counts`
 
-All endpoints except `POST /api/auth/login` and `GET /api/health` require a JWT Bearer token.
+## Fiscalization status
 
-```http
-POST /api/auth/login
-{"email": "admin@erp.local", "password": "Admin123!"}
-→ {"accessToken": "...", "user": {...}}
+The repo includes the internal fiscalization contract and audit trail.
 
-GET /api/auth/me
-Authorization: Bearer <token>
-```
+- `SANDBOX` mode is supported through a stub adapter.
+- `LIVE` mode is intentionally blocked until a real provider adapter is configured.
+- Company fiscal configuration is stored in `company_profile`.
 
-Token validity: 24 hours. The frontend stores the token in a browser cookie (`erp_token`) and includes it on every request. The Next.js middleware redirects unauthenticated users to `/login`.
+## Smoke validation
 
----
-
-## Business Rules
-
-1. Only **DRAFT** documents can be edited.
-2. **Purchase Invoice post** → stock increases, `PURCHASE_IN` movement created.
-3. **Sales Invoice post** → stock decreases; fails with 400 if insufficient stock.
-4. **Sales Return post** → stock increases; validates return qty ≤ (sold qty − already returned).
-5. Sales invoice status auto-updates to **PARTIALLY_RETURNED** or **FULLY_RETURNED**.
-6. Document numbers generated from `DocumentSeries` (prefix + sequential counter).
-7. Acting user is derived from JWT — no client-supplied user IDs trusted.
-8. All postings are Prisma transactions.
-9. Audit log entries on all create/update/post operations.
-
----
-
-## Tests
+With backend and frontend running, execute:
 
 ```bash
-cd backend && npm test
+npm run smoke:auth
 ```
 
-Covers: auth login, wrong password, unknown user, stock sufficiency check, avg cost calculation.
+This validates:
 
----
+- health endpoint
+- login
+- `auth/me`
+- dashboard summary access
 
-## Production Notes
+For the fuller release smoke:
 
-- Use a strong random `JWT_SECRET` (32+ chars).
-- Use managed PostgreSQL with SSL (`?sslmode=require`).
-- Set `CORS_ORIGIN` to your frontend domain.
-- Run `prisma migrate deploy` before each deployment.
-- Add rate limiting on `/api/auth/login`.
-- Use Nginx or Caddy as a reverse proxy with TLS.
+```bash
+npm run smoke:full
+```
 
----
+This covers:
 
-## Completed
+- purchase invoice create, post, and payment
+- sales invoice create, post, payment, and detail fetch
+- sales return create, post, and fiscalization
+- stock adjustment, transfer, and counting
+- dashboard, reports, audit logs, and stock movement endpoints
+- frontend login, session, proxy access, document page rendering, and logout
 
-- JWT auth + bcrypt + login/logout UI
-- Full CRUD: roles, users, item categories, units, tax rates, warehouses, payment methods, document series, items, suppliers, customers
-- Purchase invoice: draft → post (stock in) + PDF
-- Sales invoice: draft → post (stock out, insufficient-stock guard) + discounts + PDF
-- Sales return: draft → post (stock in, qty guard, invoice status update) + PDF
-- Stock balances (weighted avg cost) + movements
-- Audit logs
-- Swagger at `/api/docs`
-- Docker Compose with healthchecks and startup sequencing
-- Prisma migrations + seed
-- Next.js admin panel: all list/create/edit/detail pages
+## What is still next
 
-## Future Enhancements
+The repo is materially stronger than the original baseline, but these areas still remain for the next cycle:
 
-- Pagination, search, and filtering on all list endpoints
-- Per-role endpoint authorization (RBAC guards)
-- Kosovo fiscal/SEF integration
-- Purchase order workflow
-- Customer payment tracking
-- Profit/loss and sales analytics reporting
-- Refresh token rotation
-- CI/CD pipeline
-=======
-# bperpmini
->>>>>>> 7dc58d194eb968ca60af41fd7470701fb3edc86c
+- customer receipt and supplier payment ledgers beyond document-level payment capture
+- richer reporting slices and export workflows
+- deeper backend tests for posting and returns edge cases
+- frontend e2e coverage for critical user journeys
+- production-ready live fiscalization adapter

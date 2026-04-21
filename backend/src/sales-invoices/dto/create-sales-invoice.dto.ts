@@ -63,6 +63,10 @@ export class CreateSalesInvoiceDto {
   docDate: string;
 
   @IsOptional()
+  @IsDateString()
+  dueDate?: string;
+
+  @IsOptional()
   @IsString()
   notes?: string;
 

@@ -21,10 +21,20 @@ export type LineItem = {
   taxRate?: { ratePercent: number };
 };
 
+export type SourceInvoiceLine = {
+  id: string;
+  itemId: string;
+  qty: number;
+  unitPrice: number;
+  taxPercent: number;
+  item?: { id: string; name: string; code?: string } | null;
+};
+
 export function InvoiceLinesEditor({
   lines,
   setLines,
   items,
+  sourceLines = [],
   withDiscount = true,
   withSalesInvoiceLineId = false,
   priceField = 'standardSalesPrice',
@@ -32,6 +42,7 @@ export function InvoiceLinesEditor({
   lines: InvoiceLineModel[];
   setLines: (lines: InvoiceLineModel[]) => void;
   items: LineItem[];
+  sourceLines?: SourceInvoiceLine[];
   withDiscount?: boolean;
   withSalesInvoiceLineId?: boolean;
   priceField?: 'standardSalesPrice' | 'standardPurchasePrice';
@@ -43,9 +54,12 @@ export function InvoiceLinesEditor({
   }
 
   function selectItem(index: number, itemId: string) {
-    const item = items.find((x) => x.id === itemId);
+    const item = items.find((entry) => entry.id === itemId);
+    const firstSourceLine = sourceLines.find((entry) => entry.itemId === itemId);
+
     updateLine(index, {
       itemId,
+      ...(withSalesInvoiceLineId ? { salesInvoiceLineId: firstSourceLine?.id ?? '' } : {}),
       unitPrice: item ? Number(item[priceField] ?? 0) : 0,
       taxPercent: item?.taxRate ? Number(item.taxRate.ratePercent) : 0,
     });
@@ -66,17 +80,16 @@ export function InvoiceLinesEditor({
   }
 
   function removeLine(index: number) {
-    setLines(lines.filter((_, i) => i !== index));
+    setLines(lines.filter((_, currentIndex) => currentIndex !== index));
   }
 
   return (
     <div className="space-y-3">
-      {/* Header row */}
       <div className="hidden md:grid grid-cols-12 gap-2 px-1 text-xs font-medium text-slate-500 uppercase tracking-wide">
         <div className="col-span-4">Artikulli</div>
         <div className="col-span-2 text-right">Sasia</div>
-        <div className="col-span-2 text-right">Çmimi</div>
-        {withDiscount && <div className="col-span-1 text-right">Zb %</div>}
+        <div className="col-span-2 text-right">Cmimi</div>
+        {withDiscount ? <div className="col-span-1 text-right">Zbritja %</div> : null}
         <div className="col-span-1 text-right">TVSH %</div>
         <div className="col-span-1 text-right">Neto</div>
         <div className="col-span-1" />
@@ -84,28 +97,39 @@ export function InvoiceLinesEditor({
 
       {lines.map((line, index) => {
         const grossBase = Number(line.qty) * Number(line.unitPrice);
-        const disc = grossBase * (Number(line.discountPercent ?? 0) / 100);
-        const net = grossBase - disc;
+        const discountAmount = grossBase * (Number(line.discountPercent ?? 0) / 100);
+        const net = grossBase - discountAmount;
+        const sourceLineOptions = sourceLines
+          .filter((sourceLine) => !line.itemId || sourceLine.itemId === line.itemId)
+          .map((sourceLine) => ({
+            value: sourceLine.id,
+            label: `${sourceLine.item?.name ?? sourceLine.itemId} · qty ${sourceLine.qty}`,
+          }));
 
         return (
           <div key={index} className="grid grid-cols-12 gap-2 items-end border rounded-xl p-3 bg-slate-50">
-            {/* Item select */}
             <div className="col-span-12 md:col-span-4">
               <SelectInput
                 label=""
                 value={line.itemId}
                 onChange={(value) => selectItem(index, value)}
-                options={items.map((x) => ({
-                  value: x.id,
-                  label: `${x.code ? `[${x.code}] ` : ''}${x.name}`,
+                options={items.map((entry) => ({
+                  value: entry.id,
+                  label: `${entry.code ? `[${entry.code}] ` : ''}${entry.name}`,
                 }))}
               />
-              {withSalesInvoiceLineId && line.salesInvoiceLineId && (
-                <div className="text-xs text-slate-400 mt-1 truncate">ref: {line.salesInvoiceLineId.slice(0, 8)}…</div>
-              )}
+              {withSalesInvoiceLineId ? (
+                <div className="mt-2">
+                  <SelectInput
+                    label="Rreshti burim"
+                    value={line.salesInvoiceLineId ?? ''}
+                    onChange={(value) => updateLine(index, { salesInvoiceLineId: value })}
+                    options={sourceLineOptions}
+                  />
+                </div>
+              ) : null}
             </div>
 
-            {/* Qty */}
             <div className="col-span-4 md:col-span-2">
               <NumberInput
                 label=""
@@ -116,7 +140,6 @@ export function InvoiceLinesEditor({
               />
             </div>
 
-            {/* Unit Price */}
             <div className="col-span-4 md:col-span-2">
               <NumberInput
                 label=""
@@ -127,8 +150,7 @@ export function InvoiceLinesEditor({
               />
             </div>
 
-            {/* Discount % */}
-            {withDiscount && (
+            {withDiscount ? (
               <div className="col-span-4 md:col-span-1">
                 <NumberInput
                   label=""
@@ -139,9 +161,8 @@ export function InvoiceLinesEditor({
                   onChange={(e) => updateLine(index, { discountPercent: Number(e.target.value) })}
                 />
               </div>
-            )}
+            ) : null}
 
-            {/* Tax % */}
             <div className="col-span-4 md:col-span-1">
               <NumberInput
                 label=""
@@ -153,19 +174,17 @@ export function InvoiceLinesEditor({
               />
             </div>
 
-            {/* Net amount */}
             <div className="col-span-4 md:col-span-1 text-right text-sm font-medium text-slate-700 pb-2">
               {net.toFixed(2)}
             </div>
 
-            {/* Remove */}
             <div className="col-span-4 md:col-span-1 text-right">
               <button
                 type="button"
                 onClick={() => removeLine(index)}
                 className="text-red-500 hover:text-red-700 text-xs px-2 py-1 rounded-lg hover:bg-red-50"
               >
-                ✕
+                X
               </button>
             </div>
           </div>

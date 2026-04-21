@@ -13,9 +13,8 @@ import {
 import { Type } from 'class-transformer';
 
 export class CreateSalesReturnLineDto {
-  @IsOptional()
   @IsUUID()
-  salesInvoiceLineId?: string;
+  salesInvoiceLineId: string;
 
   @IsUUID()
   itemId: string;

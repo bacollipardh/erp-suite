@@ -20,6 +20,9 @@ import { SalesInvoicesModule } from './sales-invoices/sales-invoices.module';
 import { SalesReturnsModule } from './sales-returns/sales-returns.module';
 import { PdfModule } from './pdf/pdf.module';
 import { CompanyProfileModule } from './company-profile/company-profile.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { ReportsModule } from './reports/reports.module';
+import { FiscalizationModule } from './fiscalization/fiscalization.module';
 
 @Module({
   imports: [
@@ -44,6 +47,9 @@ import { CompanyProfileModule } from './company-profile/company-profile.module';
     SalesReturnsModule,
     PdfModule,
     CompanyProfileModule,
+    DashboardModule,
+    ReportsModule,
+    FiscalizationModule,
   ],
 })
 export class AppModule {}

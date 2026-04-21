@@ -7,6 +7,8 @@ import { buildDocNo } from '../common/utils/series';
 import { round2 } from '../common/utils/money';
 import { CreateSalesReturnDto } from './dto/create-sales-return.dto';
 import { UpdateSalesReturnDto } from './dto/update-sales-return.dto';
+import { PaginationDto } from '../common/dto/pagination.dto';
+import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
 
 @Injectable()
 export class SalesReturnsService {
@@ -16,16 +18,40 @@ export class SalesReturnsService {
     private readonly stockService: StockService,
   ) {}
 
-  findAll() {
-    return this.prisma.salesReturn.findMany({
-      include: {
-        customer: true,
-        salesInvoice: true,
-        lines: true,
-        series: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+  async findAll(query: PaginationDto = {}) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const { skip, take } = toPagination(page, limit);
+    const search = query.search?.trim();
+
+    const where = search
+      ? {
+          OR: [
+            { docNo: { contains: search, mode: 'insensitive' as const } },
+            { customer: { name: { contains: search, mode: 'insensitive' as const } } },
+            { salesInvoice: { docNo: { contains: search, mode: 'insensitive' as const } } },
+            { reason: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : undefined;
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.salesReturn.findMany({
+        where,
+        include: {
+          customer: true,
+          salesInvoice: true,
+          series: true,
+          createdBy: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.salesReturn.count({ where }),
+    ]);
+
+    return toPaginatedResponse({ items, total, page, limit });
   }
 
   async findOne(id: string) {
@@ -33,9 +59,25 @@ export class SalesReturnsService {
       where: { id },
       include: {
         customer: true,
-        salesInvoice: true,
-        lines: true,
+        salesInvoice: {
+          include: {
+            customer: true,
+            paymentMethod: true,
+          },
+        },
+        lines: {
+          include: {
+            item: true,
+            salesInvoiceLine: {
+              include: {
+                item: true,
+              },
+            },
+          },
+        },
         series: true,
+        createdBy: true,
+        postedBy: true,
       },
     });
     if (!doc) throw new NotFoundException('Sales return not found');
@@ -125,7 +167,17 @@ export class SalesReturnsService {
           createdById: userId,
           lines: { create: calc.lines },
         },
-        include: { lines: true },
+        include: {
+          customer: true,
+          salesInvoice: true,
+          lines: {
+            include: {
+              item: true,
+              salesInvoiceLine: true,
+            },
+          },
+          series: true,
+        },
       });
 
       await tx.documentSeries.update({
@@ -178,7 +230,17 @@ export class SalesReturnsService {
           grandTotal: calc?.grandTotal,
           lines: calc ? { create: calc.lines } : undefined,
         },
-        include: { lines: true },
+        include: {
+          customer: true,
+          salesInvoice: true,
+          lines: {
+            include: {
+              item: true,
+              salesInvoiceLine: true,
+            },
+          },
+          series: true,
+        },
       });
 
       await this.auditLogs.log({
@@ -209,7 +271,17 @@ export class SalesReturnsService {
           postedById,
           postedAt: new Date(),
         },
-        include: { lines: true },
+        include: {
+          customer: true,
+          salesInvoice: true,
+          lines: {
+            include: {
+              item: true,
+              salesInvoiceLine: true,
+            },
+          },
+          series: true,
+        },
       });
 
       for (const line of updated.lines) {

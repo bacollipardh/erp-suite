@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MovementType } from '@prisma/client';
 import { StockService } from '../stock/stock.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 
 const mockBalance = {
   warehouseId: 'wh-1',
@@ -12,6 +13,7 @@ const mockBalance = {
 };
 
 const mockPrisma = {
+  $transaction: jest.fn(),
   stockBalance: {
     findUnique: jest.fn(),
     create: jest.fn(),
@@ -22,6 +24,10 @@ const mockPrisma = {
   },
 };
 
+const mockAuditLogs = {
+  log: jest.fn(),
+};
+
 describe('StockService', () => {
   let service: StockService;
 
@@ -30,6 +36,7 @@ describe('StockService', () => {
       providers: [
         StockService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: AuditLogsService, useValue: mockAuditLogs },
       ],
     }).compile();
 
@@ -62,8 +69,8 @@ describe('StockService', () => {
 
   describe('applyMovement — PURCHASE_IN updates avgCost', () => {
     it('creates balance with correct avgCost when none exists', async () => {
-      mockPrisma.stockMovement.create.mockResolvedValueOnce({});
       mockPrisma.stockBalance.findUnique.mockResolvedValueOnce(null);
+      mockPrisma.stockMovement.create.mockResolvedValueOnce({});
       mockPrisma.stockBalance.create.mockResolvedValueOnce({});
 
       await service.applyMovement(mockPrisma as any, {
@@ -78,6 +85,38 @@ describe('StockService', () => {
       expect(mockPrisma.stockBalance.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ qtyOnHand: 10, avgCost: 50 }) }),
       );
+    });
+
+    it('throws before creating a movement when stock would go negative', async () => {
+      mockPrisma.stockBalance.findUnique.mockResolvedValueOnce({ ...mockBalance, qtyOnHand: 2 });
+
+      await expect(
+        service.applyMovement(mockPrisma as any, {
+          warehouseId: 'wh-1',
+          itemId: 'item-1',
+          movementType: MovementType.SALE_OUT,
+          qtyOut: 5,
+          movementAt: new Date(),
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockPrisma.stockMovement.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('stock operations', () => {
+    it('rejects transfer when source and destination warehouses are the same', async () => {
+      await expect(
+        service.createTransfer(
+          {
+            fromWarehouseId: 'wh-1',
+            toWarehouseId: 'wh-1',
+            itemId: 'item-1',
+            qty: 1,
+          },
+          'user-1',
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

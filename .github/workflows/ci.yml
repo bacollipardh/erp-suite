@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'codex/**'
+  pull_request:
+
+jobs:
+  node-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm install --prefix backend
+
+      - name: Install frontend dependencies
+        run: npm install --prefix frontend
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate --prefix backend
+
+      - name: Build backend
+        run: npm run build --prefix backend
+
+      - name: Build frontend
+        run: npm run build --prefix frontend
+
+      - name: Typecheck frontend
+        run: npm run typecheck --prefix frontend
+
+      - name: Run backend tests
+        run: npm test --prefix backend -- --runInBand
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    needs: node-checks
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare backend env
+        run: |
+          cp backend/.env.example backend/.env
+          sed -i 's/change-this-to-a-long-random-secret-in-production/ci-local-jwt-secret/' backend/.env
+
+      - name: Start Docker stack
+        run: docker compose up -d --build db backend frontend
+
+      - name: Wait for backend health
+        run: |
+          timeout 180 bash -c 'until curl -fsS http://localhost:3000/api/health; do sleep 5; done'
+
+      - name: Seed database
+        run: docker compose exec -T backend npm run seed
+
+      - name: Run smoke auth
+        run: node scripts/smoke-auth.mjs
+
+      - name: Shutdown Docker stack
+        if: always()
+        run: docker compose down -v

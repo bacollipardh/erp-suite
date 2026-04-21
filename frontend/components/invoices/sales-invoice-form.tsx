@@ -14,19 +14,32 @@ import { ConfirmButton } from '@/components/confirm-button';
 function calcTotals(lines: InvoiceLineModel[]) {
   const normalized = lines.map((line) => {
     const grossBase = Number(line.qty) * Number(line.unitPrice);
-    const disc = grossBase * (Number(line.discountPercent ?? 0) / 100);
-    const netAmount = grossBase - disc;
+    const discountAmount = grossBase * (Number(line.discountPercent ?? 0) / 100);
+    const netAmount = grossBase - discountAmount;
     const taxAmount = netAmount * (Number(line.taxPercent) / 100);
     const grossAmount = netAmount + taxAmount;
-    return { discountAmount: disc, netAmount, taxAmount, grossAmount };
+
+    return { discountAmount, netAmount, taxAmount, grossAmount };
   });
 
   return {
-    subtotal: normalized.reduce((a, b) => a + b.netAmount, 0),
-    discountTotal: normalized.reduce((a, b) => a + b.discountAmount, 0),
-    taxTotal: normalized.reduce((a, b) => a + b.taxAmount, 0),
-    grandTotal: normalized.reduce((a, b) => a + b.grossAmount, 0),
+    subtotal: normalized.reduce((total, line) => total + line.netAmount, 0),
+    discountTotal: normalized.reduce((total, line) => total + line.discountAmount, 0),
+    taxTotal: normalized.reduce((total, line) => total + line.taxAmount, 0),
+    grandTotal: normalized.reduce((total, line) => total + line.grossAmount, 0),
   };
+}
+
+function parseApiError(error: unknown) {
+  if (error instanceof Error) {
+    try {
+      const parsed = JSON.parse(error.message);
+      if (typeof parsed.message === 'string') return parsed.message;
+    } catch {}
+    return error.message;
+  }
+
+  return 'Ndodhi nje gabim.';
 }
 
 export function SalesInvoiceForm({
@@ -56,6 +69,7 @@ export function SalesInvoiceForm({
     warehouseId: data?.warehouseId ?? '',
     paymentMethodId: data?.paymentMethodId ?? '',
     docDate: data?.docDate ? String(data.docDate).slice(0, 10) : new Date().toISOString().slice(0, 10),
+    dueDate: data?.dueDate ? String(data.dueDate).slice(0, 10) : '',
     notes: data?.notes ?? '',
   });
 
@@ -72,19 +86,24 @@ export function SalesInvoiceForm({
   );
 
   const totals = useMemo(() => calcTotals(lines), [lines]);
+  const isPosted = data?.status === 'POSTED';
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    const emptyLine = lines.findIndex((l) => !l.itemId);
+
+    const emptyLine = lines.findIndex((line) => !line.itemId);
     if (emptyLine !== -1) {
       setApiError(`Line ${emptyLine + 1}: please select an item.`);
       return;
     }
+
     setBusy(true);
     setApiError(null);
 
     const payload = {
       ...form,
+      paymentMethodId: form.paymentMethodId || undefined,
+      dueDate: form.dueDate || undefined,
       lines: lines.map(({ itemId, qty, unitPrice, discountPercent, taxPercent }) => ({
         itemId,
         qty,
@@ -100,11 +119,11 @@ export function SalesInvoiceForm({
       } else {
         await api.update('sales-invoices', data.id, payload);
       }
+
       router.push('/sales-invoices');
       router.refresh();
-    } catch (err: any) {
-      try { setApiError(JSON.parse(err.message).message ?? err.message); }
-      catch { setApiError(err.message ?? 'An error occurred'); }
+    } catch (error) {
+      setApiError(parseApiError(error));
     } finally {
       setBusy(false);
     }
@@ -112,64 +131,93 @@ export function SalesInvoiceForm({
 
   async function onPost() {
     setApiError(null);
+
     try {
       await api.postDocument('sales-invoices', data.id);
       router.refresh();
-    } catch (err: any) {
-      try { setApiError(JSON.parse(err.message).message ?? err.message); }
-      catch { setApiError(err.message ?? 'An error occurred'); }
+    } catch (error) {
+      setApiError(parseApiError(error));
     }
   }
 
-  const isPosted = data?.status === 'POSTED';
-
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      {apiError && (
-        <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2.5">{apiError}</div>
-      )}
-
-      {isPosted && (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm px-3 py-2.5">
-          ⚠️ Kjo faturë është <strong>Postuar</strong> dhe nuk mund të modifikohet.
+      {apiError ? (
+        <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2.5">
+          {apiError}
         </div>
-      )}
+      ) : null}
 
-      {/* ── Header card ─────────────────────────────────────── */}
+      {isPosted ? (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm px-3 py-2.5">
+          Kjo fature eshte postuar dhe nuk mund te modifikohet.
+        </div>
+      ) : null}
+
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Detajet e Dokumentit</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+          Detajet e Dokumentit
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
           <div className="col-span-2 sm:col-span-1">
             <SelectInput
               label="Seria *"
               value={form.seriesId}
               onChange={(value) => setForm({ ...form, seriesId: value })}
-              options={series.map((x) => ({ value: x.id, label: `${x.prefix} · #${x.nextNumber}` }))}
+              options={series.map((entry) => ({
+                value: entry.id,
+                label: `${entry.prefix} · #${entry.nextNumber}`,
+              }))}
             />
           </div>
-          <SelectInput label="Klienti" value={form.customerId}
-            onChange={(v) => setForm({ ...form, customerId: v })}
-            options={customers.map((x) => ({ value: x.id, label: x.name }))} />
-          <SelectInput label="Magazina *" value={form.warehouseId}
-            onChange={(v) => setForm({ ...form, warehouseId: v })}
-            options={warehouses.map((x) => ({ value: x.id, label: x.name }))} />
-          <SelectInput label="Pagesa" value={form.paymentMethodId}
-            onChange={(v) => setForm({ ...form, paymentMethodId: v })}
-            options={paymentMethods.map((x) => ({ value: x.id, label: x.name }))} />
-          <TextInput label="Data" type="date" value={form.docDate}
-            onChange={(e) => setForm({ ...form, docDate: e.target.value })} />
+          <SelectInput
+            label="Klienti *"
+            value={form.customerId}
+            onChange={(value) => setForm({ ...form, customerId: value })}
+            options={customers.map((entry) => ({ value: entry.id, label: entry.name }))}
+          />
+          <SelectInput
+            label="Magazina *"
+            value={form.warehouseId}
+            onChange={(value) => setForm({ ...form, warehouseId: value })}
+            options={warehouses.map((entry) => ({ value: entry.id, label: entry.name }))}
+          />
+          <SelectInput
+            label="Pagesa"
+            value={form.paymentMethodId}
+            onChange={(value) => setForm({ ...form, paymentMethodId: value })}
+            options={paymentMethods.map((entry) => ({ value: entry.id, label: entry.name }))}
+          />
+          <TextInput
+            label="Data"
+            type="date"
+            value={form.docDate}
+            onChange={(e) => setForm({ ...form, docDate: e.target.value })}
+          />
+          <TextInput
+            label="Afati"
+            type="date"
+            value={form.dueDate}
+            onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+          />
         </div>
         <div className="mt-3">
-          <TextareaInput label="Shënime" value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+          <TextareaInput
+            label="Shenime"
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+          />
         </div>
       </div>
 
-      {/* ── Lines card ──────────────────────────────────────── */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-slate-50">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Rreshtat e Faturës</span>
-          <span className="text-xs text-slate-400">Çmimi dhe TVSH plotësohen automatikisht</span>
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            Rreshtat e Fatures
+          </span>
+          <span className="text-xs text-slate-400">
+            Cmimi dhe TVSH plotesohen automatikisht
+          </span>
         </div>
         <div className="p-4">
           <InvoiceLinesEditor
@@ -186,21 +234,21 @@ export function SalesInvoiceForm({
 
       <div className="flex items-center justify-between gap-3 pt-1">
         <div>
-          {mode === 'edit' && data?.status === 'DRAFT' && (
+          {mode === 'edit' && data?.status === 'DRAFT' ? (
             <ConfirmButton
               label="Posto Dokumentin"
-              confirmText="Posto këtë faturë shitjeje?"
+              confirmText="Posto kete fature shitjeje?"
               onClick={onPost}
               className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm font-medium transition-colors shadow-sm"
             />
-          )}
+          ) : null}
         </div>
-        {!isPosted && (
+        {!isPosted ? (
           <FormActions
-            submitLabel={mode === 'create' ? 'Krijo Faturë Shitjeje' : 'Përditëso Faturën'}
+            submitLabel={mode === 'create' ? 'Krijo Fature Shitjeje' : 'Perditeso Faturen'}
             busy={busy}
           />
-        )}
+        ) : null}
       </div>
     </form>
   );

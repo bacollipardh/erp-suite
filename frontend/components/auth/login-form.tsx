@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { clientLogin, setToken } from '@/lib/auth-client';
+import { clientLogin } from '@/lib/auth-client';
 
 export function LoginForm() {
   const router = useRouter();
@@ -17,8 +17,7 @@ export function LoginForm() {
     setBusy(true);
     setError('');
     try {
-      const { accessToken } = await clientLogin(email, password);
-      setToken(accessToken);
+      await clientLogin(email, password);
       const from = params.get('from') || '/dashboard';
       router.push(from);
       router.refresh();
@@ -26,9 +25,9 @@ export function LoginForm() {
       try {
         const body = JSON.parse(err.message);
         const msg = body.message;
-        setError(typeof msg === 'string' ? msg : Array.isArray(msg) ? msg.join(', ') : 'Hyrja dështoi');
+        setError(typeof msg === 'string' ? msg : Array.isArray(msg) ? msg.join(', ') : 'Hyrja deshtoi');
       } catch {
-        setError(typeof err.message === 'string' ? err.message : 'Hyrja dështoi');
+        setError(typeof err.message === 'string' ? err.message : 'Hyrja deshtoi');
       }
     } finally {
       setBusy(false);
@@ -49,14 +48,14 @@ export function LoginForm() {
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Fjalëkalimi</label>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Fjalekalimi</label>
         <input
           type="password"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-          placeholder="••••••••"
+          placeholder="********"
         />
       </div>
       {error && (
@@ -69,7 +68,7 @@ export function LoginForm() {
         disabled={busy}
         className="w-full rounded-lg bg-slate-900 text-white py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-50 transition-colors"
       >
-        {busy ? 'Duke u kyçur...' : 'Kyçu'}
+        {busy ? 'Duke u kycur...' : 'Kycu'}
       </button>
     </form>
   );

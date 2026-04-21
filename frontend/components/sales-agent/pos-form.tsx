@@ -3,7 +3,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { API_BASE_URL } from '@/lib/constants';
 import { PdfButtons } from '@/components/invoices/pdf-download-button';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -159,7 +158,8 @@ export function PosForm({
   }, [cart]);
 
   // ── Submit ────────────────────────────────────────────────────────────────────
-  async function handleSubmit() {
+async function handleSubmit() {
+    if (!customerId)     { setError('Zgjidhni klientin.');          return; }
     if (!cart.length)    { setError('Shto të paktën 1 artikull.'); return; }
     if (!warehouseId)    { setError('Zgjidhni magazinën.');        return; }
     if (!seriesId)       { setError('Zgjidhni serinë e dokumentit.'); return; }
@@ -171,6 +171,7 @@ export function PosForm({
     try {
       const payload: Record<string, unknown> = {
         seriesId,
+        customerId,
         warehouseId,
         docDate: new Date().toISOString().slice(0, 10),
         lines: cart.map(l => ({
@@ -181,7 +182,6 @@ export function PosForm({
           taxPercent: l.taxPercent,
         })),
       };
-      if (customerId)  payload.customerId = customerId;
       if (payMethodId) payload.paymentMethodId = payMethodId;
       if (notes.trim()) payload.notes = notes.trim();
 
@@ -216,7 +216,7 @@ export function PosForm({
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <PdfButtons
-              baseHref={`${API_BASE_URL}/pdf/sales-invoices/${success.id}`}
+              baseHref={`/api/proxy/pdf/sales-invoices/${success.id}`}
               docNo={success.docNo}
             />
             <button
@@ -286,7 +286,7 @@ export function PosForm({
                   )}
                 </div>
               )}
-              <p className="text-xs text-slate-400 mt-0.5">Opcional — lejo bosh për shitje pa blerës</p>
+              <p className="text-xs text-slate-400 mt-0.5">Klienti është i detyrueshëm për faturimin e POS-it.</p>
             </div>
 
             {/* Warehouse */}

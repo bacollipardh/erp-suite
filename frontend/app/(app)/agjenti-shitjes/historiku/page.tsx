@@ -1,5 +1,4 @@
 import { api } from '@/lib/api';
-import { API_BASE_URL } from '@/lib/constants';
 import { PdfButtons } from '@/components/invoices/pdf-download-button';
 import Link from 'next/link';
 
@@ -27,7 +26,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default async function SalesHistoryPage() {
-  const invoices: any[] = await api.list('sales-invoices');
+  const invoices: any[] = await api.list('sales-invoices', { limit: 100 });
 
   const sorted = [...invoices].sort(
     (a, b) => new Date(b.createdAt ?? b.docDate ?? 0).getTime()
@@ -105,7 +104,7 @@ export default async function SalesHistoryPage() {
                     </td>
                     <td className="px-4 py-3">
                       <PdfButtons
-                        baseHref={`${API_BASE_URL}/pdf/sales-invoices/${inv.id}`}
+                        baseHref={`/api/proxy/pdf/sales-invoices/${inv.id}`}
                         docNo={inv.docNo ?? `inv-${inv.id}`}
                       />
                     </td>

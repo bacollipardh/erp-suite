@@ -1,4 +1,5 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { FiscalMode } from '@prisma/client';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpsertCompanyProfileDto {
   @IsString()
@@ -15,4 +16,8 @@ export class UpsertCompanyProfileDto {
   @IsOptional() @IsString() @MaxLength(200) website?: string;
   @IsOptional() @IsString() @MaxLength(100) bankName?: string;
   @IsOptional() @IsString() @MaxLength(50)  bankAccount?: string;
+  @IsOptional() @IsEnum(FiscalMode) fiscalMode?: FiscalMode;
+  @IsOptional() @IsString() @MaxLength(50)  fiscalBusinessUnit?: string;
+  @IsOptional() @IsString() @MaxLength(50)  fiscalOperatorCode?: string;
+  @IsOptional() @IsString() @MaxLength(100) fiscalDeviceId?: string;
 }

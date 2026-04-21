@@ -2,8 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { navSections } from '@/lib/nav';
+import { hasPermission } from '@/lib/permissions';
+import { useSession } from './session-provider';
 
 function NavIcon({ path, className = 'w-4 h-4' }: { path: string; className?: string }) {
   return (
@@ -37,27 +39,38 @@ function ChevronIcon({ open }: { open: boolean }) {
 
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
+  const { user } = useSession();
+
+  const visibleSections = useMemo(
+    () =>
+      navSections
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => hasPermission(user?.permissions, item.permission)),
+        }))
+        .filter((section) => section.items.length > 0),
+    [user],
+  );
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {};
-    for (const s of navSections) {
-      init[s.title] = s.defaultOpen ?? false;
+    const initial: Record<string, boolean> = {};
+    for (const section of navSections) {
+      initial[section.title] = section.defaultOpen ?? false;
     }
-    return init;
+    return initial;
   });
 
-  // Auto-open section that contains active route
   useEffect(() => {
     const patch: Record<string, boolean> = {};
-    for (const s of navSections) {
-      if (s.items.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))) {
-        patch[s.title] = true;
+    for (const section of visibleSections) {
+      if (section.items.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))) {
+        patch[section.title] = true;
       }
     }
-    if (Object.keys(patch).length) {
+    if (Object.keys(patch).length > 0) {
       setOpenSections((prev) => ({ ...prev, ...patch }));
     }
-  }, [pathname]);
+  }, [pathname, visibleSections]);
 
   function toggle(title: string) {
     setOpenSections((prev) => ({ ...prev, [title]: !prev[title] }));
@@ -65,42 +78,49 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
 
   return (
     <aside className="h-full flex flex-col bg-slate-900 text-slate-100 overflow-hidden">
-      {/* Logo */}
       <div className="flex items-center justify-between px-4 py-4 border-b border-slate-700/60">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-indigo-500 flex items-center justify-center text-white text-xs font-bold">bp</div>
+          <div className="w-7 h-7 rounded-lg bg-indigo-500 flex items-center justify-center text-white text-xs font-bold">
+            bp
+          </div>
           <span className="text-base font-semibold tracking-tight">bp ERP</span>
         </div>
         {onClose && (
           <button
             onClick={onClose}
             className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors lg:hidden"
-            aria-label="Mbyll menynë"
+            aria-label="Mbyll menune"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              className="w-4 h-4"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         )}
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-        {navSections.map((section) => {
+        {visibleSections.map((section) => {
           const isOpen = openSections[section.title] ?? false;
           const hasActive = section.items.some(
-            (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
+            (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
           );
 
           return (
             <div key={section.title}>
-              {/* Section header */}
               <button
                 onClick={() => toggle(section.title)}
                 className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors
-                  ${hasActive
-                    ? 'text-slate-100 bg-slate-800'
-                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+                  ${
+                    hasActive
+                      ? 'text-slate-100 bg-slate-800'
+                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
                   }`}
               >
                 <NavIcon path={section.iconPath} className="w-4 h-4 shrink-0" />
@@ -108,7 +128,6 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                 <ChevronIcon open={isOpen} />
               </button>
 
-              {/* Items */}
               {isOpen && (
                 <div className="mt-0.5 ml-3 pl-4 border-l border-slate-700/60 space-y-0.5">
                   {section.items.map((item) => {
@@ -119,14 +138,13 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                         href={item.href}
                         onClick={onClose}
                         className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm transition-colors
-                          ${active
-                            ? 'bg-indigo-600 text-white font-medium'
-                            : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                          ${
+                            active
+                              ? 'bg-indigo-600 text-white font-medium'
+                              : 'text-slate-400 hover:text-white hover:bg-slate-800'
                           }`}
                       >
-                        {active && (
-                          <span className="w-1 h-1 rounded-full bg-white shrink-0" />
-                        )}
+                        {active && <span className="w-1 h-1 rounded-full bg-white shrink-0" />}
                         <span>{item.label}</span>
                       </Link>
                     );
@@ -138,7 +156,6 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         })}
       </nav>
 
-      {/* Footer */}
       <div className="px-4 py-3 border-t border-slate-700/60">
         <p className="text-xs text-slate-500">v1.0 · bp ERP Suite</p>
       </div>

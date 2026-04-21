@@ -4,11 +4,18 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { assertAppEnv, getCorsOrigins } from './common/config/env';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: true });
+  assertAppEnv();
+
+  const app = await NestFactory.create(AppModule);
 
   app.setGlobalPrefix('api');
+  app.enableCors({
+    origin: getCorsOrigins(),
+    credentials: true,
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

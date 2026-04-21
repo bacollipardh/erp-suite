@@ -10,9 +10,9 @@ export default async function SalesInvoicesPage() {
     <div>
       <PageHeader
         title="Faturat e Shitjes"
-        description="Faturat e shitjes, zbritjet dhe dalja e stokut."
+        description="Faturat e shitjes, pagesat dhe fiskalizimi."
         createHref="/sales-invoices/new"
-        createLabel="Faturë e Re Shitjeje"
+        createLabel="Fature e Re Shitjeje"
       />
       <DataTable
         data={docs}
@@ -23,6 +23,8 @@ export default async function SalesInvoicesPage() {
           { key: 'warehouse', title: 'Magazina', render: (row: any) => row.warehouse?.name ?? '-' },
           { key: 'docDate', title: 'Data', render: (row: any) => String(row.docDate).slice(0, 10) },
           { key: 'grandTotal', title: 'Totali', render: (row: any) => row.grandTotal },
+          { key: 'paymentStatus', title: 'Pagesa', render: (row: any) => <StatusBadge value={row.paymentStatus} /> },
+          { key: 'fiscalStatus', title: 'Fiskalizimi', render: (row: any) => <StatusBadge value={row.fiscalStatus} /> },
           { key: 'status', title: 'Statusi', render: (row: any) => <StatusBadge value={row.status} /> },
         ]}
       />

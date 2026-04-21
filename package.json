@@ -1,0 +1,18 @@
+{
+  "name": "erp-suite",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "dev": "docker compose up --build",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix backend && npm run build --prefix frontend",
+    "typecheck": "npm run build --prefix frontend && npm run typecheck --prefix frontend",
+    "test": "npm run test --prefix backend -- --runInBand",
+    "seed": "npm run seed --prefix backend",
+    "prisma:generate": "npm run prisma:generate --prefix backend",
+    "migrate:deploy": "npm run prisma:migrate:deploy --prefix backend",
+    "smoke:auth": "node scripts/smoke-auth.mjs",
+    "smoke:full": "node scripts/smoke-suite.mjs"
+  }
+}

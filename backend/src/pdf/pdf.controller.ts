@@ -5,6 +5,8 @@ import { PdfService } from './pdf.service';
 import { PurchaseInvoicesService } from '../purchase-invoices/purchase-invoices.service';
 import { SalesInvoicesService } from '../sales-invoices/sales-invoices.service';
 import { SalesReturnsService } from '../sales-returns/sales-returns.service';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
+import { PERMISSIONS } from '../auth/permissions';
 
 @ApiTags('pdf')
 @ApiBearerAuth()
@@ -18,6 +20,7 @@ export class PdfController {
   ) {}
 
   @Get('purchase-invoices/:id')
+  @RequirePermissions(PERMISSIONS.pdfRead)
   async purchaseInvoice(
     @Param('id') id: string,
     @Query('mode') mode: string,
@@ -35,6 +38,7 @@ export class PdfController {
   }
 
   @Get('sales-invoices/:id')
+  @RequirePermissions(PERMISSIONS.pdfRead)
   async salesInvoice(
     @Param('id') id: string,
     @Query('mode') mode: string,
@@ -52,6 +56,7 @@ export class PdfController {
   }
 
   @Get('sales-returns/:id')
+  @RequirePermissions(PERMISSIONS.pdfRead)
   async salesReturn(
     @Param('id') id: string,
     @Query('mode') mode: string,

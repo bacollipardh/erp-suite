@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { JwtPayload } from './decorators/current-user.decorator';
+import { getPermissionsForRole } from './permissions';
 
 @Injectable()
 export class AuthService {
@@ -42,6 +43,7 @@ export class AuthService {
         email: user.email,
         fullName: user.fullName,
         role: user.role.code,
+        permissions: getPermissionsForRole(user.role.code),
       },
     };
   }
@@ -57,6 +59,7 @@ export class AuthService {
       email: user.email,
       fullName: user.fullName,
       role: user.role.code,
+      permissions: getPermissionsForRole(user.role.code),
       isActive: user.isActive,
     };
   }

@@ -24,8 +24,39 @@ enum MovementType {
   SALES_RETURN_IN
   ADJUSTMENT_PLUS
   ADJUSTMENT_MINUS
+  TRANSFER_OUT
+  TRANSFER_IN
+  COUNT_IN
+  COUNT_OUT
 
   @@map("movement_type")
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+
+  @@map("payment_status")
+}
+
+enum FiscalStatus {
+  DRAFT
+  PENDING
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+  FAILED
+
+  @@map("fiscal_status")
+}
+
+enum FiscalMode {
+  DISABLED
+  SANDBOX
+  LIVE
+
+  @@map("fiscal_mode")
 }
 
 model Role {
@@ -226,11 +257,14 @@ model PurchaseInvoice {
   docNo             String                @unique @map("doc_no") @db.VarChar(50)
   supplierInvoiceNo String?               @map("supplier_invoice_no") @db.VarChar(100)
   docDate           DateTime              @map("doc_date") @db.Date
+  dueDate           DateTime?             @map("due_date") @db.Date
   status            DocumentStatus        @default(DRAFT)
+  paymentStatus     PaymentStatus         @default(UNPAID) @map("payment_status")
   subtotal          Decimal               @db.Decimal(18, 2)
   discountTotal     Decimal               @map("discount_total") @db.Decimal(18, 2)
   taxTotal          Decimal               @map("tax_total") @db.Decimal(18, 2)
   grandTotal        Decimal               @map("grand_total") @db.Decimal(18, 2)
+  amountPaid        Decimal               @default(0) @map("amount_paid") @db.Decimal(18, 2)
   notes             String?
   createdById       String                @map("created_by") @db.Uuid
   postedById        String?               @map("posted_by") @db.Uuid
@@ -286,12 +320,18 @@ model SalesInvoice {
   paymentMethodId String?           @map("payment_method_id") @db.Uuid
   docNo           String            @unique @map("doc_no") @db.VarChar(50)
   docDate         DateTime          @map("doc_date") @db.Date
+  dueDate         DateTime?         @map("due_date") @db.Date
   status          DocumentStatus    @default(DRAFT)
+  paymentStatus   PaymentStatus     @default(UNPAID) @map("payment_status")
   subtotal        Decimal           @db.Decimal(18, 2)
   discountTotal   Decimal           @map("discount_total") @db.Decimal(18, 2)
   taxTotal        Decimal           @map("tax_total") @db.Decimal(18, 2)
   grandTotal      Decimal           @map("grand_total") @db.Decimal(18, 2)
+  amountPaid      Decimal           @default(0) @map("amount_paid") @db.Decimal(18, 2)
+  fiscalStatus    FiscalStatus      @default(DRAFT) @map("fiscal_status")
   fiscalReference String?           @map("fiscal_reference") @db.VarChar(150)
+  fiscalizedAt    DateTime?         @map("fiscalized_at") @db.Timestamptz(6)
+  fiscalError     String?           @map("fiscal_error") @db.VarChar(255)
   notes           String?
   createdById     String            @map("created_by") @db.Uuid
   postedById      String?           @map("posted_by") @db.Uuid
@@ -352,6 +392,10 @@ model SalesReturn {
   docDate        DateTime          @map("doc_date") @db.Date
   reason         String?           @db.VarChar(255)
   status         DocumentStatus    @default(DRAFT)
+  fiscalStatus   FiscalStatus      @default(DRAFT) @map("fiscal_status")
+  fiscalReference String?          @map("fiscal_reference") @db.VarChar(150)
+  fiscalizedAt   DateTime?         @map("fiscalized_at") @db.Timestamptz(6)
+  fiscalError    String?           @map("fiscal_error") @db.VarChar(255)
   subtotal       Decimal           @db.Decimal(18, 2)
   taxTotal       Decimal           @map("tax_total") @db.Decimal(18, 2)
   grandTotal     Decimal           @map("grand_total") @db.Decimal(18, 2)
@@ -459,6 +503,10 @@ model CompanyProfile {
   website     String?  @db.VarChar(200)
   bankName    String?  @map("bank_name") @db.VarChar(100)
   bankAccount String?  @map("bank_account") @db.VarChar(50)
+  fiscalMode  FiscalMode @default(SANDBOX) @map("fiscal_mode")
+  fiscalBusinessUnit String? @map("fiscal_business_unit") @db.VarChar(50)
+  fiscalOperatorCode String? @map("fiscal_operator_code") @db.VarChar(50)
+  fiscalDeviceId String? @map("fiscal_device_id") @db.VarChar(100)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

@@ -7,6 +7,10 @@ import { buildDocNo } from '../common/utils/series';
 import { round2 } from '../common/utils/money';
 import { CreatePurchaseInvoiceDto } from './dto/create-purchase-invoice.dto';
 import { UpdatePurchaseInvoiceDto } from './dto/update-purchase-invoice.dto';
+import { PaginationDto } from '../common/dto/pagination.dto';
+import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
+import { resolvePaymentStatus } from '../common/utils/payments';
+import { RecordPaymentDto } from '../common/dto/record-payment.dto';
 
 @Injectable()
 export class PurchaseInvoicesService {
@@ -16,17 +20,53 @@ export class PurchaseInvoicesService {
     private readonly auditLogs: AuditLogsService,
   ) {}
 
-  findAll() {
-    return this.prisma.purchaseInvoice.findMany({
-      include: { supplier: true, warehouse: true, lines: true, series: true },
-      orderBy: { createdAt: 'desc' },
-    });
+  async findAll(query: PaginationDto = {}) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const { skip, take } = toPagination(page, limit);
+    const search = query.search?.trim();
+
+    const where = search
+      ? {
+          OR: [
+            { docNo: { contains: search, mode: 'insensitive' as const } },
+            { supplier: { name: { contains: search, mode: 'insensitive' as const } } },
+            { warehouse: { name: { contains: search, mode: 'insensitive' as const } } },
+            { supplierInvoiceNo: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : undefined;
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.purchaseInvoice.findMany({
+        where,
+        include: {
+          supplier: true,
+          warehouse: true,
+          series: true,
+          createdBy: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.purchaseInvoice.count({ where }),
+    ]);
+
+    return toPaginatedResponse({ items, total, page, limit });
   }
 
   async findOne(id: string) {
     const doc = await this.prisma.purchaseInvoice.findUnique({
       where: { id },
-      include: { supplier: true, warehouse: true, lines: true, series: true },
+      include: {
+        supplier: true,
+        warehouse: true,
+        series: true,
+        createdBy: true,
+        postedBy: true,
+        lines: { include: { item: true } },
+      },
     });
     if (!doc) throw new NotFoundException('Purchase invoice not found');
     return doc;
@@ -81,6 +121,7 @@ export class PurchaseInvoicesService {
           docNo,
           supplierInvoiceNo: dto.supplierInvoiceNo,
           docDate: new Date(dto.docDate),
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
           status: DocumentStatus.DRAFT,
           subtotal: calc.subtotal,
           discountTotal: calc.discountTotal,
@@ -135,6 +176,7 @@ export class PurchaseInvoicesService {
           warehouseId: dto.warehouseId,
           supplierInvoiceNo: dto.supplierInvoiceNo,
           docDate: dto.docDate ? new Date(dto.docDate) : undefined,
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
           notes: dto.notes,
           subtotal: calc?.subtotal,
           discountTotal: calc?.discountTotal,
@@ -202,5 +244,43 @@ export class PurchaseInvoicesService {
     });
 
     return doc;
+  }
+
+  async recordPayment(id: string, dto: RecordPaymentDto, userId: string) {
+    const existing = await this.findOne(id);
+    if (existing.status === DocumentStatus.DRAFT) {
+      throw new BadRequestException('Only posted purchase invoices can receive payments');
+    }
+
+    const total = Number(existing.grandTotal);
+    const currentPaid = Number(existing.amountPaid ?? 0);
+    const nextPaid = round2(currentPaid + Number(dto.amount));
+
+    if (nextPaid > total) {
+      throw new BadRequestException('Payment exceeds the remaining payable amount');
+    }
+
+    const updated = await this.prisma.purchaseInvoice.update({
+      where: { id },
+      data: {
+        amountPaid: nextPaid,
+        paymentStatus: resolvePaymentStatus(total, nextPaid),
+      },
+    });
+
+    await this.auditLogs.log({
+      userId,
+      entityType: 'purchase_invoices',
+      entityId: updated.id,
+      action: 'RECORD_PAYMENT',
+      metadata: {
+        amount: dto.amount,
+        paidAt: dto.paidAt ?? new Date().toISOString(),
+        referenceNo: dto.referenceNo,
+        notes: dto.notes,
+      },
+    });
+
+    return updated;
   }
 }

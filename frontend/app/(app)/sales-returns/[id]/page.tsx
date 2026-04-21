@@ -1,8 +1,8 @@
 import { PageHeader } from '@/components/page-header';
 import { SalesReturnForm } from '@/components/invoices/sales-return-form';
 import { PdfButtons } from '@/components/invoices/pdf-download-button';
+import { DocumentActionPanel } from '@/components/invoices/document-action-panel';
 import { api } from '@/lib/api';
-import { API_BASE_URL } from '@/lib/constants';
 
 export default async function EditSalesReturnPage({
   params,
@@ -25,11 +25,22 @@ export default async function EditSalesReturnPage({
           title={`Kthim Shitjeje ${doc.docNo}`}
           description={`Statusi: ${doc.status} · Krijuar: ${new Date(doc.createdAt).toLocaleDateString('sq-AL')}`}
         />
-        <PdfButtons
-          baseHref={`${API_BASE_URL}/pdf/sales-returns/${resolved.id}`}
+        <PdfButtons baseHref={`/api/proxy/pdf/sales-returns/${resolved.id}`} docNo={doc.docNo} />
+      </div>
+
+      <div className="mb-4">
+        <DocumentActionPanel
+          documentType="sales-returns"
+          documentId={resolved.id}
           docNo={doc.docNo}
+          status={doc.status}
+          grandTotal={doc.grandTotal}
+          fiscalStatus={doc.fiscalStatus}
+          fiscalReference={doc.fiscalReference}
+          fiscalError={doc.fiscalError}
         />
       </div>
+
       <SalesReturnForm
         mode="edit"
         data={doc}

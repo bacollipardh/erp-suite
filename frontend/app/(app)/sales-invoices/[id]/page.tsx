@@ -1,8 +1,8 @@
 import { PageHeader } from '@/components/page-header';
 import { SalesInvoiceForm } from '@/components/invoices/sales-invoice-form';
 import { PdfButtons } from '@/components/invoices/pdf-download-button';
+import { DocumentActionPanel } from '@/components/invoices/document-action-panel';
 import { api } from '@/lib/api';
-import { API_BASE_URL } from '@/lib/constants';
 
 export default async function EditSalesInvoicePage({
   params,
@@ -23,14 +23,28 @@ export default async function EditSalesInvoicePage({
     <div>
       <div className="flex items-start justify-between mb-4">
         <PageHeader
-          title={`Faturë Shitjeje ${doc.docNo}`}
+          title={`Fature Shitjeje ${doc.docNo}`}
           description={`Statusi: ${doc.status} · Krijuar: ${new Date(doc.createdAt).toLocaleDateString('sq-AL')}`}
         />
-        <PdfButtons
-          baseHref={`${API_BASE_URL}/pdf/sales-invoices/${resolved.id}`}
+        <PdfButtons baseHref={`/api/proxy/pdf/sales-invoices/${resolved.id}`} docNo={doc.docNo} />
+      </div>
+
+      <div className="mb-4">
+        <DocumentActionPanel
+          documentType="sales-invoices"
+          documentId={resolved.id}
           docNo={doc.docNo}
+          status={doc.status}
+          grandTotal={doc.grandTotal}
+          amountPaid={doc.amountPaid}
+          paymentStatus={doc.paymentStatus}
+          dueDate={doc.dueDate}
+          fiscalStatus={doc.fiscalStatus}
+          fiscalReference={doc.fiscalReference}
+          fiscalError={doc.fiscalError}
         />
       </div>
+
       <SalesInvoiceForm
         mode="edit"
         data={doc}

@@ -1,181 +1,372 @@
-import { PrismaClient } from '@prisma/client';
+import { FiscalMode, PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
+const DEFAULT_PASSWORD = 'Admin123!';
+const ADMIN_ID = '11111111-1111-1111-1111-111111111111';
+const COMPANY_PROFILE_ID = '00000000-0000-0000-0000-000000000001';
+
+function inferNextSeriesNumber(params: {
+  prefix: string;
+  currentNextNumber?: number | null;
+  existingDocNos: string[];
+}) {
+  const highestDocNumber = params.existingDocNos.reduce((max, docNo) => {
+    if (!docNo.startsWith(params.prefix)) {
+      return max;
+    }
+
+    const numericPart = Number.parseInt(docNo.slice(params.prefix.length), 10);
+    if (Number.isNaN(numericPart)) {
+      return max;
+    }
+
+    return Math.max(max, numericPart);
+  }, 0);
+
+  return Math.max(params.currentNextNumber ?? 1, highestDocNumber + 1, 1);
+}
+
+async function upsertUser(params: {
+  id: string;
+  roleId: string;
+  fullName: string;
+  email: string;
+  passwordHash: string;
+}) {
+  return prisma.user.upsert({
+    where: { id: params.id },
+    update: {
+      roleId: params.roleId,
+      fullName: params.fullName,
+      email: params.email,
+      passwordHash: params.passwordHash,
+      isActive: true,
+    },
+    create: {
+      ...params,
+      isActive: true,
+    },
+  });
+}
+
+async function resolveSeriesDocNos(documentType: string, seriesId: string) {
+  if (documentType === 'PURCHASE_INVOICE') {
+    const docs = await prisma.purchaseInvoice.findMany({
+      where: { seriesId },
+      select: { docNo: true },
+    });
+
+    return docs.map((doc) => doc.docNo);
+  }
+
+  if (documentType === 'SALES_INVOICE') {
+    const docs = await prisma.salesInvoice.findMany({
+      where: { seriesId },
+      select: { docNo: true },
+    });
+
+    return docs.map((doc) => doc.docNo);
+  }
+
+  if (documentType === 'SALES_RETURN') {
+    const docs = await prisma.salesReturn.findMany({
+      where: { seriesId },
+      select: { docNo: true },
+    });
+
+    return docs.map((doc) => doc.docNo);
+  }
+
+  return [];
+}
+
+async function upsertDocumentSeries(params: {
+  code: string;
+  documentType: 'PURCHASE_INVOICE' | 'SALES_INVOICE' | 'SALES_RETURN';
+  prefix: string;
+}) {
+  const existing = await prisma.documentSeries.findUnique({
+    where: { code: params.code },
+    select: { id: true, nextNumber: true },
+  });
+
+  const existingDocNos = existing
+    ? await resolveSeriesDocNos(params.documentType, existing.id)
+    : [];
+
+  const nextNumber = inferNextSeriesNumber({
+    prefix: params.prefix,
+    currentNextNumber: existing?.nextNumber,
+    existingDocNos,
+  });
+
+  return prisma.documentSeries.upsert({
+    where: { code: params.code },
+    update: {
+      documentType: params.documentType,
+      prefix: params.prefix,
+      nextNumber,
+      isActive: true,
+    },
+    create: {
+      code: params.code,
+      documentType: params.documentType,
+      prefix: params.prefix,
+      nextNumber,
+      isActive: true,
+    },
+  });
+}
+
 async function main() {
   console.log('Seeding database...');
 
-  // Roles
+  const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 12);
+
   const adminRole = await prisma.role.upsert({
     where: { code: 'ADMIN' },
-    update: {},
+    update: { name: 'Administrator', isActive: true },
     create: { code: 'ADMIN', name: 'Administrator', isActive: true },
   });
 
   const managerRole = await prisma.role.upsert({
     where: { code: 'MANAGER' },
-    update: {},
+    update: { name: 'Manager', isActive: true },
     create: { code: 'MANAGER', name: 'Manager', isActive: true },
   });
 
-  const userRole = await prisma.role.upsert({
-    where: { code: 'USER' },
-    update: {},
-    create: { code: 'USER', name: 'User', isActive: true },
+  const salesRole = await prisma.role.upsert({
+    where: { code: 'SALES' },
+    update: { name: 'Sales Operator', isActive: true },
+    create: { code: 'SALES', name: 'Sales Operator', isActive: true },
   });
 
-  // Admin user (default user — id matches DEFAULT_USER_ID in docker-compose)
-  const adminPasswordHash = await bcrypt.hash('Admin123!', 12);
+  const purchaseRole = await prisma.role.upsert({
+    where: { code: 'PURCHASE' },
+    update: { name: 'Purchase Operator', isActive: true },
+    create: { code: 'PURCHASE', name: 'Purchase Operator', isActive: true },
+  });
+
+  await upsertUser({
+    id: ADMIN_ID,
+    roleId: adminRole.id,
+    fullName: 'System Admin',
+    email: 'admin@erp.local',
+    passwordHash,
+  });
+
   await prisma.user.upsert({
-    where: { id: '11111111-1111-1111-1111-111111111111' },
-    update: { email: 'admin@erp.local', passwordHash: adminPasswordHash, isActive: true },
+    where: { email: 'manager@erp.local' },
+    update: {
+      roleId: managerRole.id,
+      fullName: 'General Manager',
+      passwordHash,
+      isActive: true,
+    },
     create: {
-      id: '11111111-1111-1111-1111-111111111111',
-      roleId: adminRole.id,
-      fullName: 'Administrator',
-      email: 'admin@erp.local',
-      passwordHash: adminPasswordHash,
+      roleId: managerRole.id,
+      fullName: 'General Manager',
+      email: 'manager@erp.local',
+      passwordHash,
       isActive: true,
     },
   });
 
-  // Item Categories
-  const catGoods = await prisma.itemCategory.upsert({
+  await prisma.user.upsert({
+    where: { email: 'sales@erp.local' },
+    update: {
+      roleId: salesRole.id,
+      fullName: 'Sales Agent',
+      passwordHash,
+      isActive: true,
+    },
+    create: {
+      roleId: salesRole.id,
+      fullName: 'Sales Agent',
+      email: 'sales@erp.local',
+      passwordHash,
+      isActive: true,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'purchase@erp.local' },
+    update: {
+      roleId: purchaseRole.id,
+      fullName: 'Purchase Officer',
+      passwordHash,
+      isActive: true,
+    },
+    create: {
+      roleId: purchaseRole.id,
+      fullName: 'Purchase Officer',
+      email: 'purchase@erp.local',
+      passwordHash,
+      isActive: true,
+    },
+  });
+
+  await prisma.companyProfile.upsert({
+    where: { id: COMPANY_PROFILE_ID },
+    update: {
+      name: 'bp ERP Demo',
+      fiscalNo: '810000001',
+      vatNo: '330000001',
+      businessNo: '810000001',
+      address: 'Prishtine, Kosovo',
+      city: 'Prishtine',
+      phone: '+38344111222',
+      email: 'info@bperp.local',
+      website: 'https://bperp.local',
+      bankName: 'Bank for Business',
+      bankAccount: '210000000001',
+      fiscalMode: FiscalMode.SANDBOX,
+      fiscalBusinessUnit: 'MAIN',
+      fiscalOperatorCode: 'OP-001',
+      fiscalDeviceId: 'DEV-001',
+    },
+    create: {
+      id: COMPANY_PROFILE_ID,
+      name: 'bp ERP Demo',
+      fiscalNo: '810000001',
+      vatNo: '330000001',
+      businessNo: '810000001',
+      address: 'Prishtine, Kosovo',
+      city: 'Prishtine',
+      phone: '+38344111222',
+      email: 'info@bperp.local',
+      website: 'https://bperp.local',
+      bankName: 'Bank for Business',
+      bankAccount: '210000000001',
+      fiscalMode: FiscalMode.SANDBOX,
+      fiscalBusinessUnit: 'MAIN',
+      fiscalOperatorCode: 'OP-001',
+      fiscalDeviceId: 'DEV-001',
+    },
+  });
+
+  const goodsCategory = await prisma.itemCategory.upsert({
     where: { code: 'GOODS' },
-    update: {},
+    update: { name: 'Goods' },
     create: { code: 'GOODS', name: 'Goods' },
   });
 
-  const catServices = await prisma.itemCategory.upsert({
+  const servicesCategory = await prisma.itemCategory.upsert({
     where: { code: 'SERVICES' },
-    update: {},
+    update: { name: 'Services' },
     create: { code: 'SERVICES', name: 'Services' },
   });
 
-  const catRawMat = await prisma.itemCategory.upsert({
-    where: { code: 'RAW_MAT' },
-    update: {},
-    create: { code: 'RAW_MAT', name: 'Raw Materials', parentId: catGoods.id },
+  await prisma.itemCategory.upsert({
+    where: { code: 'ACCESSORIES' },
+    update: { name: 'Accessories', parentId: goodsCategory.id },
+    create: { code: 'ACCESSORIES', name: 'Accessories', parentId: goodsCategory.id },
   });
 
-  // Units
-  const unitPcs = await prisma.unit.upsert({
-    where: { code: 'PCS' },
-    update: {},
-    create: { code: 'PCS', name: 'Pieces' },
+  const unitPiece = await prisma.unit.upsert({
+    where: { code: 'COP' },
+    update: { name: 'Cope' },
+    create: { code: 'COP', name: 'Cope' },
   });
 
   const unitKg = await prisma.unit.upsert({
     where: { code: 'KG' },
-    update: {},
+    update: { name: 'Kilogram' },
     create: { code: 'KG', name: 'Kilogram' },
   });
 
-  const unitLt = await prisma.unit.upsert({
-    where: { code: 'LT' },
-    update: {},
-    create: { code: 'LT', name: 'Liter' },
+  await prisma.unit.upsert({
+    where: { code: 'L' },
+    update: { name: 'Liter' },
+    create: { code: 'L', name: 'Liter' },
   });
 
-  // Tax Rates (Kosovo VAT: 18% standard, 8% reduced, 0% exempt)
   const tax18 = await prisma.taxRate.upsert({
     where: { code: 'VAT18' },
-    update: {},
+    update: { name: 'VAT 18%', ratePercent: 18, isActive: true },
     create: { code: 'VAT18', name: 'VAT 18%', ratePercent: 18, isActive: true },
   });
 
-  const tax8 = await prisma.taxRate.upsert({
+  await prisma.taxRate.upsert({
     where: { code: 'VAT8' },
-    update: {},
+    update: { name: 'VAT 8%', ratePercent: 8, isActive: true },
     create: { code: 'VAT8', name: 'VAT 8%', ratePercent: 8, isActive: true },
   });
 
-  const tax0 = await prisma.taxRate.upsert({
+  await prisma.taxRate.upsert({
     where: { code: 'VAT0' },
-    update: {},
-    create: { code: 'VAT0', name: 'VAT 0% (Exempt)', ratePercent: 0, isActive: true },
+    update: { name: 'VAT 0%', ratePercent: 0, isActive: true },
+    create: { code: 'VAT0', name: 'VAT 0%', ratePercent: 0, isActive: true },
   });
 
-  // Warehouses
-  const warehouseMain = await prisma.warehouse.upsert({
+  const mainWarehouse = await prisma.warehouse.upsert({
     where: { code: 'MAIN' },
-    update: {},
-    create: { code: 'MAIN', name: 'Main Warehouse', address: 'Prishtina, Kosovo', isActive: true },
+    update: { name: 'Main Warehouse', address: 'Prishtine, Kosovo', isActive: true },
+    create: { code: 'MAIN', name: 'Main Warehouse', address: 'Prishtine, Kosovo', isActive: true },
   });
 
-  const warehouseSecondary = await prisma.warehouse.upsert({
+  await prisma.warehouse.upsert({
     where: { code: 'SECONDARY' },
-    update: {},
+    update: { name: 'Secondary Warehouse', address: 'Prizren, Kosovo', isActive: true },
     create: { code: 'SECONDARY', name: 'Secondary Warehouse', address: 'Prizren, Kosovo', isActive: true },
   });
 
-  // Payment Methods
   await prisma.paymentMethod.upsert({
     where: { code: 'CASH' },
-    update: {},
+    update: { name: 'Cash', isActive: true },
     create: { code: 'CASH', name: 'Cash', isActive: true },
   });
 
   await prisma.paymentMethod.upsert({
     where: { code: 'BANK' },
-    update: {},
+    update: { name: 'Bank Transfer', isActive: true },
     create: { code: 'BANK', name: 'Bank Transfer', isActive: true },
   });
 
   await prisma.paymentMethod.upsert({
-    where: { code: 'CARD' },
-    update: {},
-    create: { code: 'CARD', name: 'Card', isActive: true },
+    where: { code: 'CREDIT' },
+    update: { name: 'Credit / Card', isActive: true },
+    create: { code: 'CREDIT', name: 'Credit / Card', isActive: true },
   });
 
-  // Document Series
-  await prisma.documentSeries.upsert({
-    where: { code: 'PI-2025' },
-    update: {},
-    create: {
-      code: 'PI-2025',
-      documentType: 'PURCHASE_INVOICE',
-      prefix: 'PI-2025-',
-      nextNumber: 1,
-      isActive: true,
-    },
+  await upsertDocumentSeries({
+    code: 'FB',
+    documentType: 'PURCHASE_INVOICE',
+    prefix: 'FB-',
   });
 
-  await prisma.documentSeries.upsert({
-    where: { code: 'SI-2025' },
-    update: {},
-    create: {
-      code: 'SI-2025',
-      documentType: 'SALES_INVOICE',
-      prefix: 'SI-2025-',
-      nextNumber: 1,
-      isActive: true,
-    },
+  await upsertDocumentSeries({
+    code: 'FS',
+    documentType: 'SALES_INVOICE',
+    prefix: 'FS-',
   });
 
-  await prisma.documentSeries.upsert({
-    where: { code: 'SR-2025' },
-    update: {},
-    create: {
-      code: 'SR-2025',
-      documentType: 'SALES_RETURN',
-      prefix: 'SR-2025-',
-      nextNumber: 1,
-      isActive: true,
-    },
+  await upsertDocumentSeries({
+    code: 'KS',
+    documentType: 'SALES_RETURN',
+    prefix: 'KS-',
   });
 
-  // Items
-  const item1 = await prisma.item.upsert({
+  await prisma.item.upsert({
     where: { code: 'LAPTOP-001' },
-    update: {},
+    update: {
+      name: 'Laptop Pro 15',
+      categoryId: goodsCategory.id,
+      unitId: unitPiece.id,
+      taxRateId: tax18.id,
+      standardPurchasePrice: 800,
+      standardSalesPrice: 1100,
+      minSalesPrice: 900,
+      isActive: true,
+    },
     create: {
       code: 'LAPTOP-001',
-      name: 'Laptop Pro 15"',
-      description: 'High-performance business laptop',
-      categoryId: catGoods.id,
-      unitId: unitPcs.id,
+      name: 'Laptop Pro 15',
+      description: 'Business laptop',
+      categoryId: goodsCategory.id,
+      unitId: unitPiece.id,
       taxRateId: tax18.id,
       standardPurchasePrice: 800,
       standardSalesPrice: 1100,
@@ -184,14 +375,22 @@ async function main() {
     },
   });
 
-  const item2 = await prisma.item.upsert({
+  await prisma.item.upsert({
     where: { code: 'MONITOR-001' },
-    update: {},
+    update: {
+      name: 'Monitor 24',
+      categoryId: goodsCategory.id,
+      unitId: unitPiece.id,
+      taxRateId: tax18.id,
+      standardPurchasePrice: 200,
+      standardSalesPrice: 280,
+      isActive: true,
+    },
     create: {
       code: 'MONITOR-001',
-      name: 'Monitor 24" Full HD',
-      categoryId: catGoods.id,
-      unitId: unitPcs.id,
+      name: 'Monitor 24',
+      categoryId: goodsCategory.id,
+      unitId: unitPiece.id,
       taxRateId: tax18.id,
       standardPurchasePrice: 200,
       standardSalesPrice: 280,
@@ -199,64 +398,78 @@ async function main() {
     },
   });
 
-  const item3 = await prisma.item.upsert({
-    where: { code: 'CABLE-USB' },
-    update: {},
-    create: {
-      code: 'CABLE-USB',
-      name: 'USB-C Cable 2m',
-      categoryId: catGoods.id,
-      unitId: unitPcs.id,
+  await prisma.item.upsert({
+    where: { code: 'CONSULT-001' },
+    update: {
+      name: 'IT Consulting',
+      categoryId: servicesCategory.id,
+      unitId: unitKg.id,
       taxRateId: tax18.id,
-      standardPurchasePrice: 5,
-      standardSalesPrice: 12,
+      standardPurchasePrice: 0,
+      standardSalesPrice: 65,
+      isActive: true,
+    },
+    create: {
+      code: 'CONSULT-001',
+      name: 'IT Consulting',
+      categoryId: servicesCategory.id,
+      unitId: unitKg.id,
+      taxRateId: tax18.id,
+      standardPurchasePrice: 0,
+      standardSalesPrice: 65,
       isActive: true,
     },
   });
 
-  // Suppliers
   await prisma.supplier.upsert({
     where: { code: 'SUP-001' },
-    update: {},
-    create: {
-      code: 'SUP-001',
-      name: 'Tech Distributors Sh.p.k.',
+    update: {
+      name: 'Tech Distributors Shpk',
       fiscalNo: '70012345',
       vatNo: '331012345',
-      address: 'Rruga Nënë Tereza 10',
-      city: 'Prishtinë',
-      phone: '+383 44 123 456',
+      address: 'Prishtine',
+      city: 'Prishtine',
+      phone: '+38344123456',
+      email: 'info@techdist.ks',
+      paymentTermsDays: 30,
+      isActive: true,
+    },
+    create: {
+      code: 'SUP-001',
+      name: 'Tech Distributors Shpk',
+      fiscalNo: '70012345',
+      vatNo: '331012345',
+      address: 'Prishtine',
+      city: 'Prishtine',
+      phone: '+38344123456',
       email: 'info@techdist.ks',
       paymentTermsDays: 30,
       isActive: true,
     },
   });
 
-  await prisma.supplier.upsert({
-    where: { code: 'SUP-002' },
-    update: {},
-    create: {
-      code: 'SUP-002',
-      name: 'Euro Imports Sh.p.k.',
-      fiscalNo: '70098765',
-      city: 'Prizren',
-      paymentTermsDays: 15,
-      isActive: true,
-    },
-  });
-
-  // Customers
   await prisma.customer.upsert({
     where: { code: 'CUS-001' },
-    update: {},
-    create: {
-      code: 'CUS-001',
-      name: 'Kompania ABC Sh.p.k.',
+    update: {
+      name: 'Kompania ABC Shpk',
       fiscalNo: '70055555',
       vatNo: '331055555',
-      address: 'Bulevardi Bill Clinton 5',
-      city: 'Prishtinë',
-      phone: '+383 44 555 666',
+      address: 'Prishtine',
+      city: 'Prishtine',
+      phone: '+38344555666',
+      email: 'contact@abc.ks',
+      creditLimit: 5000,
+      defaultDiscountPercent: 2,
+      isActive: true,
+    },
+    create: {
+      code: 'CUS-001',
+      name: 'Kompania ABC Shpk',
+      fiscalNo: '70055555',
+      vatNo: '331055555',
+      address: 'Prishtine',
+      city: 'Prishtine',
+      phone: '+38344555666',
       email: 'contact@abc.ks',
       creditLimit: 5000,
       defaultDiscountPercent: 2,
@@ -266,7 +479,11 @@ async function main() {
 
   await prisma.customer.upsert({
     where: { code: 'CUS-002' },
-    update: {},
+    update: {
+      name: 'Biznesi XYZ',
+      city: 'Ferizaj',
+      isActive: true,
+    },
     create: {
       code: 'CUS-002',
       name: 'Biznesi XYZ',
@@ -275,16 +492,41 @@ async function main() {
     },
   });
 
+  await prisma.stockBalance.upsert({
+    where: {
+      warehouseId_itemId: {
+        warehouseId: mainWarehouse.id,
+        itemId: (
+          await prisma.item.findUniqueOrThrow({ where: { code: 'LAPTOP-001' }, select: { id: true } })
+        ).id,
+      },
+    },
+    update: {
+      qtyOnHand: 10,
+      avgCost: 800,
+    },
+    create: {
+      warehouseId: mainWarehouse.id,
+      itemId: (
+        await prisma.item.findUniqueOrThrow({ where: { code: 'LAPTOP-001' }, select: { id: true } })
+      ).id,
+      qtyOnHand: 10,
+      avgCost: 800,
+    },
+  });
+
   console.log('Seed completed successfully.');
   console.log('');
-  console.log('Default login:');
-  console.log('  Email: admin@erp.local');
-  console.log('  Password: Admin123!');
+  console.log('Default login credentials:');
+  console.log(`  admin@erp.local / ${DEFAULT_PASSWORD}`);
+  console.log(`  manager@erp.local / ${DEFAULT_PASSWORD}`);
+  console.log(`  sales@erp.local / ${DEFAULT_PASSWORD}`);
+  console.log(`  purchase@erp.local / ${DEFAULT_PASSWORD}`);
 }
 
 main()
-  .catch((e) => {
-    console.error(e);
+  .catch((error) => {
+    console.error(error);
     process.exit(1);
   })
   .finally(async () => {
