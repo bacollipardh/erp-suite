@@ -15,9 +15,12 @@ export default async function StockMovementsPage() {
     <div>
       <PageHeader
         title="Levizjet e Stokut"
-        description="Historiku i plote i levizjeve me filtra dhe pagination."
+        description="Historiku i plote i hyrjeve, daljeve dhe operacioneve me filtra operative."
       />
-      <StockMovementsClient warehouses={warehouses} items={items} />
+      <StockMovementsClient
+        warehouses={warehouses.filter((warehouse: any) => warehouse.isActive !== false)}
+        items={items.filter((item: any) => item.isActive !== false)}
+      />
     </div>
   );
 }

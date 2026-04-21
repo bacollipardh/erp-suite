@@ -15,9 +15,12 @@ export default async function StockBalancesPage() {
     <div>
       <PageHeader
         title="Gjendja e Stokut"
-        description="Gjendja aktuale e stokut sipas magazineve dhe artikujve."
+        description="Gjendja aktuale, vlera orientuese dhe filtrat operative sipas magazineve dhe artikujve."
       />
-      <StockBalancesClient warehouses={warehouses} items={items} />
+      <StockBalancesClient
+        warehouses={warehouses.filter((warehouse: any) => warehouse.isActive !== false)}
+        items={items.filter((item: any) => item.isActive !== false)}
+      />
     </div>
   );
 }

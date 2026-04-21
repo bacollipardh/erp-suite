@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { DataTable } from '@/components/data-table';
 import { StatusBadge } from '@/components/status-badge';
@@ -24,6 +24,20 @@ const MOVEMENT_TYPES = [
   'COUNT_IN',
   'COUNT_OUT',
 ];
+
+function formatQty(value: number | string | null | undefined) {
+  return Number(value ?? 0).toLocaleString('sq-AL', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  });
+}
+
+function formatMoney(value: number | string | null | undefined) {
+  return Number(value ?? 0).toLocaleString('sq-AL', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
 export function StockMovementsClient({
   warehouses,
@@ -80,6 +94,19 @@ export function StockMovementsClient({
       active = false;
     };
   }, [itemId, movementType, page, search, warehouseId]);
+
+  const pageSummary = useMemo(() => {
+    const totalIn = payload.items.reduce((sum, row) => sum + Number(row.qtyIn ?? 0), 0);
+    const totalOut = payload.items.reduce((sum, row) => sum + Number(row.qtyOut ?? 0), 0);
+    const references = new Set(payload.items.map((row) => row.referenceNo).filter(Boolean)).size;
+
+    return {
+      totalIn,
+      totalOut,
+      references,
+      visibleRows: payload.items.length,
+    };
+  }, [payload.items]);
 
   return (
     <div className="space-y-4">
@@ -157,6 +184,25 @@ export function StockMovementsClient({
         </div>
       </div>
 
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Rreshta ne pamje</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{pageSummary.visibleRows}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Hyrje totale</p>
+          <p className="mt-1 text-2xl font-bold text-emerald-700">{formatQty(pageSummary.totalIn)}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Dalje totale</p>
+          <p className="mt-1 text-2xl font-bold text-rose-700">{formatQty(pageSummary.totalOut)}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Referenca ne pamje</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{pageSummary.references}</p>
+        </div>
+      </div>
+
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
@@ -171,11 +217,29 @@ export function StockMovementsClient({
         <DataTable
           data={payload.items}
           columns={[
-            { key: 'warehouse', title: 'Magazina', render: (row: any) => row.warehouse?.name ?? '-' },
-            { key: 'item', title: 'Artikulli', render: (row: any) => row.item?.name ?? '-' },
+            {
+              key: 'warehouse',
+              title: 'Magazina',
+              render: (row: any) => (
+                <div className="min-w-[170px]">
+                  <p className="font-medium text-slate-800">{row.warehouse?.name ?? '-'}</p>
+                </div>
+              ),
+            },
+            {
+              key: 'item',
+              title: 'Artikulli',
+              render: (row: any) => (
+                <div className="min-w-[220px]">
+                  <p className="font-medium text-slate-800">{row.item?.name ?? '-'}</p>
+                  <p className="text-xs text-slate-400">{row.item?.code ?? '-'}</p>
+                </div>
+              ),
+            },
             { key: 'movementType', title: 'Tipi', render: (row: any) => <StatusBadge value={row.movementType} /> },
-            { key: 'qtyIn', title: 'Hyrje', render: (row: any) => row.qtyIn },
-            { key: 'qtyOut', title: 'Dalje', render: (row: any) => row.qtyOut },
+            { key: 'qtyIn', title: 'Hyrje', render: (row: any) => <span className="text-emerald-700">{formatQty(row.qtyIn)}</span> },
+            { key: 'qtyOut', title: 'Dalje', render: (row: any) => <span className="text-rose-700">{formatQty(row.qtyOut)}</span> },
+            { key: 'unitCost', title: 'Kosto', render: (row: any) => `${formatMoney(row.unitCost)} EUR` },
             { key: 'referenceNo', title: 'Referenca', render: (row: any) => row.referenceNo ?? '-' },
             {
               key: 'movementAt',

@@ -15,9 +15,12 @@ export default async function StockOperationsPage() {
     <div>
       <PageHeader
         title="Operacionet e Stokut"
-        description="Adjustments, transfers dhe stock counting me audit trail te plote."
+        description="Rregullime, transfere dhe inventarizim me preview te stokut dhe rezultat operacional."
       />
-      <StockOperationsClient warehouses={warehouses} items={items} />
+      <StockOperationsClient
+        warehouses={warehouses.filter((warehouse: any) => warehouse.isActive !== false)}
+        items={items.filter((item: any) => item.isActive !== false)}
+      />
     </div>
   );
 }

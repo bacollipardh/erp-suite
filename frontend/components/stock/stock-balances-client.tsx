@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { DataTable } from '@/components/data-table';
 
@@ -11,6 +11,20 @@ type PaginatedResponse<T> = {
   total: number;
   pageCount: number;
 };
+
+function formatQty(value: number | string | null | undefined) {
+  return Number(value ?? 0).toLocaleString('sq-AL', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  });
+}
+
+function formatMoney(value: number | string | null | undefined) {
+  return Number(value ?? 0).toLocaleString('sq-AL', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
 export function StockBalancesClient({
   warehouses,
@@ -65,6 +79,22 @@ export function StockBalancesClient({
       active = false;
     };
   }, [itemId, page, search, warehouseId]);
+
+  const pageSummary = useMemo(() => {
+    const totalQty = payload.items.reduce((sum, row) => sum + Number(row.qtyOnHand ?? 0), 0);
+    const stockValue = payload.items.reduce(
+      (sum, row) => sum + Number(row.qtyOnHand ?? 0) * Number(row.avgCost ?? 0),
+      0,
+    );
+    const warehouseCount = new Set(payload.items.map((row) => row.warehouse?.id).filter(Boolean)).size;
+
+    return {
+      totalQty,
+      stockValue,
+      warehouseCount,
+      visibleRows: payload.items.length,
+    };
+  }, [payload.items]);
 
   return (
     <div className="space-y-4">
@@ -126,6 +156,25 @@ export function StockBalancesClient({
         </div>
       </div>
 
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Rreshta ne pamje</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{pageSummary.visibleRows}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Sasia totale</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{formatQty(pageSummary.totalQty)}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Vlera orientuese</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{formatMoney(pageSummary.stockValue)} EUR</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Magazina ne pamje</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{pageSummary.warehouseCount}</p>
+        </div>
+      </div>
+
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
@@ -140,10 +189,33 @@ export function StockBalancesClient({
         <DataTable
           data={payload.items}
           columns={[
-            { key: 'warehouse', title: 'Magazina', render: (row: any) => row.warehouse?.name ?? '-' },
-            { key: 'item', title: 'Artikulli', render: (row: any) => row.item?.name ?? '-' },
-            { key: 'qtyOnHand', title: 'Sasia', render: (row: any) => row.qtyOnHand },
-            { key: 'avgCost', title: 'Kosto Mesatare', render: (row: any) => row.avgCost },
+            {
+              key: 'warehouse',
+              title: 'Magazina',
+              render: (row: any) => (
+                <div className="min-w-[180px]">
+                  <p className="font-medium text-slate-800">{row.warehouse?.name ?? '-'}</p>
+                  <p className="text-xs text-slate-400">{row.warehouse?.code ?? '-'}</p>
+                </div>
+              ),
+            },
+            {
+              key: 'item',
+              title: 'Artikulli',
+              render: (row: any) => (
+                <div className="min-w-[220px]">
+                  <p className="font-medium text-slate-800">{row.item?.name ?? '-'}</p>
+                  <p className="text-xs text-slate-400">{row.item?.code ?? '-'}</p>
+                </div>
+              ),
+            },
+            { key: 'qtyOnHand', title: 'Sasia', render: (row: any) => formatQty(row.qtyOnHand) },
+            { key: 'avgCost', title: 'Kosto Mesatare', render: (row: any) => `${formatMoney(row.avgCost)} EUR` },
+            {
+              key: 'stockValue',
+              title: 'Vlera',
+              render: (row: any) => `${formatMoney(Number(row.qtyOnHand ?? 0) * Number(row.avgCost ?? 0))} EUR`,
+            },
             {
               key: 'updatedAt',
               title: 'Perditesuar',
