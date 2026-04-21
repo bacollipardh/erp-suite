@@ -3,12 +3,15 @@ import { SalesInvoiceForm } from '@/components/invoices/sales-invoice-form';
 import { PdfButtons } from '@/components/invoices/pdf-download-button';
 import { DocumentActionPanel } from '@/components/invoices/document-action-panel';
 import { api } from '@/lib/api';
+import { PERMISSIONS } from '@/lib/permissions';
+import { requirePagePermission } from '@/lib/server-page-auth';
 
 export default async function EditSalesInvoicePage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requirePagePermission(PERMISSIONS.salesInvoicesManage);
   const resolved = await params;
   const [doc, series, customers, warehouses, paymentMethods, items] = await Promise.all([
     api.get('sales-invoices', resolved.id),

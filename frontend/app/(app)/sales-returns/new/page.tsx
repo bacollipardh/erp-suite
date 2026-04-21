@@ -1,8 +1,11 @@
 import { PageHeader } from '@/components/page-header';
 import { SalesReturnForm } from '@/components/invoices/sales-return-form';
 import { api } from '@/lib/api';
+import { PERMISSIONS } from '@/lib/permissions';
+import { requirePagePermission } from '@/lib/server-page-auth';
 
 export default async function NewSalesReturnPage() {
+  await requirePagePermission(PERMISSIONS.salesReturnsManage);
   const [series, customers, salesInvoices, items] = await Promise.all([
     api.list('document-series'),
     api.list('customers'),

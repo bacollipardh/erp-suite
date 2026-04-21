@@ -1,4 +1,6 @@
 import { api } from '@/lib/api';
+import { PERMISSIONS } from '@/lib/permissions';
+import { requirePagePermission } from '@/lib/server-page-auth';
 import { PdfButtons } from '@/components/invoices/pdf-download-button';
 import Link from 'next/link';
 
@@ -26,6 +28,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default async function SalesHistoryPage() {
+  await requirePagePermission(PERMISSIONS.salesInvoicesRead);
   const invoices: any[] = await api.list('sales-invoices', { limit: 100 });
 
   const sorted = [...invoices].sort(

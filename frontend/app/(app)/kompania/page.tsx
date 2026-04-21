@@ -1,7 +1,10 @@
 import { api } from '@/lib/api';
 import { CompanyProfileForm } from '@/components/company/company-profile-form';
+import { PERMISSIONS } from '@/lib/permissions';
+import { requirePagePermission } from '@/lib/server-page-auth';
 
 export default async function CompanyProfilePage() {
+  await requirePagePermission(PERMISSIONS.companyProfileManage);
   let profile: any = null;
   try {
     profile = await api.getOne('company-profile');

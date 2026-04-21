@@ -3,9 +3,11 @@ import { DataTable } from '@/components/data-table';
 import { StatusBadge } from '@/components/status-badge';
 import { api } from '@/lib/api';
 import { getValueByPath, resources } from '@/lib/resources';
+import { requirePagePermission } from '@/lib/server-page-auth';
 
 export async function ResourceListPage({ resourceKey }: { resourceKey: string }) {
   const config = resources[resourceKey];
+  await requirePagePermission(config.readPermission);
   const rows = await api.list(config.endpoint);
 
   return (
@@ -15,11 +17,13 @@ export async function ResourceListPage({ resourceKey }: { resourceKey: string })
         description={config.description}
         createHref={`/${resourceKey}/new`}
         createLabel={`Krijo ${config.singular}`}
+        createPermission={config.managePermission}
       />
 
       <DataTable
         data={rows}
         detailsBasePath={`/${resourceKey}`}
+        detailsPermission={config.managePermission}
         columns={config.listColumns.map((column) => ({
           key: column.key,
           title: column.title,

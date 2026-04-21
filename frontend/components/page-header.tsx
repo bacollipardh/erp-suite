@@ -1,23 +1,31 @@
+'use client';
+
 import Link from 'next/link';
+import { hasPermission } from '@/lib/permissions';
+import { useSession } from './session-provider';
 
 export function PageHeader({
   title,
   description,
   createHref,
   createLabel = 'I ri',
+  createPermission,
 }: {
   title: string;
   description?: string;
   createHref?: string;
   createLabel?: string;
+  createPermission?: string;
 }) {
+  const { user } = useSession();
+
   return (
     <div className="flex items-start justify-between gap-4 mb-5">
       <div>
         <h1 className="text-xl font-bold text-slate-900">{title}</h1>
         {description ? <p className="text-sm text-slate-500 mt-0.5">{description}</p> : null}
       </div>
-      {createHref ? (
+      {createHref && hasPermission(user?.permissions, createPermission) ? (
         <Link
           href={createHref}
           className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-sm font-medium transition-colors shadow-sm"

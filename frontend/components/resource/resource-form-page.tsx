@@ -2,6 +2,7 @@ import { PageHeader } from '@/components/page-header';
 import { api } from '@/lib/api';
 import { ResourceForm } from './resource-form';
 import { resources } from '@/lib/resources';
+import { requirePagePermission } from '@/lib/server-page-auth';
 
 async function loadOptions(resourceKey: string) {
   const config = resources[resourceKey];
@@ -18,6 +19,7 @@ async function loadOptions(resourceKey: string) {
 
 export async function ResourceCreatePage({ resourceKey }: { resourceKey: string }) {
   const config = resources[resourceKey];
+  await requirePagePermission(config.managePermission);
   const optionsMap = await loadOptions(resourceKey);
 
   return (
@@ -36,6 +38,7 @@ export async function ResourceEditPage({
   id: string;
 }) {
   const config = resources[resourceKey];
+  await requirePagePermission(config.managePermission);
   const [record, optionsMap] = await Promise.all([
     api.get(config.endpoint, id),
     loadOptions(resourceKey),

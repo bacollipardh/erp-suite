@@ -14,8 +14,10 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto) {
+    const normalizedEmail = dto.email.trim().toLowerCase();
+
     const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { email: normalizedEmail },
       include: { role: true },
     });
 
@@ -53,7 +55,7 @@ export class AuthService {
       where: { id: userId },
       include: { role: true },
     });
-    if (!user) throw new UnauthorizedException();
+    if (!user || !user.isActive || !user.role?.code) throw new UnauthorizedException();
     return {
       id: user.id,
       email: user.email,

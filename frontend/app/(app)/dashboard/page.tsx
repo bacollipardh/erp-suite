@@ -1,5 +1,7 @@
 import { StatsCard } from '@/components/stats-card';
 import { api } from '@/lib/api';
+import { PERMISSIONS } from '@/lib/permissions';
+import { requirePagePermission } from '@/lib/server-page-auth';
 
 function fmtMoney(value: number) {
   return `${value.toLocaleString('sq-AL', {
@@ -9,6 +11,7 @@ function fmtMoney(value: number) {
 }
 
 export default async function DashboardPage() {
+  await requirePagePermission(PERMISSIONS.dashboard);
   const summary = await api.getOne('dashboard/summary');
 
   return (

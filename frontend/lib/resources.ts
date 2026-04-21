@@ -1,3 +1,5 @@
+import { PERMISSIONS } from './permissions';
+
 export type ResourceField =
   | { name: string; label: string; type: 'text' | 'email' | 'textarea' | 'number' | 'checkbox' | 'date' }
   | {
@@ -15,6 +17,8 @@ export type ResourceConfig = {
   singular: string;
   description: string;
   endpoint: string;
+  readPermission: string;
+  managePermission: string;
   fields: ResourceField[];
   listColumns: { key: string; title: string; path?: string; renderType?: 'boolean' | 'status' }[];
 };
@@ -25,6 +29,8 @@ export const resources: Record<string, ResourceConfig> = {
     singular: 'Rol',
     description: 'Menaxhimi i roleve të sistemit.',
     endpoint: 'roles',
+    readPermission: PERMISSIONS.rolesRead,
+    managePermission: PERMISSIONS.rolesManage,
     fields: [
       { name: 'code', label: 'Kodi', type: 'text' },
       { name: 'name', label: 'Emri', type: 'text' },
@@ -41,6 +47,8 @@ export const resources: Record<string, ResourceConfig> = {
     singular: 'Përdorues',
     description: 'Menaxhimi i përdoruesve dhe caktimi i roleve.',
     endpoint: 'users',
+    readPermission: PERMISSIONS.usersRead,
+    managePermission: PERMISSIONS.usersManage,
     fields: [
       { name: 'roleId', label: 'Roli', type: 'select', optionsEndpoint: 'roles', labelKey: 'name' },
       { name: 'fullName', label: 'Emri i Plotë', type: 'text' },
@@ -60,6 +68,8 @@ export const resources: Record<string, ResourceConfig> = {
     singular: 'Kategori',
     description: 'Menaxhimi i kategorive të artikujve.',
     endpoint: 'item-categories',
+    readPermission: PERMISSIONS.itemCategoriesRead,
+    managePermission: PERMISSIONS.itemCategoriesManage,
     fields: [
       { name: 'code', label: 'Kodi', type: 'text' },
       { name: 'name', label: 'Emri', type: 'text' },
@@ -76,6 +86,8 @@ export const resources: Record<string, ResourceConfig> = {
     singular: 'Njësi',
     description: 'Menaxhimi i njësive të matjes.',
     endpoint: 'units',
+    readPermission: PERMISSIONS.unitsRead,
+    managePermission: PERMISSIONS.unitsManage,
     fields: [
       { name: 'code', label: 'Kodi', type: 'text' },
       { name: 'name', label: 'Emri', type: 'text' },
@@ -90,6 +102,8 @@ export const resources: Record<string, ResourceConfig> = {
     singular: 'Normë TVSH',
     description: 'Normat e TVSH-së sipas legjislacionit të Kosovës.',
     endpoint: 'tax-rates',
+    readPermission: PERMISSIONS.taxRatesRead,
+    managePermission: PERMISSIONS.taxRatesManage,
     fields: [
       { name: 'code', label: 'Kodi', type: 'text' },
       { name: 'name', label: 'Emri', type: 'text' },
@@ -108,6 +122,8 @@ export const resources: Record<string, ResourceConfig> = {
     singular: 'Magazinë',
     description: 'Menaxhimi i magazinave dhe lokacioneve.',
     endpoint: 'warehouses',
+    readPermission: PERMISSIONS.warehousesRead,
+    managePermission: PERMISSIONS.warehousesManage,
     fields: [
       { name: 'code', label: 'Kodi', type: 'text' },
       { name: 'name', label: 'Emri', type: 'text' },
@@ -126,6 +142,8 @@ export const resources: Record<string, ResourceConfig> = {
     singular: 'Metodë Pagese',
     description: 'Metodat e pagesës (kesh, bankë, kredi, etj).',
     endpoint: 'payment-methods',
+    readPermission: PERMISSIONS.paymentMethodsRead,
+    managePermission: PERMISSIONS.paymentMethodsManage,
     fields: [
       { name: 'code', label: 'Kodi', type: 'text' },
       { name: 'name', label: 'Emri', type: 'text' },
@@ -142,6 +160,8 @@ export const resources: Record<string, ResourceConfig> = {
     singular: 'Seri Dokumenti',
     description: 'Numërim për faturat e blerjes, shitjes dhe kthimeve.',
     endpoint: 'document-series',
+    readPermission: PERMISSIONS.documentSeriesRead,
+    managePermission: PERMISSIONS.documentSeriesManage,
     fields: [
       { name: 'code', label: 'Kodi', type: 'text' },
       { name: 'documentType', label: 'Tipi i Dokumentit', type: 'text' },
@@ -162,6 +182,8 @@ export const resources: Record<string, ResourceConfig> = {
     singular: 'Artikull',
     description: 'Artikujt me kategori, njësi dhe normë TVSH.',
     endpoint: 'items',
+    readPermission: PERMISSIONS.itemsRead,
+    managePermission: PERMISSIONS.itemsManage,
     fields: [
       { name: 'code', label: 'Kodi', type: 'text' },
       { name: 'barcode', label: 'Barkodi', type: 'text' },
@@ -190,6 +212,8 @@ export const resources: Record<string, ResourceConfig> = {
     singular: 'Furnitor',
     description: 'Menaxhimi i furnitorëve dhe kontekstit të blerjes.',
     endpoint: 'suppliers',
+    readPermission: PERMISSIONS.suppliersRead,
+    managePermission: PERMISSIONS.suppliersManage,
     fields: [
       { name: 'code', label: 'Kodi', type: 'text' },
       { name: 'name', label: 'Emri', type: 'text' },
@@ -216,6 +240,8 @@ export const resources: Record<string, ResourceConfig> = {
     singular: 'Klient',
     description: 'Menaxhimi i klientëve, kreditit dhe zbritjeve.',
     endpoint: 'customers',
+    readPermission: PERMISSIONS.customersRead,
+    managePermission: PERMISSIONS.customersManage,
     fields: [
       { name: 'code', label: 'Kodi', type: 'text' },
       { name: 'name', label: 'Emri', type: 'text' },

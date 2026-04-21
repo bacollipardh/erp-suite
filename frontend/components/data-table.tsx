@@ -1,5 +1,9 @@
+'use client';
+
 import Link from 'next/link';
 import { ReactNode } from 'react';
+import { hasPermission } from '@/lib/permissions';
+import { useSession } from './session-provider';
 
 type Column<T> = {
   key: string;
@@ -11,11 +15,16 @@ export function DataTable<T extends { id?: string }>({
   data,
   columns,
   detailsBasePath,
+  detailsPermission,
 }: {
   data: T[];
   columns: Column<T>[];
   detailsBasePath?: string;
+  detailsPermission?: string;
 }) {
+  const { user } = useSession();
+  const canOpenDetails = Boolean(detailsBasePath) && hasPermission(user?.permissions, detailsPermission);
+
   if (data.length === 0) {
     return (
       <div className="rounded-xl border bg-white">
@@ -28,7 +37,7 @@ export function DataTable<T extends { id?: string }>({
                     {col.title}
                   </th>
                 ))}
-                {detailsBasePath ? <th className="w-10" /> : null}
+                {canOpenDetails ? <th className="w-10" /> : null}
               </tr>
             </thead>
           </table>
@@ -54,7 +63,7 @@ export function DataTable<T extends { id?: string }>({
                   {col.title}
                 </th>
               ))}
-              {detailsBasePath ? (
+              {canOpenDetails ? (
                 <th className="px-3 py-2.5 w-10" />
               ) : null}
             </tr>
@@ -73,7 +82,7 @@ export function DataTable<T extends { id?: string }>({
                     {col.render(row)}
                   </td>
                 ))}
-                {detailsBasePath && row.id ? (
+                {canOpenDetails && row.id ? (
                   <td className="px-3 py-2 pr-4 text-right">
                     <Link
                       href={`${detailsBasePath}/${row.id}`}

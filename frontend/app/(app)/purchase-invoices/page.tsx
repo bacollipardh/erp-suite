@@ -2,8 +2,11 @@ import { PageHeader } from '@/components/page-header';
 import { DataTable } from '@/components/data-table';
 import { StatusBadge } from '@/components/status-badge';
 import { api } from '@/lib/api';
+import { PERMISSIONS } from '@/lib/permissions';
+import { requirePagePermission } from '@/lib/server-page-auth';
 
 export default async function PurchaseInvoicesPage() {
+  await requirePagePermission(PERMISSIONS.purchaseInvoicesRead);
   const docs = await api.list('purchase-invoices');
 
   return (
@@ -13,10 +16,12 @@ export default async function PurchaseInvoicesPage() {
         description="Faturat e blerjes, pagesat dhe hyrjet e stokut."
         createHref="/purchase-invoices/new"
         createLabel="Fature e Re Blerjeje"
+        createPermission={PERMISSIONS.purchaseInvoicesManage}
       />
       <DataTable
         data={docs}
         detailsBasePath="/purchase-invoices"
+        detailsPermission={PERMISSIONS.purchaseInvoicesManage}
         columns={[
           { key: 'docNo', title: 'Nr. Doc', render: (row: any) => row.docNo },
           { key: 'supplier', title: 'Furnitori', render: (row: any) => row.supplier?.name ?? '-' },

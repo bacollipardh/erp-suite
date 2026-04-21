@@ -2,8 +2,11 @@ import { PageHeader } from '@/components/page-header';
 import { DataTable } from '@/components/data-table';
 import { StatusBadge } from '@/components/status-badge';
 import { api } from '@/lib/api';
+import { PERMISSIONS } from '@/lib/permissions';
+import { requirePagePermission } from '@/lib/server-page-auth';
 
 export default async function SalesReturnsPage() {
+  await requirePagePermission(PERMISSIONS.salesReturnsRead);
   const docs = await api.list('sales-returns');
 
   return (
@@ -13,10 +16,12 @@ export default async function SalesReturnsPage() {
         description="Kthimet e artikujve, statuset dhe fiskalizimi i tyre."
         createHref="/sales-returns/new"
         createLabel="Kthim i Ri Shitjeje"
+        createPermission={PERMISSIONS.salesReturnsManage}
       />
       <DataTable
         data={docs}
         detailsBasePath="/sales-returns"
+        detailsPermission={PERMISSIONS.salesReturnsManage}
         columns={[
           { key: 'docNo', title: 'Nr. Doc', render: (row: any) => row.docNo },
           { key: 'customer', title: 'Klienti', render: (row: any) => row.customer?.name ?? '-' },

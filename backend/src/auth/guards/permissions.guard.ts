@@ -17,9 +17,16 @@ export class PermissionsGuard implements CanActivate {
     if (!required?.length) return true;
 
     const request = context.switchToHttp().getRequest<{ user?: JwtPayload }>();
-    const role = request.user?.role;
+    const user = request.user;
+    const role = user?.role;
+    const currentPermissions = user?.permissions ?? [];
 
-    if (!role || !hasPermissions(role, required)) {
+    const allowed =
+      currentPermissions.length > 0
+        ? required.every((permission) => currentPermissions.includes(permission))
+        : !!role && hasPermissions(role, required);
+
+    if (!allowed) {
       throw new ForbiddenException('You do not have permission to perform this action');
     }
 

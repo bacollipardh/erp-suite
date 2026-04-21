@@ -1,8 +1,11 @@
 import { PageHeader } from '@/components/page-header';
 import { DataTable } from '@/components/data-table';
 import { api } from '@/lib/api';
+import { PERMISSIONS } from '@/lib/permissions';
+import { requirePagePermission } from '@/lib/server-page-auth';
 
 export default async function AuditLogsPage() {
+  await requirePagePermission(PERMISSIONS.auditLogsRead);
   const logs = await api.list('audit-logs');
 
   return (

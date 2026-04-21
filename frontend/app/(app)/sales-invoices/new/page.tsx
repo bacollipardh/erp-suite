@@ -1,8 +1,11 @@
 import { PageHeader } from '@/components/page-header';
 import { SalesInvoiceForm } from '@/components/invoices/sales-invoice-form';
 import { api } from '@/lib/api';
+import { PERMISSIONS } from '@/lib/permissions';
+import { requirePagePermission } from '@/lib/server-page-auth';
 
 export default async function NewSalesInvoicePage() {
+  await requirePagePermission(PERMISSIONS.salesInvoicesManage);
   const [series, customers, warehouses, paymentMethods, items] = await Promise.all([
     api.list('document-series'),
     api.list('customers'),

@@ -2,7 +2,8 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { JwtPayload } from '../decorators/current-user.decorator';
-import { AUTH_COOKIE_NAME } from '../permissions';
+import { AUTH_COOKIE_NAME, getPermissionsForRole } from '../permissions';
+import { PrismaService } from '../../prisma/prisma.service';
 
 function extractTokenFromCookie(request: { headers?: { cookie?: string } }) {
   const cookieHeader = request?.headers?.cookie;
@@ -19,7 +20,7 @@ function extractTokenFromCookie(request: { headers?: { cookie?: string } }) {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
+  constructor(private readonly prisma: PrismaService) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -32,6 +33,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(payload: JwtPayload) {
     if (!payload?.sub) throw new UnauthorizedException();
-    return payload;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      include: { role: true },
+    });
+
+    if (!user || !user.isActive || !user.role?.code) {
+      throw new UnauthorizedException();
+    }
+
+    return {
+      sub: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role.code,
+      permissions: getPermissionsForRole(user.role.code),
+      isActive: user.isActive,
+    } satisfies JwtPayload;
   }
 }

@@ -1,10 +1,23 @@
 import { api } from '@/lib/api';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
+import { requireAnyPagePermission } from '@/lib/server-page-auth';
 import { ReportsClient } from '@/components/reports/reports-client';
 
 export default async function ReportsPage() {
+  const user = await requireAnyPagePermission([
+    PERMISSIONS.reportsSales,
+    PERMISSIONS.reportsReceivables,
+    PERMISSIONS.reportsPayables,
+  ]);
+
   const [customers, users] = await Promise.all([
-    api.list('customers', { limit: 100 }),
-    api.list('users', { limit: 100 }),
+    hasPermission(user.permissions, PERMISSIONS.reportsSales)
+      ? api.list('customers', { limit: 100 })
+      : Promise.resolve([]),
+    hasPermission(user.permissions, PERMISSIONS.reportsSales) &&
+    hasPermission(user.permissions, PERMISSIONS.usersRead)
+      ? api.list('users', { limit: 100 })
+      : Promise.resolve([]),
   ]);
 
   return (

@@ -3,12 +3,15 @@ import { SalesReturnForm } from '@/components/invoices/sales-return-form';
 import { PdfButtons } from '@/components/invoices/pdf-download-button';
 import { DocumentActionPanel } from '@/components/invoices/document-action-panel';
 import { api } from '@/lib/api';
+import { PERMISSIONS } from '@/lib/permissions';
+import { requirePagePermission } from '@/lib/server-page-auth';
 
 export default async function EditSalesReturnPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requirePagePermission(PERMISSIONS.salesReturnsManage);
   const resolved = await params;
   const [doc, series, customers, salesInvoices, items] = await Promise.all([
     api.get('sales-returns', resolved.id),

@@ -44,6 +44,17 @@ describe('AuthService', () => {
     expect(result.user.email).toBe('admin@erp.local');
   });
 
+  it('normalizes the email before querying Prisma', async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce(mockUser);
+
+    await service.login({ email: '  ADMIN@ERP.LOCAL ', password: 'Admin123!' });
+
+    expect(mockPrisma.user.findUnique).toHaveBeenLastCalledWith({
+      where: { email: 'admin@erp.local' },
+      include: { role: true },
+    });
+  });
+
   it('should throw on invalid password', async () => {
     mockPrisma.user.findUnique.mockResolvedValueOnce(mockUser);
     await expect(service.login({ email: 'admin@erp.local', password: 'wrong' })).rejects.toThrow();
@@ -52,5 +63,14 @@ describe('AuthService', () => {
   it('should throw on unknown email', async () => {
     mockPrisma.user.findUnique.mockResolvedValueOnce(null);
     await expect(service.login({ email: 'nobody@erp.local', password: 'Admin123!' })).rejects.toThrow();
+  });
+
+  it('should reject inactive users when loading the current session', async () => {
+    mockPrisma.user.findUnique.mockResolvedValueOnce({
+      ...mockUser,
+      isActive: false,
+    });
+
+    await expect(service.me(mockUser.id)).rejects.toThrow();
   });
 });

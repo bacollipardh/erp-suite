@@ -3,12 +3,15 @@ import { PurchaseInvoiceForm } from '@/components/invoices/purchase-invoice-form
 import { PdfButtons } from '@/components/invoices/pdf-download-button';
 import { DocumentActionPanel } from '@/components/invoices/document-action-panel';
 import { api } from '@/lib/api';
+import { PERMISSIONS } from '@/lib/permissions';
+import { requirePagePermission } from '@/lib/server-page-auth';
 
 export default async function EditPurchaseInvoicePage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requirePagePermission(PERMISSIONS.purchaseInvoicesManage);
   const resolved = await params;
   const [doc, series, suppliers, warehouses, items] = await Promise.all([
     api.get('purchase-invoices', resolved.id),
