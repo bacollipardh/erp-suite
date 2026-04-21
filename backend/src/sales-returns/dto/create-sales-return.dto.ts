@@ -16,21 +16,24 @@ export class CreateSalesReturnLineDto {
   @IsUUID()
   salesInvoiceLineId: string;
 
+  @IsOptional()
   @IsUUID()
-  itemId: string;
+  itemId?: string;
 
   @IsNumber()
   @Min(0.001)
   qty: number;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  unitPrice: number;
+  unitPrice?: number;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(100)
-  taxPercent: number;
+  taxPercent?: number;
 }
 
 export class CreateSalesReturnDto {

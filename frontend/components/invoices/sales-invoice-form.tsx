@@ -91,9 +91,24 @@ export function SalesInvoiceForm({
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
 
+    if (!form.seriesId) {
+      setApiError('Zgjidh serine e dokumentit.');
+      return;
+    }
+
+    if (!form.customerId) {
+      setApiError('Zgjidh klientin.');
+      return;
+    }
+
+    if (!form.warehouseId) {
+      setApiError('Zgjidh magazinen.');
+      return;
+    }
+
     const emptyLine = lines.findIndex((line) => !line.itemId);
     if (emptyLine !== -1) {
-      setApiError(`Line ${emptyLine + 1}: please select an item.`);
+      setApiError(`Rreshti ${emptyLine + 1}: zgjidh artikullin.`);
       return;
     }
 

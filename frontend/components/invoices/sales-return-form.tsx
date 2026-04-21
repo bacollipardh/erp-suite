@@ -86,7 +86,18 @@ export function SalesReturnForm({
 
     async function loadSourceInvoice() {
       if (!form.salesInvoiceId) {
-        if (active) setSourceLines([]);
+        if (active) {
+          setSourceLines([]);
+          setLines((current) =>
+            current.map((line) => ({
+              ...line,
+              itemId: '',
+              salesInvoiceLineId: '',
+              unitPrice: 0,
+              taxPercent: 0,
+            })),
+          );
+        }
         return;
       }
 
@@ -94,17 +105,42 @@ export function SalesReturnForm({
         const invoice = await api.get('sales-invoices', form.salesInvoiceId);
         if (!active) return;
 
-        setSourceLines(
-          (invoice.lines ?? []).map((line: any) => ({
-            id: line.id,
-            itemId: line.itemId,
-            qty: Number(line.qty),
-            unitPrice: Number(line.unitPrice),
-            taxPercent: Number(line.taxPercent),
-            item: line.item
-              ? { id: line.item.id, name: line.item.name, code: line.item.code }
-              : null,
-          })),
+        const nextSourceLines = (invoice.lines ?? []).map((line: any) => ({
+          id: line.id,
+          itemId: line.itemId,
+          qty: Number(line.qty),
+          unitPrice: Number(line.unitPrice),
+          taxPercent: Number(line.taxPercent),
+          item: line.item
+            ? { id: line.item.id, name: line.item.name, code: line.item.code }
+            : null,
+        }));
+
+        setSourceLines(nextSourceLines);
+        setLines((current) =>
+          current.map((line) => {
+            const matchedSourceLine =
+              nextSourceLines.find((sourceLine) => sourceLine.id === line.salesInvoiceLineId) ??
+              nextSourceLines.find((sourceLine) => sourceLine.itemId === line.itemId);
+
+            if (!matchedSourceLine) {
+              return {
+                ...line,
+                itemId: '',
+                salesInvoiceLineId: '',
+                unitPrice: 0,
+                taxPercent: 0,
+              };
+            }
+
+            return {
+              ...line,
+              itemId: matchedSourceLine.itemId,
+              salesInvoiceLineId: matchedSourceLine.id,
+              unitPrice: Number(matchedSourceLine.unitPrice),
+              taxPercent: Number(matchedSourceLine.taxPercent),
+            };
+          }),
         );
 
         if (invoice.customerId && invoice.customerId !== form.customerId) {
@@ -127,15 +163,30 @@ export function SalesReturnForm({
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
 
+    if (!form.seriesId) {
+      setApiError('Zgjidh serine e dokumentit.');
+      return;
+    }
+
+    if (!form.salesInvoiceId) {
+      setApiError('Zgjidh faturen burim te shitjes.');
+      return;
+    }
+
+    if (!form.customerId) {
+      setApiError('Zgjidh klientin.');
+      return;
+    }
+
     const emptyLine = lines.findIndex((line) => !line.itemId);
     if (emptyLine !== -1) {
-      setApiError(`Line ${emptyLine + 1}: please select an item.`);
+      setApiError(`Rreshti ${emptyLine + 1}: zgjidh artikullin.`);
       return;
     }
 
     const missingSourceLine = lines.findIndex((line) => !line.salesInvoiceLineId);
     if (missingSourceLine !== -1) {
-      setApiError(`Line ${missingSourceLine + 1}: zgjidh rreshtin burim.`);
+      setApiError(`Rreshti ${missingSourceLine + 1}: zgjidh rreshtin burim.`);
       return;
     }
 
@@ -200,9 +251,7 @@ export function SalesReturnForm({
                 label: `${entry.prefix} - radhes: ${entry.nextNumber}`,
               }))}
             />
-            <p className="text-xs text-slate-400 mt-1">
-              Percakton numerimin e kthimit.
-            </p>
+            <p className="text-xs text-slate-400 mt-1">Percakton numerimin e kthimit.</p>
           </div>
           <SelectInput
             label="Fatura e Shitjes *"
@@ -241,6 +290,9 @@ export function SalesReturnForm({
           <div className="text-xs text-slate-400">
             Zgjidh rreshtin burim nga fatura shitese per cdo artikull.
           </div>
+        </div>
+        <div className="rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 text-xs text-slate-500">
+          Cmimi dhe TVSH merren automatikisht nga rreshti burim i fatures se shitjes.
         </div>
         <InvoiceLinesEditor
           lines={lines}

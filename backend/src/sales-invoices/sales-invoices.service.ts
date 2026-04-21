@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DocumentStatus, MovementType } from '@prisma/client';
+import { DocumentStatus, MovementType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../stock/stock.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
@@ -105,10 +105,71 @@ export class SalesInvoicesService {
     return { lines: mapped, subtotal, discountTotal, taxTotal, grandTotal };
   }
 
+  private async validateDraftInput(
+    dto: Pick<
+      CreateSalesInvoiceDto,
+      'seriesId' | 'customerId' | 'warehouseId' | 'paymentMethodId' | 'lines'
+    >,
+    tx: Prisma.TransactionClient,
+  ) {
+    const [series, customer, warehouse, paymentMethod] = await Promise.all([
+      tx.documentSeries.findUnique({ where: { id: dto.seriesId } }),
+      tx.customer.findUnique({ where: { id: dto.customerId } }),
+      tx.warehouse.findUnique({ where: { id: dto.warehouseId } }),
+      dto.paymentMethodId
+        ? tx.paymentMethod.findUnique({ where: { id: dto.paymentMethodId } })
+        : Promise.resolve(null),
+    ]);
+
+    if (!series || series.documentType !== 'SALES_INVOICE' || !series.isActive) {
+      throw new BadRequestException('Sales invoice series not found or inactive');
+    }
+
+    if (!customer || !customer.isActive) {
+      throw new BadRequestException('Customer not found or inactive');
+    }
+
+    if (!warehouse || !warehouse.isActive) {
+      throw new BadRequestException('Warehouse not found or inactive');
+    }
+
+    if (dto.paymentMethodId && (!paymentMethod || !paymentMethod.isActive)) {
+      throw new BadRequestException('Payment method not found or inactive');
+    }
+
+    const uniqueItemIds = [...new Set(dto.lines.map((line) => line.itemId))];
+    const items = await tx.item.findMany({
+      where: { id: { in: uniqueItemIds } },
+      select: { id: true, isActive: true },
+    });
+
+    if (items.length !== uniqueItemIds.length) {
+      throw new BadRequestException('One or more sales invoice items were not found');
+    }
+
+    if (items.some((item) => !item.isActive)) {
+      throw new BadRequestException('Sales invoice contains inactive items');
+    }
+  }
+
+  private toDraftLineInput(existing: Awaited<ReturnType<SalesInvoicesService['findOne']>>) {
+    return existing.lines.map((line) => ({
+      itemId: line.itemId,
+      description: line.description ?? undefined,
+      qty: Number(line.qty),
+      unitPrice: Number(line.unitPrice),
+      discountPercent: Number(line.discountPercent ?? 0),
+      discountAmount: Number(line.discountAmount ?? 0),
+      taxPercent: Number(line.taxPercent),
+    }));
+  }
+
   async create(dto: CreateSalesInvoiceDto, userId: string) {
     const calc = this.calculateLines(dto.lines);
 
     const doc = await this.prisma.$transaction(async (tx) => {
+      await this.validateDraftInput(dto, tx);
+
       const series = await tx.documentSeries.findUnique({ where: { id: dto.seriesId } });
       if (!series) throw new BadRequestException('Series not found');
 
@@ -160,8 +221,22 @@ export class SalesInvoicesService {
       throw new BadRequestException('Only DRAFT sales invoice can be updated');
     }
 
+    if (dto.seriesId && dto.seriesId !== existing.seriesId) {
+      throw new BadRequestException('Series cannot be changed after draft creation');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       let calc: ReturnType<SalesInvoicesService['calculateLines']> | null = null;
+      const draftInput = {
+        seriesId: existing.seriesId,
+        customerId: dto.customerId ?? existing.customerId,
+        warehouseId: dto.warehouseId ?? existing.warehouseId,
+        paymentMethodId:
+          dto.paymentMethodId === undefined ? existing.paymentMethodId ?? undefined : dto.paymentMethodId,
+        lines: dto.lines ?? this.toDraftLineInput(existing),
+      };
+
+      await this.validateDraftInput(draftInput, tx);
 
       if (dto.lines?.length) {
         calc = this.calculateLines(dto.lines);

@@ -60,8 +60,27 @@ export function InvoiceLinesEditor({
     updateLine(index, {
       itemId,
       ...(withSalesInvoiceLineId ? { salesInvoiceLineId: firstSourceLine?.id ?? '' } : {}),
-      unitPrice: item ? Number(item[priceField] ?? 0) : 0,
-      taxPercent: item?.taxRate ? Number(item.taxRate.ratePercent) : 0,
+      unitPrice: firstSourceLine
+        ? Number(firstSourceLine.unitPrice)
+        : item
+          ? Number(item[priceField] ?? 0)
+          : 0,
+      taxPercent: firstSourceLine
+        ? Number(firstSourceLine.taxPercent)
+        : item?.taxRate
+          ? Number(item.taxRate.ratePercent)
+          : 0,
+    });
+  }
+
+  function selectSourceLine(index: number, sourceLineId: string) {
+    const sourceLine = sourceLines.find((entry) => entry.id === sourceLineId);
+
+    updateLine(index, {
+      salesInvoiceLineId: sourceLineId,
+      itemId: sourceLine?.itemId ?? '',
+      unitPrice: sourceLine ? Number(sourceLine.unitPrice) : 0,
+      taxPercent: sourceLine ? Number(sourceLine.taxPercent) : 0,
     });
   }
 
@@ -103,7 +122,9 @@ export function InvoiceLinesEditor({
           .filter((sourceLine) => !line.itemId || sourceLine.itemId === line.itemId)
           .map((sourceLine) => ({
             value: sourceLine.id,
-            label: `${sourceLine.item?.name ?? sourceLine.itemId} · qty ${sourceLine.qty}`,
+            label:
+              `${sourceLine.item?.name ?? sourceLine.itemId} | qty ${sourceLine.qty}` +
+              ` | ${Number(sourceLine.unitPrice).toFixed(2)} EUR | TVSH ${Number(sourceLine.taxPercent).toFixed(2)}%`,
           }));
 
         return (
@@ -123,7 +144,7 @@ export function InvoiceLinesEditor({
                   <SelectInput
                     label="Rreshti burim"
                     value={line.salesInvoiceLineId ?? ''}
-                    onChange={(value) => updateLine(index, { salesInvoiceLineId: value })}
+                    onChange={(value) => selectSourceLine(index, value)}
                     options={sourceLineOptions}
                   />
                 </div>
@@ -146,6 +167,7 @@ export function InvoiceLinesEditor({
                 value={line.unitPrice}
                 min={0}
                 step="any"
+                readOnly={withSalesInvoiceLineId}
                 onChange={(e) => updateLine(index, { unitPrice: Number(e.target.value) })}
               />
             </div>
@@ -170,6 +192,7 @@ export function InvoiceLinesEditor({
                 min={0}
                 max={100}
                 step="any"
+                readOnly={withSalesInvoiceLineId}
                 onChange={(e) => updateLine(index, { taxPercent: Number(e.target.value) })}
               />
             </div>

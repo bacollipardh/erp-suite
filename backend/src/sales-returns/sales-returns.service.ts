@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DocumentStatus, MovementType } from '@prisma/client';
+import { DocumentStatus, MovementType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { StockService } from '../stock/stock.service';
@@ -110,42 +110,148 @@ export class SalesReturnsService {
     return { lines: mapped, subtotal, taxTotal, grandTotal };
   }
 
-  private async validateReturnQuantities(dto: CreateSalesReturnDto | UpdateSalesReturnDto, excludeReturnId?: string) {
+  private async validateDraftInput(
+    dto: Pick<CreateSalesReturnDto, 'seriesId' | 'salesInvoiceId' | 'customerId' | 'lines'>,
+    tx: Prisma.TransactionClient,
+    excludeReturnId?: string,
+  ) {
+    const [series, customer, salesInvoice] = await Promise.all([
+      tx.documentSeries.findUnique({ where: { id: dto.seriesId } }),
+      tx.customer.findUnique({ where: { id: dto.customerId } }),
+      tx.salesInvoice.findUnique({
+        where: { id: dto.salesInvoiceId },
+        select: {
+          id: true,
+          customerId: true,
+          status: true,
+          warehouseId: true,
+          docNo: true,
+        },
+      }),
+    ]);
+
+    if (!series || series.documentType !== 'SALES_RETURN' || !series.isActive) {
+      throw new BadRequestException('Sales return series not found or inactive');
+    }
+
+    if (!customer || !customer.isActive) {
+      throw new BadRequestException('Customer not found or inactive');
+    }
+
+    if (!salesInvoice) {
+      throw new BadRequestException('Sales invoice not found');
+    }
+
+    if (
+      salesInvoice.status !== DocumentStatus.POSTED &&
+      salesInvoice.status !== DocumentStatus.PARTIALLY_RETURNED
+    ) {
+      throw new BadRequestException('Returns can be created only for posted sales invoices');
+    }
+
+    if (salesInvoice.customerId !== dto.customerId) {
+      throw new BadRequestException('Return customer must match the source sales invoice');
+    }
+
+    const requestedBySourceLine = new Map<string, number>();
+
     for (const line of dto.lines ?? []) {
-      const invoiceLine = await this.prisma.salesInvoiceLine.findUnique({
-        where: { id: line.salesInvoiceLineId },
-      });
+      requestedBySourceLine.set(
+        line.salesInvoiceLineId,
+        round2((requestedBySourceLine.get(line.salesInvoiceLineId) ?? 0) + Number(line.qty)),
+      );
+    }
+
+    const sourceLineIds = [...requestedBySourceLine.keys()];
+    const sourceLines = await tx.salesInvoiceLine.findMany({
+      where: { id: { in: sourceLineIds } },
+      select: {
+        id: true,
+        salesInvoiceId: true,
+        itemId: true,
+        qty: true,
+        unitPrice: true,
+        taxPercent: true,
+      },
+    });
+    const sourceLineMap = new Map(sourceLines.map((line) => [line.id, line]));
+
+    if (sourceLines.length !== sourceLineIds.length) {
+      throw new BadRequestException('Referenced sales invoice line not found');
+    }
+
+    for (const line of dto.lines ?? []) {
+      const invoiceLine = sourceLineMap.get(line.salesInvoiceLineId);
 
       if (!invoiceLine) {
         throw new BadRequestException('Referenced sales invoice line not found');
       }
 
-      const returnedAgg = await this.prisma.salesReturnLine.aggregate({
+      if (invoiceLine.salesInvoiceId !== dto.salesInvoiceId) {
+        throw new BadRequestException('Return line does not belong to the selected sales invoice');
+      }
+
+      if (line.itemId && line.itemId !== invoiceLine.itemId) {
+        throw new BadRequestException('Return line item must match the source sales invoice line');
+      }
+    }
+
+    for (const [salesInvoiceLineId, requestedQty] of requestedBySourceLine.entries()) {
+      const invoiceLine = sourceLineMap.get(salesInvoiceLineId);
+      if (!invoiceLine) continue;
+
+      const returnedAgg = await tx.salesReturnLine.aggregate({
         where: {
-          salesInvoiceLineId: line.salesInvoiceLineId,
-          salesReturn: excludeReturnId ? { id: { not: excludeReturnId } } : undefined,
+          salesInvoiceLineId,
+          salesReturn: {
+            status: DocumentStatus.POSTED,
+            ...(excludeReturnId ? { id: { not: excludeReturnId } } : {}),
+          },
         },
         _sum: { qty: true },
       });
 
       const alreadyReturned = Number(returnedAgg._sum.qty ?? 0);
       const soldQty = Number(invoiceLine.qty);
-      const requested = Number(line.qty);
 
-      if (alreadyReturned + requested > soldQty) {
+      if (alreadyReturned + requestedQty > soldQty) {
         throw new BadRequestException('Return quantity exceeds invoiced quantity');
       }
     }
+
+    return {
+      salesInvoice,
+      lines: (dto.lines ?? []).map((line) => {
+        const sourceLine = sourceLineMap.get(line.salesInvoiceLineId);
+        if (!sourceLine) {
+          throw new BadRequestException('Referenced sales invoice line not found');
+        }
+
+        return {
+          salesInvoiceLineId: sourceLine.id,
+          itemId: sourceLine.itemId,
+          qty: Number(line.qty),
+          unitPrice: Number(sourceLine.unitPrice),
+          taxPercent: Number(sourceLine.taxPercent),
+        };
+      }),
+    };
+  }
+
+  private toDraftLineInput(existing: Awaited<ReturnType<SalesReturnsService['findOne']>>) {
+    return existing.lines.map((line) => ({
+      salesInvoiceLineId: line.salesInvoiceLineId,
+      itemId: line.itemId,
+      qty: Number(line.qty),
+      unitPrice: Number(line.unitPrice),
+      taxPercent: Number(line.taxPercent),
+    }));
   }
 
   async create(dto: CreateSalesReturnDto, userId: string) {
-    await this.validateReturnQuantities(dto);
-    const calc = this.calculateLines(dto.lines);
-
     const doc = await this.prisma.$transaction(async (tx) => {
-      const salesInvoice = await tx.salesInvoice.findUnique({ where: { id: dto.salesInvoiceId } });
-      if (!salesInvoice) throw new BadRequestException('Sales invoice not found');
-
+      const validated = await this.validateDraftInput(dto, tx);
+      const calc = this.calculateLines(validated.lines);
       const series = await tx.documentSeries.findUnique({ where: { id: dto.seriesId } });
       if (!series) throw new BadRequestException('Series not found');
 
@@ -205,15 +311,23 @@ export class SalesReturnsService {
       throw new BadRequestException('Only DRAFT sales return can be updated');
     }
 
-    if (dto.lines?.length) {
-      await this.validateReturnQuantities(dto, id);
+    if (dto.seriesId && dto.seriesId !== existing.seriesId) {
+      throw new BadRequestException('Series cannot be changed after draft creation');
     }
 
     return this.prisma.$transaction(async (tx) => {
       let calc: ReturnType<SalesReturnsService['calculateLines']> | null = null;
+      const draftInput = {
+        seriesId: existing.seriesId,
+        salesInvoiceId: dto.salesInvoiceId ?? existing.salesInvoiceId,
+        customerId: dto.customerId ?? existing.customerId,
+        lines: dto.lines ?? this.toDraftLineInput(existing),
+      };
+
+      const validated = await this.validateDraftInput(draftInput, tx, id);
 
       if (dto.lines?.length) {
-        calc = this.calculateLines(dto.lines);
+        calc = this.calculateLines(validated.lines);
         await tx.salesReturnLine.deleteMany({ where: { salesReturnId: id } });
       }
 
@@ -261,8 +375,17 @@ export class SalesReturnsService {
     }
 
     const doc = await this.prisma.$transaction(async (tx) => {
-      const salesInvoice = await tx.salesInvoice.findUnique({ where: { id: existing.salesInvoiceId } });
-      if (!salesInvoice) throw new BadRequestException('Source sales invoice not found');
+      const validated = await this.validateDraftInput(
+        {
+          seriesId: existing.seriesId,
+          salesInvoiceId: existing.salesInvoiceId,
+          customerId: existing.customerId,
+          lines: this.toDraftLineInput(existing),
+        },
+        tx,
+        id,
+      );
+      const salesInvoice = validated.salesInvoice;
 
       const updated = await tx.salesReturn.update({
         where: { id },
@@ -315,7 +438,10 @@ export class SalesReturnsService {
 
       for (const line of invoiceLines) {
         const returnedAgg = await tx.salesReturnLine.aggregate({
-          where: { salesInvoiceLineId: line.id },
+          where: {
+            salesInvoiceLineId: line.id,
+            salesReturn: { status: DocumentStatus.POSTED },
+          },
           _sum: { qty: true },
         });
 
