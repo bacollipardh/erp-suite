@@ -79,50 +79,59 @@ export class PdfService {
     left: { label: string; entity: Record<string, any> },
     right: { label: string; lines: string[] },
   ): number {
-    const H = 68;
+    const H = 100;          // tall enough for 6 detail lines
     const GAP = 8;
     const COL = (CW - GAP) / 2;
+    const LINE = 10.5;      // line pitch
 
-    // Left box
+    // ── Left box ──────────────────────────────────────────────────────────────
     const lx = MARGIN;
     doc.rect(lx, startY, COL, H).fill(SLATE100);
     doc.rect(lx, startY, 3, H).fill(INDIGO);
 
-    let ly = startY + 9;
+    let ly = startY + 8;
     doc.fillColor(INDIGO).fontSize(6.5).font('Helvetica-Bold')
        .text(left.label.toUpperCase(), lx + 10, ly);
-    ly += 11;
-    doc.fillColor(BLACK).fontSize(9).font('Helvetica-Bold')
-       .text((left.entity.name ?? '-').slice(0, 36), lx + 10, ly);
     ly += 12;
+    doc.fillColor(BLACK).fontSize(9).font('Helvetica-Bold')
+       .text((left.entity.name ?? '-').slice(0, 42), lx + 10, ly);
+    ly += 13;
+
     doc.font('Helvetica').fontSize(7.5).fillColor(SLATE500);
-    for (const field of [
-      left.entity.fiscalNo  ? `Nr. Fiskal: ${left.entity.fiscalNo}`   : null,
-      left.entity.vatNo     ? `Nr. TVSH: ${left.entity.vatNo}`         : null,
-      left.entity.extraLine ? left.entity.extraLine                    : null,
-      left.entity.address   ? left.entity.address                      : null,
-      left.entity.city      ? left.entity.city                         : null,
-    ]) {
-      if (field && ly < startY + H - 5) {
-        doc.text(String(field).slice(0, 40), lx + 10, ly);
-        ly += 10;
-      }
+    const leftLines = [
+      left.entity.fiscalNo  ? `Nr. Fiskal: ${left.entity.fiscalNo}`    : null,
+      left.entity.vatNo     ? `Nr. TVSH: ${left.entity.vatNo}`          : null,
+      left.entity.extraLine ? String(left.entity.extraLine)             : null,
+      left.entity.address   ? String(left.entity.address)               : null,
+      left.entity.city      ? String(left.entity.city)                  : null,
+      left.entity.phone     ? `Tel: ${left.entity.phone}`               : null,
+    ].filter(Boolean) as string[];
+
+    for (const field of leftLines) {
+      if (ly + LINE > startY + H - 4) break;
+      doc.text(field.slice(0, 44), lx + 10, ly);
+      ly += LINE;
     }
 
-    // Right box
+    // ── Right box ─────────────────────────────────────────────────────────────
     const rx = MARGIN + COL + GAP;
     doc.rect(rx, startY, COL, H).fill(SLATE50);
     doc.rect(rx, startY, 3, H).fill(SLATE200);
 
     doc.fillColor(SLATE500).fontSize(6.5).font('Helvetica-Bold')
-       .text(right.label.toUpperCase(), rx + 10, startY + 9);
+       .text(right.label.toUpperCase(), rx + 10, startY + 8);
     let ry = startY + 20;
-    for (const line of right.lines.slice(0, 5)) {
-      if (line) {
-        doc.fillColor(BLACK).fontSize(8).font('Helvetica')
-           .text(line.slice(0, 40), rx + 10, ry);
-        ry += 11;
-      }
+
+    const rightLines = right.lines.filter(Boolean);
+    for (const line of rightLines) {
+      if (ry + LINE > startY + H - 4) break;
+      // First line = company/customer name → bold, slightly bigger
+      const isFirst = ry === startY + 20;
+      doc.fillColor(BLACK)
+         .fontSize(isFirst ? 8.5 : 7.5)
+         .font(isFirst ? 'Helvetica-Bold' : 'Helvetica')
+         .text(line.slice(0, 44), rx + 10, ry);
+      ry += isFirst ? 12 : LINE;
     }
 
     doc.rect(MARGIN, startY + H + 1, CW, 1).fill(SLATE200);

@@ -152,13 +152,14 @@ export function ResourceForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-2xl border bg-white p-6 space-y-6 max-w-5xl">
+    <form onSubmit={onSubmit} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4 max-w-4xl">
       {apiError && (
-        <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3">
+        <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2.5">
           {apiError}
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
         {config.fields
           .filter((field) => field.type !== 'textarea' && field.type !== 'checkbox')
           .map((field) => (
@@ -166,17 +167,21 @@ export function ResourceForm({
           ))}
       </div>
 
-      <div className="space-y-4">
-        {config.fields.filter((field) => field.type === 'textarea').map((field) => (
-          <div key={field.name}>{renderField(field)}</div>
-        ))}
-      </div>
+      {config.fields.some((f) => f.type === 'textarea') && (
+        <div className="space-y-3 pt-1">
+          {config.fields.filter((field) => field.type === 'textarea').map((field) => (
+            <div key={field.name}>{renderField(field)}</div>
+          ))}
+        </div>
+      )}
 
-      <div className="space-y-2">
-        {config.fields.filter((field) => field.type === 'checkbox').map((field) => (
-          <div key={field.name}>{renderField(field)}</div>
-        ))}
-      </div>
+      {config.fields.some((f) => f.type === 'checkbox') && (
+        <div className="flex flex-wrap gap-4 pt-1">
+          {config.fields.filter((field) => field.type === 'checkbox').map((field) => (
+            <div key={field.name}>{renderField(field)}</div>
+          ))}
+        </div>
+      )}
 
       <FormActions submitLabel={mode === 'create' ? 'Krijo' : 'Përditëso'} busy={busy} />
     </form>

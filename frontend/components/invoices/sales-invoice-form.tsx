@@ -121,56 +121,86 @@ export function SalesInvoiceForm({
     }
   }
 
+  const isPosted = data?.status === 'POSTED';
+
   return (
-    <form onSubmit={onSubmit} className="space-y-6">
+    <form onSubmit={onSubmit} className="space-y-4">
       {apiError && (
-        <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3">{apiError}</div>
+        <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2.5">{apiError}</div>
       )}
 
-      {/* Header */}
-      <div className="rounded-2xl border bg-white p-6 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <div>
+      {isPosted && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm px-3 py-2.5">
+          ⚠️ Kjo faturë është <strong>Postuar</strong> dhe nuk mund të modifikohet.
+        </div>
+      )}
+
+      {/* ── Header card ─────────────────────────────────────── */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Detajet e Dokumentit</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+          <div className="col-span-2 sm:col-span-1">
             <SelectInput
-              label="Seria e Dokumentit (numërim)"
+              label="Seria *"
               value={form.seriesId}
               onChange={(value) => setForm({ ...form, seriesId: value })}
-              options={series.map((x) => ({ value: x.id, label: `${x.prefix} — radhës: ${x.nextNumber}` }))}
+              options={series.map((x) => ({ value: x.id, label: `${x.prefix} · #${x.nextNumber}` }))}
             />
-            <p className="text-xs text-slate-400 mt-1">Përcakton formatin e numrit të dokumentit (p.sh. SI-2025/0001)</p>
           </div>
-          <SelectInput label="Klienti" value={form.customerId} onChange={(value) => setForm({ ...form, customerId: value })} options={customers.map((x) => ({ value: x.id, label: x.name }))} />
-          <SelectInput label="Magazina" value={form.warehouseId} onChange={(value) => setForm({ ...form, warehouseId: value })} options={warehouses.map((x) => ({ value: x.id, label: x.name }))} />
-          <SelectInput label="Metoda e Pagesës" value={form.paymentMethodId} onChange={(value) => setForm({ ...form, paymentMethodId: value })} options={paymentMethods.map((x) => ({ value: x.id, label: x.name }))} />
-          <TextInput label="Data e Dokumentit" type="date" value={form.docDate} onChange={(e) => setForm({ ...form, docDate: e.target.value })} />
+          <SelectInput label="Klienti" value={form.customerId}
+            onChange={(v) => setForm({ ...form, customerId: v })}
+            options={customers.map((x) => ({ value: x.id, label: x.name }))} />
+          <SelectInput label="Magazina *" value={form.warehouseId}
+            onChange={(v) => setForm({ ...form, warehouseId: v })}
+            options={warehouses.map((x) => ({ value: x.id, label: x.name }))} />
+          <SelectInput label="Pagesa" value={form.paymentMethodId}
+            onChange={(v) => setForm({ ...form, paymentMethodId: v })}
+            options={paymentMethods.map((x) => ({ value: x.id, label: x.name }))} />
+          <TextInput label="Data" type="date" value={form.docDate}
+            onChange={(e) => setForm({ ...form, docDate: e.target.value })} />
         </div>
-        <TextareaInput label="Shënime" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+        <div className="mt-3">
+          <TextareaInput label="Shënime" value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+        </div>
       </div>
 
-      {/* Lines */}
-      <div className="rounded-2xl border bg-white p-6 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="text-base font-semibold">Rreshtat e Faturës</div>
-          <div className="text-xs text-slate-400">Çmimi dhe TVSH plotësohen automatikisht nga artikulli</div>
+      {/* ── Lines card ──────────────────────────────────────── */}
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-slate-50">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Rreshtat e Faturës</span>
+          <span className="text-xs text-slate-400">Çmimi dhe TVSH plotësohen automatikisht</span>
         </div>
-        <InvoiceLinesEditor
-          lines={lines}
-          setLines={setLines}
-          items={items}
-          withDiscount
-          priceField="standardSalesPrice"
-        />
+        <div className="p-4">
+          <InvoiceLinesEditor
+            lines={lines}
+            setLines={setLines}
+            items={items}
+            withDiscount
+            priceField="standardSalesPrice"
+          />
+        </div>
       </div>
 
       <DocumentTotals {...totals} />
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 pt-1">
         <div>
-          {mode === 'edit' && data?.status === 'DRAFT' ? (
-            <ConfirmButton label="Posto Dokumentin" confirmText="Posto këtë faturë shitjeje?" onClick={onPost} className="rounded-xl bg-emerald-600 text-white px-4 py-2 text-sm font-medium" />
-          ) : null}
+          {mode === 'edit' && data?.status === 'DRAFT' && (
+            <ConfirmButton
+              label="Posto Dokumentin"
+              confirmText="Posto këtë faturë shitjeje?"
+              onClick={onPost}
+              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm font-medium transition-colors shadow-sm"
+            />
+          )}
         </div>
-        <FormActions submitLabel={mode === 'create' ? 'Krijo Faturë Shitjeje' : 'Përditëso Faturën e Shitjes'} busy={busy} />
+        {!isPosted && (
+          <FormActions
+            submitLabel={mode === 'create' ? 'Krijo Faturë Shitjeje' : 'Përditëso Faturën'}
+            busy={busy}
+          />
+        )}
       </div>
     </form>
   );

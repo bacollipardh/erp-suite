@@ -18,7 +18,7 @@ export class SalesInvoicesService {
 
   findAll() {
     return this.prisma.salesInvoice.findMany({
-      include: { customer: true, warehouse: true, paymentMethod: true, lines: true, series: true },
+      include: { customer: true, warehouse: true, paymentMethod: true, lines: true, series: true, createdBy: true },
       orderBy: { createdAt: 'desc' },
     });
   }
