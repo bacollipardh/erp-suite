@@ -178,7 +178,7 @@ export function ResourceForm({
         ))}
       </div>
 
-      <FormActions submitLabel={mode === 'create' ? 'Create' : 'Update'} busy={busy} />
+      <FormActions submitLabel={mode === 'create' ? 'Krijo' : 'Përditëso'} busy={busy} />
     </form>
   );
 }

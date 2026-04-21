@@ -22,7 +22,7 @@ export async function ResourceCreatePage({ resourceKey }: { resourceKey: string 
 
   return (
     <div>
-      <PageHeader title={`New ${config.title.slice(0, -1)}`} description={config.description} />
+      <PageHeader title={`Krijo ${config.singular}`} description={config.description} />
       <ResourceForm resourceKey={resourceKey} mode="create" optionsMap={optionsMap} />
     </div>
   );
@@ -43,7 +43,7 @@ export async function ResourceEditPage({
 
   return (
     <div>
-      <PageHeader title={`Edit ${config.title.slice(0, -1)}`} description={config.description} />
+      <PageHeader title={`Ndrysho ${config.singular}`} description={config.description} />
       <ResourceForm resourceKey={resourceKey} mode="edit" record={record} optionsMap={optionsMap} />
     </div>
   );

@@ -9,7 +9,7 @@ export default function LoginPage() {
       <div className="bg-white rounded-2xl border shadow-sm w-full max-w-sm p-8 space-y-6">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-slate-900">bp ERP System</h1>
-          <p className="text-sm text-slate-500 mt-1">Sign in to your account</p>
+          <p className="text-sm text-slate-500 mt-1">Kyçu në llogarinë tuaj</p>
         </div>
         <Suspense>
           <LoginForm />

@@ -8,17 +8,17 @@ export default async function StockMovementsPage() {
 
   return (
     <div>
-      <PageHeader title="Stock Movements" description="Historiku i plotë i lëvizjeve të stokut." />
+      <PageHeader title="Lëvizjet e Stokut" description="Historiku i plotë i lëvizjeve të stokut." />
       <DataTable
         data={movements}
         columns={[
-          { key: 'warehouse', title: 'Warehouse', render: (row: any) => row.warehouse?.name ?? '-' },
-          { key: 'item', title: 'Item', render: (row: any) => row.item?.name ?? '-' },
-          { key: 'movementType', title: 'Type', render: (row: any) => <StatusBadge value={row.movementType} /> },
-          { key: 'qtyIn', title: 'Qty In', render: (row: any) => row.qtyIn },
-          { key: 'qtyOut', title: 'Qty Out', render: (row: any) => row.qtyOut },
-          { key: 'referenceNo', title: 'Reference', render: (row: any) => row.referenceNo ?? '-' },
-          { key: 'movementAt', title: 'Movement At', render: (row: any) => new Date(row.movementAt).toLocaleString() },
+          { key: 'warehouse', title: 'Magazina', render: (row: any) => row.warehouse?.name ?? '-' },
+          { key: 'item', title: 'Artikulli', render: (row: any) => row.item?.name ?? '-' },
+          { key: 'movementType', title: 'Tipi', render: (row: any) => <StatusBadge value={row.movementType} /> },
+          { key: 'qtyIn', title: 'Sasia Hyrëse', render: (row: any) => row.qtyIn },
+          { key: 'qtyOut', title: 'Sasia Dalëse', render: (row: any) => row.qtyOut },
+          { key: 'referenceNo', title: 'Referenca', render: (row: any) => row.referenceNo ?? '-' },
+          { key: 'movementAt', title: 'Lëvizur Më', render: (row: any) => new Date(row.movementAt).toLocaleString() },
         ]}
       />
     </div>

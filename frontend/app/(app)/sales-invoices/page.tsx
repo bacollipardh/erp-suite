@@ -9,21 +9,21 @@ export default async function SalesInvoicesPage() {
   return (
     <div>
       <PageHeader
-        title="Sales Invoices"
-        description="Faturat shitëse, zbritjet dhe ulja e stokut."
+        title="Faturat e Shitjes"
+        description="Faturat e shitjes, zbritjet dhe dalja e stokut."
         createHref="/sales-invoices/new"
-        createLabel="New Sales Invoice"
+        createLabel="Faturë e Re Shitjeje"
       />
       <DataTable
         data={docs}
         detailsBasePath="/sales-invoices"
         columns={[
-          { key: 'docNo', title: 'Doc No', render: (row: any) => row.docNo },
-          { key: 'customer', title: 'Customer', render: (row: any) => row.customer?.name ?? '-' },
-          { key: 'warehouse', title: 'Warehouse', render: (row: any) => row.warehouse?.name ?? '-' },
-          { key: 'docDate', title: 'Date', render: (row: any) => String(row.docDate).slice(0, 10) },
-          { key: 'grandTotal', title: 'Total', render: (row: any) => row.grandTotal },
-          { key: 'status', title: 'Status', render: (row: any) => <StatusBadge value={row.status} /> },
+          { key: 'docNo', title: 'Nr. Doc', render: (row: any) => row.docNo },
+          { key: 'customer', title: 'Klienti', render: (row: any) => row.customer?.name ?? '-' },
+          { key: 'warehouse', title: 'Magazina', render: (row: any) => row.warehouse?.name ?? '-' },
+          { key: 'docDate', title: 'Data', render: (row: any) => String(row.docDate).slice(0, 10) },
+          { key: 'grandTotal', title: 'Totali', render: (row: any) => row.grandTotal },
+          { key: 'status', title: 'Statusi', render: (row: any) => <StatusBadge value={row.status} /> },
         ]}
       />
     </div>

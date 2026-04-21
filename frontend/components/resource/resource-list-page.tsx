@@ -14,7 +14,7 @@ export async function ResourceListPage({ resourceKey }: { resourceKey: string })
         title={config.title}
         description={config.description}
         createHref={`/${resourceKey}/new`}
-        createLabel={`New ${config.title.slice(0, -1)}`}
+        createLabel={`Krijo ${config.singular}`}
       />
 
       <DataTable

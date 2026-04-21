@@ -12,21 +12,21 @@ export function DocumentTotals({
   return (
     <div className="rounded-2xl border bg-slate-50 p-4 max-w-sm ml-auto space-y-2 text-sm">
       <div className="flex justify-between">
-        <span>Subtotal</span>
+        <span>Nëntotali</span>
         <span>{subtotal.toFixed(2)}</span>
       </div>
       {typeof discountTotal === 'number' ? (
         <div className="flex justify-between">
-          <span>Discount</span>
+          <span>Zbritja</span>
           <span>{discountTotal.toFixed(2)}</span>
         </div>
       ) : null}
       <div className="flex justify-between">
-        <span>Tax</span>
+        <span>TVSH</span>
         <span>{taxTotal.toFixed(2)}</span>
       </div>
       <div className="flex justify-between font-semibold text-base">
-        <span>Grand Total</span>
+        <span>Totali</span>
         <span>{grandTotal.toFixed(2)}</span>
       </div>
     </div>

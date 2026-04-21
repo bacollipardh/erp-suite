@@ -129,21 +129,21 @@ export function SalesReturnForm({
       <div className="rounded-2xl border bg-white p-6 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <div>
-            <SelectInput label="Doc Series (numbering)" value={form.seriesId} onChange={(value) => setForm({ ...form, seriesId: value })} options={series.map((x) => ({ value: x.id, label: `${x.prefix} — next: ${x.nextNumber}` }))} />
-            <p className="text-xs text-slate-400 mt-1">Defines the document number (e.g. SR-2025/0001)</p>
+            <SelectInput label="Seria e Dokumentit (numërim)" value={form.seriesId} onChange={(value) => setForm({ ...form, seriesId: value })} options={series.map((x) => ({ value: x.id, label: `${x.prefix} — radhës: ${x.nextNumber}` }))} />
+            <p className="text-xs text-slate-400 mt-1">Përcakton numrin e dokumentit (p.sh. SR-2025/0001)</p>
           </div>
-          <SelectInput label="Sales Invoice" value={form.salesInvoiceId} onChange={(value) => setForm({ ...form, salesInvoiceId: value })} options={salesInvoices.map((x) => ({ value: x.id, label: x.docNo }))} />
-          <SelectInput label="Customer" value={form.customerId} onChange={(value) => setForm({ ...form, customerId: value })} options={customers.map((x) => ({ value: x.id, label: x.name }))} />
-          <TextInput label="Document Date" type="date" value={form.docDate} onChange={(e) => setForm({ ...form, docDate: e.target.value })} />
-          <TextInput label="Reason" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
+          <SelectInput label="Fatura e Shitjes" value={form.salesInvoiceId} onChange={(value) => setForm({ ...form, salesInvoiceId: value })} options={salesInvoices.map((x) => ({ value: x.id, label: x.docNo }))} />
+          <SelectInput label="Klienti" value={form.customerId} onChange={(value) => setForm({ ...form, customerId: value })} options={customers.map((x) => ({ value: x.id, label: x.name }))} />
+          <TextInput label="Data e Dokumentit" type="date" value={form.docDate} onChange={(e) => setForm({ ...form, docDate: e.target.value })} />
+          <TextInput label="Arsyeja" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
         </div>
-        <TextareaInput label="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+        <TextareaInput label="Shënime" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
       </div>
 
       <div className="rounded-2xl border bg-white p-6 space-y-3">
         <div className="flex items-center justify-between">
-          <div className="text-base font-semibold">Return Lines</div>
-          <div className="text-xs text-slate-400">Price and tax are auto-filled from item master data</div>
+          <div className="text-base font-semibold">Rreshtat e Kthimit</div>
+          <div className="text-xs text-slate-400">Çmimi dhe TVSH plotësohen automatikisht nga artikulli</div>
         </div>
         <InvoiceLinesEditor
           lines={lines}
@@ -160,10 +160,10 @@ export function SalesReturnForm({
       <div className="flex items-center justify-between gap-3">
         <div>
           {mode === 'edit' && data?.status === 'DRAFT' ? (
-            <ConfirmButton label="Post Document" confirmText="Post this sales return?" onClick={onPost} className="rounded-xl bg-emerald-600 text-white px-4 py-2 text-sm font-medium" />
+            <ConfirmButton label="Posto Dokumentin" confirmText="Posto këtë kthim shitjeje?" onClick={onPost} className="rounded-xl bg-emerald-600 text-white px-4 py-2 text-sm font-medium" />
           ) : null}
         </div>
-        <FormActions submitLabel={mode === 'create' ? 'Create Sales Return' : 'Update Sales Return'} busy={busy} />
+        <FormActions submitLabel={mode === 'create' ? 'Krijo Kthim Shitjeje' : 'Përditëso Kthimin e Shitjes'} busy={busy} />
       </div>
     </form>
   );

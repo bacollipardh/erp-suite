@@ -9,21 +9,21 @@ export default async function PurchaseInvoicesPage() {
   return (
     <div>
       <PageHeader
-        title="Purchase Invoices"
-        description="Fatura blerëse dhe hyrjet e stokut."
+        title="Faturat e Blerjes"
+        description="Faturat e blerjes dhe hyrjet e stokut."
         createHref="/purchase-invoices/new"
-        createLabel="New Purchase Invoice"
+        createLabel="Faturë e Re Blerjeje"
       />
       <DataTable
         data={docs}
         detailsBasePath="/purchase-invoices"
         columns={[
-          { key: 'docNo', title: 'Doc No', render: (row: any) => row.docNo },
-          { key: 'supplier', title: 'Supplier', render: (row: any) => row.supplier?.name ?? '-' },
-          { key: 'warehouse', title: 'Warehouse', render: (row: any) => row.warehouse?.name ?? '-' },
-          { key: 'docDate', title: 'Date', render: (row: any) => String(row.docDate).slice(0, 10) },
-          { key: 'grandTotal', title: 'Total', render: (row: any) => row.grandTotal },
-          { key: 'status', title: 'Status', render: (row: any) => <StatusBadge value={row.status} /> },
+          { key: 'docNo', title: 'Nr. Doc', render: (row: any) => row.docNo },
+          { key: 'supplier', title: 'Furnitori', render: (row: any) => row.supplier?.name ?? '-' },
+          { key: 'warehouse', title: 'Magazina', render: (row: any) => row.warehouse?.name ?? '-' },
+          { key: 'docDate', title: 'Data', render: (row: any) => String(row.docDate).slice(0, 10) },
+          { key: 'grandTotal', title: 'Totali', render: (row: any) => row.grandTotal },
+          { key: 'status', title: 'Statusi', render: (row: any) => <StatusBadge value={row.status} /> },
         ]}
       />
     </div>

@@ -26,9 +26,9 @@ export function LoginForm() {
       try {
         const body = JSON.parse(err.message);
         const msg = body.message;
-        setError(typeof msg === 'string' ? msg : Array.isArray(msg) ? msg.join(', ') : 'Login failed');
+        setError(typeof msg === 'string' ? msg : Array.isArray(msg) ? msg.join(', ') : 'Hyrja dështoi');
       } catch {
-        setError(typeof err.message === 'string' ? err.message : 'Login failed');
+        setError(typeof err.message === 'string' ? err.message : 'Hyrja dështoi');
       }
     } finally {
       setBusy(false);
@@ -38,7 +38,7 @@ export function LoginForm() {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Email-i</label>
         <input
           type="email"
           required
@@ -49,7 +49,7 @@ export function LoginForm() {
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Fjalëkalimi</label>
         <input
           type="password"
           required
@@ -69,7 +69,7 @@ export function LoginForm() {
         disabled={busy}
         className="w-full rounded-lg bg-slate-900 text-white py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-50 transition-colors"
       >
-        {busy ? 'Signing in…' : 'Sign In'}
+        {busy ? 'Duke u kyçur...' : 'Kyçu'}
       </button>
     </form>
   );

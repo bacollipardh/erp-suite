@@ -15,7 +15,20 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 export function StatusBadge({ value }: { value: string | boolean | null | undefined }) {
-  const text = value === true ? 'Active' : value === false ? 'Inactive' : String(value ?? '-');
+  const STATUS_LABELS: Record<string, string> = {
+    DRAFT: 'Drafto',
+    POSTED: 'Postuar',
+    CANCELLED: 'Anuluar',
+    STORNO: 'Storno',
+    PARTIALLY_RETURNED: 'Kthyer Part.',
+    FULLY_RETURNED: 'Kthyer Plot.',
+    PURCHASE_IN: 'Hyrje Blerjeje',
+    SALE_OUT: 'Dalje Shitjeje',
+    SALES_RETURN_IN: 'Kthim Shitjeje',
+    ADJUSTMENT_PLUS: 'Rregullim +',
+    ADJUSTMENT_MINUS: 'Rregullim −',
+  };
+  const text = value === true ? 'Aktiv' : value === false ? 'Joaktiv' : (STATUS_LABELS[String(value ?? '')] ?? String(value ?? '-'));
   const style = STATUS_STYLES[String(value)] ?? 'bg-slate-100 text-slate-700';
   return (
     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${style}`}>

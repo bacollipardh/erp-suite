@@ -73,12 +73,12 @@ export function InvoiceLinesEditor({
     <div className="space-y-3">
       {/* Header row */}
       <div className="hidden md:grid grid-cols-12 gap-2 px-1 text-xs font-medium text-slate-500 uppercase tracking-wide">
-        <div className="col-span-4">Item</div>
-        <div className="col-span-2 text-right">Qty</div>
-        <div className="col-span-2 text-right">Unit Price</div>
-        {withDiscount && <div className="col-span-1 text-right">Disc %</div>}
-        <div className="col-span-1 text-right">Tax %</div>
-        <div className="col-span-1 text-right">Net</div>
+        <div className="col-span-4">Artikulli</div>
+        <div className="col-span-2 text-right">Sasia</div>
+        <div className="col-span-2 text-right">Çmimi</div>
+        {withDiscount && <div className="col-span-1 text-right">Zb %</div>}
+        <div className="col-span-1 text-right">TVSH %</div>
+        <div className="col-span-1 text-right">Neto</div>
         <div className="col-span-1" />
       </div>
 
@@ -177,7 +177,7 @@ export function InvoiceLinesEditor({
         onClick={addLine}
         className="rounded-xl border border-dashed px-4 py-2 text-sm text-slate-500 hover:bg-slate-50 w-full"
       >
-        + Add Line
+        + Shto Rresht
       </button>
     </div>
   );

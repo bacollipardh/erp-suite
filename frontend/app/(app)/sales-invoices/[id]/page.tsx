@@ -1,6 +1,6 @@
 import { PageHeader } from '@/components/page-header';
 import { SalesInvoiceForm } from '@/components/invoices/sales-invoice-form';
-import { PdfDownloadButton } from '@/components/invoices/pdf-download-button';
+import { PdfButtons } from '@/components/invoices/pdf-download-button';
 import { api } from '@/lib/api';
 import { API_BASE_URL } from '@/lib/constants';
 
@@ -23,10 +23,13 @@ export default async function EditSalesInvoicePage({
     <div>
       <div className="flex items-start justify-between mb-4">
         <PageHeader
-          title={`Sales Invoice ${doc.docNo}`}
-          description={`Status: ${doc.status} · Created: ${new Date(doc.createdAt).toLocaleDateString()}`}
+          title={`Faturë Shitjeje ${doc.docNo}`}
+          description={`Statusi: ${doc.status} · Krijuar: ${new Date(doc.createdAt).toLocaleDateString('sq-AL')}`}
         />
-        <PdfDownloadButton href={`${API_BASE_URL}/pdf/sales-invoices/${resolved.id}`} label="Download PDF" />
+        <PdfButtons
+          baseHref={`${API_BASE_URL}/pdf/sales-invoices/${resolved.id}`}
+          docNo={doc.docNo}
+        />
       </div>
       <SalesInvoiceForm
         mode="edit"
@@ -40,4 +43,3 @@ export default async function EditSalesInvoicePage({
     </div>
   );
 }
-

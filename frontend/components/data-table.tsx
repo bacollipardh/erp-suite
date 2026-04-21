@@ -40,7 +40,7 @@ export function DataTable<T extends { id?: string }>({
               {detailsBasePath && row.id ? (
                 <td className="px-4 py-3 text-right">
                   <Link href={`${detailsBasePath}/${row.id}`} className="text-slate-900 font-medium">
-                    Open
+                    Hap
                   </Link>
                 </td>
               ) : null}
