@@ -3,6 +3,7 @@ import { DocumentStatus, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SalesReportQueryDto } from './dto/sales-report-query.dto';
 import { AgingReportQueryDto } from './dto/aging-report-query.dto';
+import { calculateOutstandingAmount, resolveDueState } from '../common/utils/payments';
 
 const RECEIVABLE_STATUSES = [
   DocumentStatus.POSTED,
@@ -185,6 +186,10 @@ export class ReportsService {
         dueDate: true,
         grandTotal: true,
         amountPaid: true,
+        returns: {
+          where: { status: DocumentStatus.POSTED },
+          select: { grandTotal: true },
+        },
         customer: { select: { id: true, name: true } },
       },
       orderBy: [{ dueDate: 'asc' }, { docDate: 'asc' }],
@@ -225,6 +230,7 @@ export class ReportsService {
       dueDate: Date | null;
       grandTotal: number | { toString(): string };
       amountPaid: number | { toString(): string };
+      returns?: { grandTotal: number | { toString(): string } }[];
       customer?: { id: string; name: string } | null;
       supplier?: { id: string; name: string } | null;
     },
@@ -240,11 +246,20 @@ export class ReportsService {
 
     const items = rows
       .map((row) => {
-        const outstanding = Math.max(0, Number(row.grandTotal ?? 0) - Number(row.amountPaid ?? 0));
+        const credited =
+          partyKey === 'customer'
+            ? (row.returns ?? []).reduce((sum, entry) => sum + Number(entry.grandTotal ?? 0), 0)
+            : 0;
+        const total = Math.max(0, Number(row.grandTotal ?? 0) - credited);
+        const paid = Number(row.amountPaid ?? 0);
+        const outstanding = calculateOutstandingAmount(total, paid);
         const dueDate = row.dueDate ?? row.docDate;
-        const daysPastDue = Math.floor(
-          (today.getTime() - new Date(dueDate).getTime()) / (24 * 60 * 60 * 1000),
-        );
+        const { dueState, daysPastDue } = resolveDueState({
+          dueDate,
+          outstandingAmount: outstanding,
+          paymentStatus: outstanding <= 0 ? PaymentStatus.PAID : PaymentStatus.UNPAID,
+          today,
+        });
         const bucket = resolveAgingBucket(daysPastDue);
         summary[bucket] += outstanding;
 
@@ -253,8 +268,11 @@ export class ReportsService {
           docNo: row.docNo,
           docDate: row.docDate,
           dueDate,
+          total,
+          paid,
           daysPastDue,
           outstanding,
+          dueState,
           party:
             partyKey === 'customer'
               ? row.customer ?? null
@@ -266,6 +284,8 @@ export class ReportsService {
     return {
       summary,
       totalOutstanding: Object.values(summary).reduce((total, amount) => total + amount, 0),
+      openCount: items.length,
+      overdueCount: items.filter((row) => row.dueState === 'OVERDUE').length,
       items,
     };
   }

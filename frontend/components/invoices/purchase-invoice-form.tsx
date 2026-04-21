@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { SelectInput } from '@/components/crud/select-input';
@@ -42,6 +42,12 @@ function parseApiError(error: unknown) {
   return 'Ndodhi nje gabim.';
 }
 
+function addDaysToIsoDate(value: string, days: number) {
+  const next = new Date(value);
+  next.setDate(next.getDate() + days);
+  return next.toISOString().slice(0, 10);
+}
+
 export function PurchaseInvoiceForm({
   mode,
   data,
@@ -71,6 +77,11 @@ export function PurchaseInvoiceForm({
     notes: data?.notes ?? '',
   });
 
+  const selectedSupplier = useMemo(
+    () => suppliers.find((entry) => entry.id === form.supplierId),
+    [suppliers, form.supplierId],
+  );
+
   const [lines, setLines] = useState<InvoiceLineModel[]>(
     data?.lines?.length
       ? data.lines.map((line: any) => ({
@@ -85,12 +96,45 @@ export function PurchaseInvoiceForm({
 
   const totals = useMemo(() => calcTotals(lines), [lines]);
 
+  useEffect(() => {
+    if (mode !== 'create') return;
+    if (form.dueDate) return;
+
+    const termsDays = Number(selectedSupplier?.paymentTermsDays ?? 0);
+    if (!termsDays || termsDays < 0) return;
+
+    setForm((current) => ({
+      ...current,
+      dueDate: addDaysToIsoDate(current.docDate, termsDays),
+    }));
+  }, [mode, selectedSupplier, form.dueDate, form.docDate]);
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
 
+    if (!form.seriesId) {
+      setApiError('Zgjidh serine e dokumentit.');
+      return;
+    }
+
+    if (!form.supplierId) {
+      setApiError('Zgjidh furnitorin.');
+      return;
+    }
+
+    if (!form.warehouseId) {
+      setApiError('Zgjidh magazinen.');
+      return;
+    }
+
+    if (form.dueDate && new Date(form.dueDate).getTime() < new Date(form.docDate).getTime()) {
+      setApiError('Afati i pageses nuk mund te jete para dates se dokumentit.');
+      return;
+    }
+
     const emptyLine = lines.findIndex((line) => !line.itemId);
     if (emptyLine !== -1) {
-      setApiError(`Line ${emptyLine + 1}: please select an item.`);
+      setApiError(`Rreshti ${emptyLine + 1}: zgjidh artikullin.`);
       return;
     }
 
@@ -190,6 +234,11 @@ export function PurchaseInvoiceForm({
             onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
           />
         </div>
+        {selectedSupplier?.paymentTermsDays ? (
+          <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-500">
+            Furnitori ka afat standard pagese prej {selectedSupplier.paymentTermsDays} dite.
+          </div>
+        ) : null}
         <TextareaInput
           label="Shenime"
           value={form.notes}

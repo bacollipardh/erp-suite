@@ -106,6 +106,11 @@ export function SalesInvoiceForm({
       return;
     }
 
+    if (form.dueDate && new Date(form.dueDate).getTime() < new Date(form.docDate).getTime()) {
+      setApiError('Afati i pageses nuk mund te jete para dates se dokumentit.');
+      return;
+    }
+
     const emptyLine = lines.findIndex((line) => !line.itemId);
     if (emptyLine !== -1) {
       setApiError(`Rreshti ${emptyLine + 1}: zgjidh artikullin.`);

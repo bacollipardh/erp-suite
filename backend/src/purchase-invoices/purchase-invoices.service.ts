@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DocumentStatus, MovementType } from '@prisma/client';
+import { DocumentStatus, MovementType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { StockService } from '../stock/stock.service';
@@ -9,7 +9,11 @@ import { CreatePurchaseInvoiceDto } from './dto/create-purchase-invoice.dto';
 import { UpdatePurchaseInvoiceDto } from './dto/update-purchase-invoice.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
-import { resolvePaymentStatus } from '../common/utils/payments';
+import {
+  calculateOutstandingAmount,
+  resolveDueState,
+  resolvePaymentStatus,
+} from '../common/utils/payments';
 import { RecordPaymentDto } from '../common/dto/record-payment.dto';
 
 @Injectable()
@@ -53,23 +57,22 @@ export class PurchaseInvoicesService {
       this.prisma.purchaseInvoice.count({ where }),
     ]);
 
-    return toPaginatedResponse({ items, total, page, limit });
+    return toPaginatedResponse({
+      items: items.map((item) => this.enrichDocumentState(item)),
+      total,
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string) {
-    const doc = await this.prisma.purchaseInvoice.findUnique({
-      where: { id },
-      include: {
-        supplier: true,
-        warehouse: true,
-        series: true,
-        createdBy: true,
-        postedBy: true,
-        lines: { include: { item: true } },
-      },
-    });
-    if (!doc) throw new NotFoundException('Purchase invoice not found');
-    return doc;
+    const doc = await this.findOneWithoutPayments(id);
+    const payments = await this.getPayments(id);
+
+    return {
+      ...this.enrichDocumentState(doc),
+      payments,
+    };
   }
 
   private calculateLines(lines: CreatePurchaseInvoiceDto['lines']) {
@@ -104,10 +107,132 @@ export class PurchaseInvoicesService {
     return { lines: mapped, subtotal, discountTotal, taxTotal, grandTotal };
   }
 
+  private validateDueDate(docDate: string, dueDate?: string) {
+    if (!dueDate) return;
+
+    if (new Date(dueDate).getTime() < new Date(docDate).getTime()) {
+      throw new BadRequestException('Due date cannot be earlier than document date');
+    }
+  }
+
+  private enrichDocumentState<T extends { grandTotal: unknown; amountPaid?: unknown; dueDate?: Date | null; paymentStatus?: unknown }>(
+    doc: T,
+  ) {
+    const outstandingAmount = calculateOutstandingAmount(
+      Number(doc.grandTotal ?? 0),
+      Number(doc.amountPaid ?? 0),
+    );
+    const { dueState, daysPastDue } = resolveDueState({
+      dueDate: doc.dueDate,
+      outstandingAmount,
+      paymentStatus: doc.paymentStatus as any,
+    });
+
+    return {
+      ...doc,
+      outstandingAmount,
+      dueState,
+      daysPastDue,
+    };
+  }
+
+  private async findOneWithoutPayments(id: string) {
+    const doc = await this.prisma.purchaseInvoice.findUnique({
+      where: { id },
+      include: {
+        supplier: true,
+        warehouse: true,
+        series: true,
+        createdBy: true,
+        postedBy: true,
+        lines: { include: { item: true } },
+      },
+    });
+    if (!doc) throw new NotFoundException('Purchase invoice not found');
+    return doc;
+  }
+
+  async getPayments(id: string) {
+    await this.findOneWithoutPayments(id);
+
+    const entries = await this.auditLogs.findEntityLogs({
+      entityType: 'purchase_invoices',
+      entityId: id,
+      action: 'RECORD_PAYMENT',
+      limit: 100,
+    });
+
+    return entries.map((entry) => ({
+      id: entry.id,
+      createdAt: entry.createdAt,
+      amount: Number((entry.metadata as any)?.amount ?? 0),
+      paidAt: (entry.metadata as any)?.paidAt ?? entry.createdAt,
+      referenceNo: (entry.metadata as any)?.referenceNo ?? null,
+      notes: (entry.metadata as any)?.notes ?? null,
+      user: entry.user,
+    }));
+  }
+
+  private async validateDraftInput(
+    dto: Pick<
+      CreatePurchaseInvoiceDto,
+      'seriesId' | 'supplierId' | 'warehouseId' | 'docDate' | 'dueDate' | 'lines'
+    >,
+    tx: Prisma.TransactionClient,
+  ) {
+    this.validateDueDate(dto.docDate, dto.dueDate);
+
+    const [series, supplier, warehouse] = await Promise.all([
+      tx.documentSeries.findUnique({ where: { id: dto.seriesId } }),
+      tx.supplier.findUnique({ where: { id: dto.supplierId } }),
+      tx.warehouse.findUnique({ where: { id: dto.warehouseId } }),
+    ]);
+
+    if (!series || series.documentType !== 'PURCHASE_INVOICE' || !series.isActive) {
+      throw new BadRequestException('Purchase invoice series not found or inactive');
+    }
+
+    if (!supplier || !supplier.isActive) {
+      throw new BadRequestException('Supplier not found or inactive');
+    }
+
+    if (!warehouse || !warehouse.isActive) {
+      throw new BadRequestException('Warehouse not found or inactive');
+    }
+
+    const uniqueItemIds = [...new Set(dto.lines.map((line) => line.itemId))];
+    const items = await tx.item.findMany({
+      where: { id: { in: uniqueItemIds } },
+      select: { id: true, isActive: true },
+    });
+
+    if (items.length !== uniqueItemIds.length) {
+      throw new BadRequestException('One or more purchase invoice items were not found');
+    }
+
+    if (items.some((item) => !item.isActive)) {
+      throw new BadRequestException('Purchase invoice contains inactive items');
+    }
+  }
+
+  private toDraftLineInput(existing: Awaited<ReturnType<PurchaseInvoicesService['findOneWithoutPayments']>>) {
+    return existing.lines.map((line) => ({
+      itemId: line.itemId,
+      description: line.description ?? undefined,
+      qty: Number(line.qty),
+      unitPrice: Number(line.unitPrice),
+      discountPercent: Number(line.discountPercent ?? 0),
+      discountAmount: Number(line.discountAmount ?? 0),
+      taxPercent: Number(line.taxPercent),
+    }));
+  }
+
   async create(dto: CreatePurchaseInvoiceDto, userId: string) {
     const calc = this.calculateLines(dto.lines);
 
     const doc = await this.prisma.$transaction(async (tx) => {
+      await this.validateDraftInput(dto, tx);
+
       const series = await tx.documentSeries.findUnique({ where: { id: dto.seriesId } });
       if (!series) throw new BadRequestException('Series not found');
 
@@ -161,8 +286,27 @@ export class PurchaseInvoicesService {
       throw new BadRequestException('Only DRAFT purchase invoice can be updated');
     }
 
+    if (dto.seriesId && dto.seriesId !== existing.seriesId) {
+      throw new BadRequestException('Series cannot be changed after draft creation');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       let calc: ReturnType<PurchaseInvoicesService['calculateLines']> | null = null;
+      const draftInput = {
+        seriesId: existing.seriesId,
+        supplierId: dto.supplierId ?? existing.supplierId,
+        warehouseId: dto.warehouseId ?? existing.warehouseId,
+        docDate: dto.docDate ?? String(existing.docDate).slice(0, 10),
+        dueDate:
+          dto.dueDate === undefined
+            ? existing.dueDate
+              ? String(existing.dueDate).slice(0, 10)
+              : undefined
+            : dto.dueDate,
+        lines: dto.lines ?? this.toDraftLineInput(existing),
+      };
+
+      await this.validateDraftInput(draftInput, tx);
 
       if (dto.lines?.length) {
         calc = this.calculateLines(dto.lines);
@@ -278,9 +422,11 @@ export class PurchaseInvoicesService {
         paidAt: dto.paidAt ?? new Date().toISOString(),
         referenceNo: dto.referenceNo,
         notes: dto.notes,
+        remainingAmount: calculateOutstandingAmount(total, nextPaid),
+        paymentStatusAfter: resolvePaymentStatus(total, nextPaid),
       },
     });
 
-    return updated;
+    return this.enrichDocumentState(updated);
   }
 }

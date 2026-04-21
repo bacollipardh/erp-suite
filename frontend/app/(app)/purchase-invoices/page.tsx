@@ -27,8 +27,11 @@ export default async function PurchaseInvoicesPage() {
           { key: 'supplier', title: 'Furnitori', render: (row: any) => row.supplier?.name ?? '-' },
           { key: 'warehouse', title: 'Magazina', render: (row: any) => row.warehouse?.name ?? '-' },
           { key: 'docDate', title: 'Data', render: (row: any) => String(row.docDate).slice(0, 10) },
+          { key: 'dueDate', title: 'Afati', render: (row: any) => row.dueDate ? String(row.dueDate).slice(0, 10) : '-' },
           { key: 'grandTotal', title: 'Totali', render: (row: any) => row.grandTotal },
+          { key: 'outstandingAmount', title: 'Mbetur', render: (row: any) => row.outstandingAmount },
           { key: 'paymentStatus', title: 'Pagesa', render: (row: any) => <StatusBadge value={row.paymentStatus} /> },
+          { key: 'dueState', title: 'Afati Pageses', render: (row: any) => <StatusBadge value={row.dueState} /> },
           { key: 'status', title: 'Statusi', render: (row: any) => <StatusBadge value={row.status} /> },
         ]}
       />

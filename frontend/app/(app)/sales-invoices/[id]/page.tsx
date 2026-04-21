@@ -40,8 +40,15 @@ export default async function EditSalesInvoicePage({
           status={doc.status}
           grandTotal={doc.grandTotal}
           amountPaid={doc.amountPaid}
+          outstandingAmount={doc.outstandingAmount}
+          settlementTotal={doc.settlementTotal}
+          creditedAmount={doc.creditedAmount}
+          settlementStatus={doc.settlementStatus}
           paymentStatus={doc.paymentStatus}
           dueDate={doc.dueDate}
+          dueState={doc.dueState}
+          daysPastDue={doc.daysPastDue}
+          payments={doc.payments}
           fiscalStatus={doc.fiscalStatus}
           fiscalReference={doc.fiscalReference}
           fiscalError={doc.fiscalError}

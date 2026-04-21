@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import { useSession } from '@/components/session-provider';
+import { StatusBadge } from '@/components/status-badge';
 
 type SalesReportResponse = {
   summary: {
@@ -39,13 +40,18 @@ type AgingReportResponse = {
     days90Plus: number;
   };
   totalOutstanding: number;
+  openCount: number;
+  overdueCount: number;
   items: {
     id: string;
     docNo: string;
     docDate: string;
     dueDate: string;
+    total: number;
+    paid: number;
     daysPastDue: number;
     outstanding: number;
+    dueState: string;
     party?: { id: string; name: string } | null;
   }[];
 };
@@ -166,9 +172,14 @@ function AgingCard({
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
-        <span className="text-sm font-semibold text-slate-900">
-          {fmt(report.totalOutstanding)} EUR
-        </span>
+        <div className="text-right">
+          <span className="text-sm font-semibold text-slate-900">
+            {fmt(report.totalOutstanding)} EUR
+          </span>
+          <p className="text-xs text-slate-400 mt-1">
+            {report.openCount} dokumente · {report.overdueCount} me vonese
+          </p>
+        </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {buckets.map((bucket) => (
@@ -205,8 +216,10 @@ function AgingTable({
                 <th className="px-4 py-2.5">Subjekti</th>
                 <th className="px-4 py-2.5">Data</th>
                 <th className="px-4 py-2.5">Afati</th>
-                <th className="px-4 py-2.5">Vonesa</th>
+                <th className="px-4 py-2.5 text-right">Totali</th>
+                <th className="px-4 py-2.5 text-right">Paguar</th>
                 <th className="px-4 py-2.5 text-right">Mbetur</th>
+                <th className="px-4 py-2.5">Afati Pageses</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -216,11 +229,26 @@ function AgingTable({
                   <td className="px-4 py-2.5 text-slate-700">{row.party?.name ?? '-'}</td>
                   <td className="px-4 py-2.5 text-slate-600">{fmtDate(row.docDate)}</td>
                   <td className="px-4 py-2.5 text-slate-600">{fmtDate(row.dueDate)}</td>
-                  <td className="px-4 py-2.5 text-slate-600">
-                    {row.daysPastDue > 0 ? `${row.daysPastDue} dite` : 'Ne afat'}
+                  <td className="px-4 py-2.5 text-right text-slate-600">
+                    {fmt(Number(row.total ?? 0))} EUR
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-slate-600">
+                    {fmt(Number(row.paid ?? 0))} EUR
                   </td>
                   <td className="px-4 py-2.5 text-right font-semibold text-slate-900">
                     {fmt(Number(row.outstanding ?? 0))} EUR
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge value={row.dueState} />
+                      <span className="text-xs text-slate-500">
+                        {row.dueState === 'NO_DUE_DATE'
+                          ? 'Pa afat'
+                          : row.daysPastDue > 0
+                            ? `${row.daysPastDue} dite`
+                            : 'Ne afat'}
+                      </span>
+                    </div>
                   </td>
                 </tr>
               ))}

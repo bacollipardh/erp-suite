@@ -56,4 +56,30 @@ export class AuditLogsService {
       },
     });
   }
+
+  async findEntityLogs(params: {
+    entityType: string;
+    entityId: string;
+    action?: string;
+    limit?: number;
+  }) {
+    return this.prisma.auditLog.findMany({
+      where: {
+        entityType: params.entityType,
+        entityId: params.entityId,
+        action: params.action,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: params.limit ?? 50,
+    });
+  }
 }

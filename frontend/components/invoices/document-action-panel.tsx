@@ -9,11 +9,26 @@ import { StatusBadge } from '@/components/status-badge';
 
 type DocumentType = 'sales-invoices' | 'purchase-invoices' | 'sales-returns';
 
+type PaymentEntry = {
+  id: string;
+  amount: number | string;
+  paidAt: string;
+  createdAt?: string;
+  referenceNo?: string | null;
+  notes?: string | null;
+  user?: { id: string; fullName: string; email?: string | null } | null;
+};
+
 function formatMoney(value: number) {
   return value.toLocaleString('sq-AL', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return '-';
+  return new Date(value).toLocaleDateString('sq-AL');
 }
 
 function parseApiError(error: unknown) {
@@ -35,8 +50,15 @@ export function DocumentActionPanel({
   status,
   grandTotal,
   amountPaid,
+  outstandingAmount,
+  settlementTotal,
+  creditedAmount,
+  settlementStatus,
   paymentStatus,
   dueDate,
+  dueState,
+  daysPastDue,
+  payments = [],
   fiscalStatus,
   fiscalReference,
   fiscalError,
@@ -47,8 +69,15 @@ export function DocumentActionPanel({
   status: string;
   grandTotal: number | string;
   amountPaid?: number | string | null;
+  outstandingAmount?: number | string | null;
+  settlementTotal?: number | string | null;
+  creditedAmount?: number | string | null;
+  settlementStatus?: string | null;
   paymentStatus?: string | null;
   dueDate?: string | null;
+  dueState?: string | null;
+  daysPastDue?: number | null;
+  payments?: PaymentEntry[];
   fiscalStatus?: string | null;
   fiscalReference?: string | null;
   fiscalError?: string | null;
@@ -58,7 +87,12 @@ export function DocumentActionPanel({
 
   const total = Number(grandTotal ?? 0);
   const paid = Number(amountPaid ?? 0);
-  const remaining = Math.max(0, total - paid);
+  const settlementBase = Number(settlementTotal ?? total);
+  const credited = Number(creditedAmount ?? 0);
+  const remaining = Math.max(
+    0,
+    Number(outstandingAmount ?? Math.max(0, settlementBase - paid)),
+  );
 
   const canRecordPayment =
     (documentType === 'sales-invoices' &&
@@ -69,6 +103,9 @@ export function DocumentActionPanel({
   const canFiscalize =
     (documentType === 'sales-invoices' || documentType === 'sales-returns') &&
     hasPermission(user?.permissions, PERMISSIONS.fiscalize);
+
+  const paymentActionBlocked =
+    status === 'DRAFT' || status === 'CANCELLED' || status === 'STORNO' || remaining <= 0;
 
   const [amount, setAmount] = useState(remaining > 0 ? remaining.toFixed(2) : '');
   const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 10));
@@ -95,9 +132,22 @@ export function DocumentActionPanel({
     setError(null);
     setMessage(null);
 
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      setBusyPayment(false);
+      setError('Shkruaj nje shume valide per pagesen.');
+      return;
+    }
+
+    if (numericAmount > remaining) {
+      setBusyPayment(false);
+      setError('Shuma e pageses nuk mund te kaloje vleren e mbetur.');
+      return;
+    }
+
     try {
       await api.post(`${documentType}/${documentId}/payments`, {
-        amount: Number(amount),
+        amount: numericAmount,
         paidAt,
         referenceNo: referenceNo || undefined,
         notes: notes || undefined,
@@ -140,7 +190,7 @@ export function DocumentActionPanel({
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Veprimet Operative</h2>
           <p className="text-sm text-slate-500 mt-1">
-            Menaxho pagesat, afatet dhe fiskalizimin pa dale nga dokumenti.
+            Menaxho pagesat, afatet, kreditet dhe fiskalizimin pa dale nga dokumenti.
           </p>
         </div>
         <div className="text-right">
@@ -160,7 +210,7 @@ export function DocumentActionPanel({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
         <div className="rounded-lg bg-slate-50 p-3">
           <p className="text-xs text-slate-500 mb-1">Statusi</p>
           <StatusBadge value={status} />
@@ -168,6 +218,9 @@ export function DocumentActionPanel({
         <div className="rounded-lg bg-slate-50 p-3">
           <p className="text-xs text-slate-500 mb-1">Totali</p>
           <p className="text-sm font-semibold text-slate-900">{formatMoney(total)} EUR</p>
+          {documentType === 'sales-invoices' && credited > 0 ? (
+            <p className="text-xs text-slate-400 mt-1">Kredi nga kthimet: {formatMoney(credited)} EUR</p>
+          ) : null}
         </div>
         <div className="rounded-lg bg-slate-50 p-3">
           <p className="text-xs text-slate-500 mb-1">Paguar</p>
@@ -179,11 +232,26 @@ export function DocumentActionPanel({
           ) : null}
         </div>
         <div className="rounded-lg bg-slate-50 p-3">
+          <p className="text-xs text-slate-500 mb-1">Baza per shlyerje</p>
+          <p className="text-sm font-semibold text-slate-900">{formatMoney(settlementBase)} EUR</p>
+          {settlementStatus ? (
+            <div className="mt-2">
+              <StatusBadge value={settlementStatus} />
+            </div>
+          ) : null}
+        </div>
+        <div className="rounded-lg bg-slate-50 p-3">
           <p className="text-xs text-slate-500 mb-1">Mbetur</p>
           <p className="text-sm font-semibold text-slate-900">{formatMoney(remaining)} EUR</p>
-          <p className="text-xs text-slate-400 mt-1">
-            Afati: {dueDate ? String(dueDate).slice(0, 10) : 'nuk eshte caktuar'}
-          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {dueState ? <StatusBadge value={dueState} /> : null}
+            <span className="text-xs text-slate-400">
+              Afati: {dueDate ? formatDate(dueDate) : 'nuk eshte caktuar'}
+            </span>
+          </div>
+          {Number(daysPastDue ?? 0) > 0 ? (
+            <p className="text-xs text-red-600 mt-2">{daysPastDue} dite ne vonese</p>
+          ) : null}
         </div>
         <div className="rounded-lg bg-slate-50 p-3">
           <p className="text-xs text-slate-500 mb-1">Fiskalizimi</p>
@@ -203,12 +271,12 @@ export function DocumentActionPanel({
             <div>
               <h3 className="text-sm font-semibold text-slate-900">Regjistro pagese</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Veprimi perditeson `amountPaid` dhe `paymentStatus`.
+                Veprimi perditeson `amountPaid`, `paymentStatus` dhe historikun e pagesave.
               </p>
             </div>
-            {status === 'DRAFT' ? (
+            {paymentActionBlocked ? (
               <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-1">
-                Postoje dokumentin para pageses
+                {status === 'DRAFT' ? 'Postoje dokumentin para pageses' : remaining <= 0 ? 'Dokumenti eshte i shlyer' : 'Veprimi nuk lejohet'}
               </span>
             ) : null}
           </div>
@@ -219,11 +287,12 @@ export function DocumentActionPanel({
               <input
                 type="number"
                 min={0.01}
+                max={remaining > 0 ? remaining : undefined}
                 step="0.01"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                disabled={status === 'DRAFT' || remaining <= 0}
+                disabled={paymentActionBlocked}
               />
             </label>
             <label className="block space-y-1">
@@ -233,7 +302,7 @@ export function DocumentActionPanel({
                 value={paidAt}
                 onChange={(e) => setPaidAt(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                disabled={status === 'DRAFT' || remaining <= 0}
+                disabled={paymentActionBlocked}
               />
             </label>
             <label className="block space-y-1">
@@ -243,7 +312,7 @@ export function DocumentActionPanel({
                 value={referenceNo}
                 onChange={(e) => setReferenceNo(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                disabled={status === 'DRAFT' || remaining <= 0}
+                disabled={paymentActionBlocked}
               />
             </label>
             <label className="block space-y-1">
@@ -253,7 +322,7 @@ export function DocumentActionPanel({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                disabled={status === 'DRAFT' || remaining <= 0}
+                disabled={paymentActionBlocked}
               />
             </label>
           </div>
@@ -261,13 +330,49 @@ export function DocumentActionPanel({
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={busyPayment || status === 'DRAFT' || remaining <= 0}
+              disabled={busyPayment || paymentActionBlocked}
               className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               {busyPayment ? 'Duke regjistruar...' : 'Regjistro pagesen'}
             </button>
           </div>
         </form>
+      ) : null}
+
+      {payments.length > 0 ? (
+        <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+            <h3 className="text-sm font-semibold text-slate-900">Historiku i Pagesave</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-2.5">Data</th>
+                  <th className="px-4 py-2.5">Shuma</th>
+                  <th className="px-4 py-2.5">Referenca</th>
+                  <th className="px-4 py-2.5">Operatori</th>
+                  <th className="px-4 py-2.5">Shenime</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {payments.map((entry) => (
+                  <tr key={entry.id} className="hover:bg-slate-50/60">
+                    <td className="px-4 py-2.5 text-slate-600">{formatDate(entry.paidAt)}</td>
+                    <td className="px-4 py-2.5 font-semibold text-slate-900">
+                      {formatMoney(Number(entry.amount ?? 0))} EUR
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600">{entry.referenceNo ?? '-'}</td>
+                    <td className="px-4 py-2.5 text-slate-600">
+                      {entry.user?.fullName ?? entry.user?.email ?? '-'}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600">{entry.notes ?? '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : null}
 
       {canFiscalize && fiscalEndpoint ? (

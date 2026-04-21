@@ -39,8 +39,14 @@ export default async function EditPurchaseInvoicePage({
           status={doc.status}
           grandTotal={doc.grandTotal}
           amountPaid={doc.amountPaid}
+          outstandingAmount={doc.outstandingAmount}
+          settlementTotal={doc.settlementTotal}
+          settlementStatus={doc.settlementStatus}
           paymentStatus={doc.paymentStatus}
           dueDate={doc.dueDate}
+          dueState={doc.dueState}
+          daysPastDue={doc.daysPastDue}
+          payments={doc.payments}
         />
       </div>
 

@@ -9,6 +9,7 @@ import { CreateSalesReturnDto } from './dto/create-sales-return.dto';
 import { UpdateSalesReturnDto } from './dto/update-sales-return.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
+import { resolvePaymentStatus } from '../common/utils/payments';
 
 @Injectable()
 export class SalesReturnsService {
@@ -126,6 +127,8 @@ export class SalesReturnsService {
           status: true,
           warehouseId: true,
           docNo: true,
+          grandTotal: true,
+          amountPaid: true,
         },
       }),
     ]);
@@ -453,10 +456,21 @@ export class SalesReturnsService {
       }
 
       if (isAnyReturned) {
+        const returnsAgg = await tx.salesReturn.aggregate({
+          where: {
+            salesInvoiceId: salesInvoice.id,
+            status: DocumentStatus.POSTED,
+          },
+          _sum: { grandTotal: true },
+        });
+        const creditedTotal = Number(returnsAgg._sum.grandTotal ?? 0);
+        const settlementTotal = Math.max(0, Number(salesInvoice.grandTotal ?? 0) - creditedTotal);
+
         await tx.salesInvoice.update({
           where: { id: salesInvoice.id },
           data: {
             status: isFullyReturned ? DocumentStatus.FULLY_RETURNED : DocumentStatus.PARTIALLY_RETURNED,
+            paymentStatus: resolvePaymentStatus(settlementTotal, Number(salesInvoice.amountPaid ?? 0)),
           },
         });
       }

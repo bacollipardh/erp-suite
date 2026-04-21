@@ -7,7 +7,7 @@
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
     "build": "npm run build --prefix backend && npm run build --prefix frontend",
-    "typecheck": "npm run build --prefix frontend && npm run typecheck --prefix frontend",
+    "typecheck": "npm run typecheck --prefix frontend",
     "test": "npm run test --prefix backend -- --runInBand",
     "seed": "npm run seed --prefix backend",
     "prisma:generate": "npm run prisma:generate --prefix backend",

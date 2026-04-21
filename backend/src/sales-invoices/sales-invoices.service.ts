@@ -9,7 +9,11 @@ import { CreateSalesInvoiceDto } from './dto/create-sales-invoice.dto';
 import { UpdateSalesInvoiceDto } from './dto/update-sales-invoice.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
-import { resolvePaymentStatus } from '../common/utils/payments';
+import {
+  calculateOutstandingAmount,
+  resolveDueState,
+  resolvePaymentStatus,
+} from '../common/utils/payments';
 import { RecordPaymentDto } from '../common/dto/record-payment.dto';
 
 @Injectable()
@@ -45,6 +49,10 @@ export class SalesInvoicesService {
           paymentMethod: true,
           series: true,
           createdBy: true,
+          returns: {
+            where: { status: DocumentStatus.POSTED },
+            select: { id: true, grandTotal: true },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -53,24 +61,22 @@ export class SalesInvoicesService {
       this.prisma.salesInvoice.count({ where }),
     ]);
 
-    return toPaginatedResponse({ items, total, page, limit });
+    return toPaginatedResponse({
+      items: items.map((item) => this.enrichDocumentState(item)),
+      total,
+      page,
+      limit,
+    });
   }
 
   async findOne(id: string) {
-    const doc = await this.prisma.salesInvoice.findUnique({
-      where: { id },
-      include: {
-        customer: true,
-        warehouse: true,
-        paymentMethod: true,
-        series: true,
-        createdBy: true,
-        postedBy: true,
-        lines: { include: { item: true } },
-      },
-    });
-    if (!doc) throw new NotFoundException('Sales invoice not found');
-    return doc;
+    const doc = await this.findOneWithoutPayments(id);
+
+    const payments = await this.getPayments(id);
+    return {
+      ...this.enrichDocumentState(doc),
+      payments,
+    };
   }
 
   private calculateLines(lines: CreateSalesInvoiceDto['lines']) {
@@ -105,13 +111,106 @@ export class SalesInvoicesService {
     return { lines: mapped, subtotal, discountTotal, taxTotal, grandTotal };
   }
 
+  private validateDueDate(docDate: string, dueDate?: string) {
+    if (!dueDate) return;
+
+    if (new Date(dueDate).getTime() < new Date(docDate).getTime()) {
+      throw new BadRequestException('Due date cannot be earlier than document date');
+    }
+  }
+
+  private calculateCreditedAmount(doc: { returns?: { grandTotal: unknown }[] }) {
+    return round2(
+      (doc.returns ?? []).reduce((total, entry) => total + Number(entry.grandTotal ?? 0), 0),
+    );
+  }
+
+  private enrichDocumentState<
+    T extends {
+      grandTotal: unknown;
+      amountPaid?: unknown;
+      dueDate?: Date | null;
+      paymentStatus?: unknown;
+      returns?: { grandTotal: unknown }[];
+    },
+  >(
+    doc: T,
+  ) {
+    const creditedAmount = this.calculateCreditedAmount(doc);
+    const settlementTotal = round2(Math.max(0, Number(doc.grandTotal ?? 0) - creditedAmount));
+    const outstandingAmount = calculateOutstandingAmount(
+      settlementTotal,
+      Number(doc.amountPaid ?? 0),
+    );
+    const settlementStatus = resolvePaymentStatus(settlementTotal, Number(doc.amountPaid ?? 0));
+    const { dueState, daysPastDue } = resolveDueState({
+      dueDate: doc.dueDate,
+      outstandingAmount,
+      paymentStatus: settlementStatus,
+    });
+
+    return {
+      ...doc,
+      creditedAmount,
+      settlementTotal,
+      settlementStatus,
+      outstandingAmount,
+      dueState,
+      daysPastDue,
+    };
+  }
+
+  async getPayments(id: string) {
+    await this.findOneWithoutPayments(id);
+
+    const entries = await this.auditLogs.findEntityLogs({
+      entityType: 'sales_invoices',
+      entityId: id,
+      action: 'RECORD_PAYMENT',
+      limit: 100,
+    });
+
+    return entries.map((entry) => ({
+      id: entry.id,
+      createdAt: entry.createdAt,
+      amount: Number((entry.metadata as any)?.amount ?? 0),
+      paidAt: (entry.metadata as any)?.paidAt ?? entry.createdAt,
+      referenceNo: (entry.metadata as any)?.referenceNo ?? null,
+      notes: (entry.metadata as any)?.notes ?? null,
+      user: entry.user,
+    }));
+  }
+
+  private async findOneWithoutPayments(id: string) {
+    const doc = await this.prisma.salesInvoice.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        warehouse: true,
+        paymentMethod: true,
+        series: true,
+        createdBy: true,
+        postedBy: true,
+        lines: { include: { item: true } },
+        returns: {
+          where: { status: DocumentStatus.POSTED },
+          select: { id: true, grandTotal: true, docNo: true, status: true, createdAt: true },
+        },
+      },
+    });
+    if (!doc) throw new NotFoundException('Sales invoice not found');
+    return doc;
+  }
+
   private async validateDraftInput(
     dto: Pick<
       CreateSalesInvoiceDto,
-      'seriesId' | 'customerId' | 'warehouseId' | 'paymentMethodId' | 'lines'
+      'seriesId' | 'customerId' | 'warehouseId' | 'paymentMethodId' | 'docDate' | 'dueDate' | 'lines'
     >,
     tx: Prisma.TransactionClient,
   ) {
+    this.validateDueDate(dto.docDate, dto.dueDate);
+
     const [series, customer, warehouse, paymentMethod] = await Promise.all([
       tx.documentSeries.findUnique({ where: { id: dto.seriesId } }),
       tx.customer.findUnique({ where: { id: dto.customerId } }),
@@ -233,6 +332,13 @@ export class SalesInvoicesService {
         warehouseId: dto.warehouseId ?? existing.warehouseId,
         paymentMethodId:
           dto.paymentMethodId === undefined ? existing.paymentMethodId ?? undefined : dto.paymentMethodId,
+        docDate: dto.docDate ?? String(existing.docDate).slice(0, 10),
+        dueDate:
+          dto.dueDate === undefined
+            ? existing.dueDate
+              ? String(existing.dueDate).slice(0, 10)
+              : undefined
+            : dto.dueDate,
         lines: dto.lines ?? this.toDraftLineInput(existing),
       };
 
@@ -339,7 +445,7 @@ export class SalesInvoicesService {
       throw new BadRequestException('Only posted sales invoices can receive payments');
     }
 
-    const total = Number(existing.grandTotal);
+    const total = Number(existing.settlementTotal ?? existing.grandTotal);
     const currentPaid = Number(existing.amountPaid ?? 0);
     const nextPaid = round2(currentPaid + Number(dto.amount));
 
@@ -365,9 +471,11 @@ export class SalesInvoicesService {
         paidAt: dto.paidAt ?? new Date().toISOString(),
         referenceNo: dto.referenceNo,
         notes: dto.notes,
+        remainingAmount: calculateOutstandingAmount(total, nextPaid),
+        paymentStatusAfter: resolvePaymentStatus(total, nextPaid),
       },
     });
 
-    return updated;
+    return this.enrichDocumentState(updated);
   }
 }
