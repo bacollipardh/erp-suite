@@ -34,7 +34,11 @@ async function main() {
       },
     }),
     'auth/me',
-  );
+  ).then((response) => response.json()).then((me) => {
+    if (!me?.id || !Array.isArray(me?.permissions) || typeof me?.role !== 'string') {
+      throw new Error('auth/me did not return the expected session payload');
+    }
+  });
 
   await expectOk(
     await fetch(`${baseUrl}/dashboard/summary`, {

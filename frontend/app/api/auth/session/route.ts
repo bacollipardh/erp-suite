@@ -34,10 +34,22 @@ export async function GET(request: NextRequest) {
     return response;
   }
 
-  return new NextResponse(text, {
-    status: 200,
-    headers: {
-      'Content-Type': upstream.headers.get('content-type') ?? 'application/json',
+  const payload = JSON.parse(text) as {
+    id: string;
+    email: string;
+    fullName: string;
+    role: string;
+    permissions: string[];
+    isActive: boolean;
+  };
+
+  return NextResponse.json({
+    user: {
+      id: payload.id,
+      email: payload.email,
+      fullName: payload.fullName,
+      role: payload.role,
+      permissions: payload.permissions,
     },
   });
 }

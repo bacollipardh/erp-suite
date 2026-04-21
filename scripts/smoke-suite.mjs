@@ -362,7 +362,11 @@ async function main() {
       headers: { Cookie: cookieHeader },
     },
     'frontend session',
-  );
+  ).then((session) => {
+    if (!session?.user?.id || !Array.isArray(session?.user?.permissions) || typeof session?.user?.role !== 'string') {
+      throw new Error('frontend session did not return the expected user payload');
+    }
+  });
 
   await fetchJson(
     `${frontendBaseUrl}/api/proxy/dashboard/summary`,

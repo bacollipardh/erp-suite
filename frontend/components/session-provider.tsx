@@ -11,6 +11,43 @@ export type SessionUser = {
   permissions: string[];
 };
 
+function normalizeSessionUser(payload: unknown): SessionUser | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const value = payload as {
+    user?: SessionUser;
+    id?: string;
+    email?: string;
+    fullName?: string;
+    role?: string;
+    permissions?: string[];
+  };
+
+  if (value.user && typeof value.user === 'object') {
+    return value.user;
+  }
+
+  if (
+    typeof value.id === 'string' &&
+    typeof value.email === 'string' &&
+    typeof value.fullName === 'string' &&
+    typeof value.role === 'string' &&
+    Array.isArray(value.permissions)
+  ) {
+    return {
+      id: value.id,
+      email: value.email,
+      fullName: value.fullName,
+      role: value.role,
+      permissions: value.permissions,
+    };
+  }
+
+  return null;
+}
+
 type SessionContextValue = {
   user: SessionUser | null;
   loading: boolean;
@@ -33,7 +70,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const session = await clientSession();
-      setUser(session.user);
+      setUser(normalizeSessionUser(session));
     } catch {
       setUser(null);
     } finally {
