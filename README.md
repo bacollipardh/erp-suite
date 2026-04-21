@@ -125,6 +125,72 @@ npm run smoke:auth
 npm run smoke:full
 ```
 
+## Free live deploy
+
+For a zero-cost live demo, the cleanest setup for this repo is:
+
+- `frontend` on Render free web service
+- `backend` on Render free web service
+- PostgreSQL on Neon free
+
+The repo now includes [render.yaml](C:\Users\fatbardh.pacolli\Desktop\erp-suite - codex\render.yaml) so Render can create both app services from the repo automatically. The frontend can discover the backend over Render's internal network through `BACKEND_HOSTPORT`, which means the browser continues using the frontend's `/api/*` routes and does not need to talk to the backend directly.
+
+### 1. Create a Neon database
+
+Create a free Neon Postgres project and copy its connection string.
+
+Recommended value for `DATABASE_URL`:
+
+```env
+postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require
+```
+
+### 2. Deploy the app services on Render
+
+In Render:
+
+1. Create a new Blueprint and point it to this repository.
+2. Render will detect [render.yaml](C:\Users\fatbardh.pacolli\Desktop\erp-suite - codex\render.yaml) and create:
+   - `erp-suite-backend`
+   - `erp-suite-frontend`
+3. Before the first successful backend deploy, set these environment variables in Render:
+   - `DATABASE_URL` = your Neon connection string
+   - `CORS_ORIGIN` = your frontend Render URL after it is assigned, for example `https://erp-suite-frontend.onrender.com`
+4. Leave `JWT_SECRET` as the generated secret unless you want to manage your own.
+
+The frontend usually works without a manual `INTERNAL_API_BASE_URL` because it can derive the backend address from `BACKEND_HOSTPORT`. If you ever want to override it manually, set:
+
+```env
+INTERNAL_API_BASE_URL=https://your-backend-host/api
+NEXT_PUBLIC_API_BASE_URL=https://your-backend-host/api
+```
+
+### 3. Run migrations and seed the live database
+
+The backend container already runs `prisma migrate deploy` on startup. For demo data, run the seed from your machine against the same Neon database:
+
+```powershell
+cd backend
+$env:DATABASE_URL='your-neon-connection-string'
+npx prisma migrate deploy
+npm run seed
+```
+
+### 4. Open the live app
+
+Once Render finishes both deploys, open the frontend URL and log in with:
+
+- `admin@erp.local / Admin123!`
+- `manager@erp.local / Admin123!`
+- `sales@erp.local / Admin123!`
+- `purchase@erp.local / Admin123!`
+
+### 5. Important free-tier notes
+
+- Render free web services spin down after 15 minutes without traffic, so the first request after idle can take around a minute.
+- Render free Postgres expires after 30 days, which is why Neon is the better free database choice for this repo.
+- If you only want the fastest possible preview and do not care about the 30-day database limit, you can also swap Neon for a free Render Postgres instance.
+
 ## API changes worth knowing
 
 - Document list endpoints now support paginated responses:
