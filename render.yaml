@@ -30,12 +30,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: HOSTNAME
+        value: 0.0.0.0
       - key: BACKEND_HOSTPORT
         fromService:
           name: erp-suite-backend
           type: web
           property: hostport
-      - key: INTERNAL_API_BASE_URL
-        sync: false
-      - key: NEXT_PUBLIC_API_BASE_URL
-        sync: false
