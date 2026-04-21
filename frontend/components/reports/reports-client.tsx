@@ -1,7 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import { formatDateOnly } from '@/lib/date';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import { useSession } from '@/components/session-provider';
 import { StatusBadge } from '@/components/status-badge';
@@ -56,16 +58,39 @@ type AgingReportResponse = {
   }[];
 };
 
+type PaymentActivityResponse = {
+  summary: {
+    count: number;
+    visibleCount: number;
+    visibleAmount: number;
+    currentMonthAmount: number;
+    currentMonthCount: number;
+  };
+  items: {
+    id: string;
+    documentId: string;
+    docNo: string;
+    docDate: string;
+    dueDate?: string | null;
+    settlementTotal: number;
+    currentOutstandingAmount: number;
+    amount: number;
+    paidAt: string;
+    referenceNo?: string | null;
+    notes?: string | null;
+    remainingAmount: number;
+    paymentStatusAfter?: string | null;
+    createdAt: string;
+    user?: { id: string; fullName: string; email?: string | null } | null;
+    party?: { id: string; name: string } | null;
+  }[];
+};
+
 function fmt(value: number) {
   return value.toLocaleString('sq-AL', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-}
-
-function fmtDate(value?: string) {
-  if (!value) return '-';
-  return new Date(value).toLocaleDateString('sq-AL');
 }
 
 function parseApiError(error: unknown) {
@@ -177,7 +202,7 @@ function AgingCard({
             {fmt(report.totalOutstanding)} EUR
           </span>
           <p className="text-xs text-slate-400 mt-1">
-            {report.openCount} dokumente · {report.overdueCount} me vonese
+            {report.openCount} dokumente - {report.overdueCount} me vonese
           </p>
         </div>
       </div>
@@ -227,8 +252,8 @@ function AgingTable({
                 <tr key={row.id} className="hover:bg-slate-50/60">
                   <td className="px-4 py-2.5 font-mono text-xs text-slate-800">{row.docNo}</td>
                   <td className="px-4 py-2.5 text-slate-700">{row.party?.name ?? '-'}</td>
-                  <td className="px-4 py-2.5 text-slate-600">{fmtDate(row.docDate)}</td>
-                  <td className="px-4 py-2.5 text-slate-600">{fmtDate(row.dueDate)}</td>
+                  <td className="px-4 py-2.5 text-slate-600">{formatDateOnly(row.docDate)}</td>
+                  <td className="px-4 py-2.5 text-slate-600">{formatDateOnly(row.dueDate)}</td>
                   <td className="px-4 py-2.5 text-right text-slate-600">
                     {fmt(Number(row.total ?? 0))} EUR
                   </td>
@@ -260,6 +285,100 @@ function AgingTable({
   );
 }
 
+function PaymentActivityPanel({
+  title,
+  report,
+  emptyText,
+  documentBasePath,
+}: {
+  title: string;
+  report: PaymentActivityResponse;
+  emptyText: string;
+  documentBasePath: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+      <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
+          <p className="text-xs text-slate-500 mt-1">
+            {report.summary.visibleCount} rreshta ne pamje - {fmt(report.summary.visibleAmount)} EUR
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-right">
+          <div className="rounded-lg bg-white px-3 py-2 border border-slate-200">
+            <p className="text-[11px] uppercase tracking-wide text-slate-400">Kete muaj</p>
+            <p className="text-sm font-semibold text-slate-900">
+              {fmt(report.summary.currentMonthAmount)} EUR
+            </p>
+          </div>
+          <div className="rounded-lg bg-white px-3 py-2 border border-slate-200">
+            <p className="text-[11px] uppercase tracking-wide text-slate-400">Gjithsej regjistrime</p>
+            <p className="text-sm font-semibold text-slate-900">{report.summary.count}</p>
+          </div>
+        </div>
+      </div>
+
+      {report.items.length === 0 ? (
+        <div className="py-10 text-center text-sm text-slate-400">{emptyText}</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-2.5">Data Pageses</th>
+                <th className="px-4 py-2.5">Dokumenti</th>
+                <th className="px-4 py-2.5">Subjekti</th>
+                <th className="px-4 py-2.5">Data / Afati</th>
+                <th className="px-4 py-2.5 text-right">Shuma</th>
+                <th className="px-4 py-2.5 text-right">Mbetur Pas Pageses</th>
+                <th className="px-4 py-2.5">Statusi</th>
+                <th className="px-4 py-2.5">Operatori</th>
+                <th className="px-4 py-2.5">Referenca</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {report.items.map((row) => (
+                <tr key={row.id} className="hover:bg-slate-50/60">
+                  <td className="px-4 py-2.5 text-slate-600">{formatDateOnly(row.paidAt)}</td>
+                  <td className="px-4 py-2.5">
+                    <Link
+                      href={`${documentBasePath}/${row.documentId}`}
+                      className="font-mono text-xs text-indigo-700 hover:text-indigo-900"
+                    >
+                      {row.docNo}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-2.5 text-slate-700">{row.party?.name ?? '-'}</td>
+                  <td className="px-4 py-2.5 text-slate-600">
+                    <div className="space-y-1">
+                      <p>Data: {formatDateOnly(row.docDate)}</p>
+                      <p>Afati: {formatDateOnly(row.dueDate)}</p>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-slate-900">
+                    {fmt(Number(row.amount ?? 0))} EUR
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-slate-600">
+                    {fmt(Number(row.remainingAmount ?? 0))} EUR
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {row.paymentStatusAfter ? <StatusBadge value={row.paymentStatusAfter} /> : '-'}
+                  </td>
+                  <td className="px-4 py-2.5 text-slate-600">
+                    {row.user?.fullName ?? row.user?.email ?? '-'}
+                  </td>
+                  <td className="px-4 py-2.5 text-slate-600">{row.referenceNo ?? '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ReportsClient({
   customers,
   users,
@@ -281,6 +400,9 @@ export function ReportsClient({
   const [salesReport, setSalesReport] = useState<SalesReportResponse | null>(null);
   const [receivables, setReceivables] = useState<AgingReportResponse | null>(null);
   const [payables, setPayables] = useState<AgingReportResponse | null>(null);
+  const [receiptsActivity, setReceiptsActivity] = useState<PaymentActivityResponse | null>(null);
+  const [supplierPaymentsActivity, setSupplierPaymentsActivity] =
+    useState<PaymentActivityResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -296,6 +418,8 @@ export function ReportsClient({
           setSalesReport(null);
           setReceivables(null);
           setPayables(null);
+          setReceiptsActivity(null);
+          setSupplierPaymentsActivity(null);
         }
         return;
       }
@@ -314,13 +438,29 @@ export function ReportsClient({
               limitRecent: 100,
             })
           : Promise.resolve(null),
-        canReceivables ? api.query('reports/receivables-aging', { limit: 100 }) : Promise.resolve(null),
-        canPayables ? api.query('reports/payables-aging', { limit: 100 }) : Promise.resolve(null),
+        canReceivables
+          ? api.query('reports/receivables-aging', { limit: 100 })
+          : Promise.resolve(null),
+        canPayables
+          ? api.query('reports/payables-aging', { limit: 100 })
+          : Promise.resolve(null),
+        canReceivables
+          ? api.query('reports/receipts-activity', { limit: 10 })
+          : Promise.resolve(null),
+        canPayables
+          ? api.query('reports/supplier-payments-activity', { limit: 10 })
+          : Promise.resolve(null),
       ]);
 
       if (!active) return;
 
-      const [salesResult, receivableResult, payableResult] = tasks;
+      const [
+        salesResult,
+        receivableResult,
+        payableResult,
+        receiptsActivityResult,
+        supplierPaymentsResult,
+      ] = tasks;
 
       if (salesResult.status === 'fulfilled') {
         setSalesReport(salesResult.value as SalesReportResponse | null);
@@ -340,6 +480,20 @@ export function ReportsClient({
         setError(parseApiError(payableResult.reason));
       }
 
+      if (receiptsActivityResult.status === 'fulfilled') {
+        setReceiptsActivity(receiptsActivityResult.value as PaymentActivityResponse | null);
+      } else if (canReceivables) {
+        setError(parseApiError(receiptsActivityResult.reason));
+      }
+
+      if (supplierPaymentsResult.status === 'fulfilled') {
+        setSupplierPaymentsActivity(
+          supplierPaymentsResult.value as PaymentActivityResponse | null,
+        );
+      } else if (canPayables) {
+        setError(parseApiError(supplierPaymentsResult.reason));
+      }
+
       setLoading(false);
     }
 
@@ -348,7 +502,17 @@ export function ReportsClient({
     return () => {
       active = false;
     };
-  }, [canPayables, canReceivables, canSales, customerId, dateFrom, dateTo, sessionLoading, statusFilter, userId]);
+  }, [
+    canPayables,
+    canReceivables,
+    canSales,
+    customerId,
+    dateFrom,
+    dateTo,
+    sessionLoading,
+    statusFilter,
+    userId,
+  ]);
 
   const summary = salesReport?.summary ?? {
     count: 0,
@@ -383,17 +547,47 @@ export function ReportsClient({
       {canSales ? (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+            <select
+              value={customerId}
+              onChange={(e) => setCustomerId(e.target.value)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
               <option value="">Te gjithe klientet</option>
-              {customers.map((customer: any) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+              {customers.map((customer: any) => (
+                <option key={customer.id} value={customer.id}>
+                  {customer.name}
+                </option>
+              ))}
             </select>
-            <select value={userId} onChange={(e) => setUserId(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <select
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
               <option value="">Te gjithe agjentet</option>
-              {users.map((entry: any) => <option key={entry.id} value={entry.id}>{entry.fullName}</option>)}
+              {users.map((entry: any) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.fullName}
+                </option>
+              ))}
             </select>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
               <option value="POSTED">Vetem Postuar</option>
               <option value="ALL">Te gjitha</option>
               <option value="DRAFT">Vetem Draft</option>
@@ -427,7 +621,11 @@ export function ReportsClient({
       {canSales ? (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard label="Te Ardhura Bruto" value={`${fmt(summary.revenue)} EUR`} sub={`${summary.count} fatura`} />
+            <StatCard
+              label="Te Ardhura Bruto"
+              value={`${fmt(summary.revenue)} EUR`}
+              sub={`${summary.count} fatura`}
+            />
             <StatCard label="Nentotali" value={`${fmt(summary.netTotal)} EUR`} />
             <StatCard label="TVSH" value={`${fmt(summary.taxTotal)} EUR`} />
             <StatCard label="Mesatarja / Fature" value={`${fmt(summary.avg)} EUR`} />
@@ -445,7 +643,8 @@ export function ReportsClient({
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-800 mb-2">Gjendja e raportit</h2>
               <p className="text-sm text-slate-500">
-                Raporti ngarkohet nga backend me filtra server-side dhe nuk terheq te gjithe dataset-in ne frontend.
+                Raporti ngarkohet nga backend me filtra server-side dhe nuk terheq te gjithe
+                dataset-in ne frontend.
               </p>
               <p className="text-xs text-slate-400 mt-2">
                 {loading ? 'Duke rifreskuar te dhenat...' : 'Raporti eshte i perditesuar.'}
@@ -460,7 +659,9 @@ export function ReportsClient({
             {loading ? (
               <div className="py-10 text-center text-sm text-slate-400">Duke ngarkuar raportin...</div>
             ) : (salesReport?.recentInvoices ?? []).length === 0 ? (
-              <div className="py-10 text-center text-sm text-slate-400">Nuk ka fatura per filtrat e zgjedhur.</div>
+              <div className="py-10 text-center text-sm text-slate-400">
+                Nuk ka fatura per filtrat e zgjedhur.
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -479,14 +680,28 @@ export function ReportsClient({
                   <tbody className="divide-y divide-slate-50">
                     {(salesReport?.recentInvoices ?? []).map((invoice) => (
                       <tr key={invoice.id} className="hover:bg-slate-50/60">
-                        <td className="px-4 py-2.5 font-mono text-xs text-slate-800">{invoice.docNo}</td>
-                        <td className="px-4 py-2.5 text-slate-600">{fmtDate(invoice.docDate ?? invoice.createdAt)}</td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-slate-800">
+                          {invoice.docNo}
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-600">
+                          {formatDateOnly(invoice.docDate ?? invoice.createdAt)}
+                        </td>
                         <td className="px-4 py-2.5 text-slate-700">{invoice.customer?.name ?? '-'}</td>
-                        <td className="px-4 py-2.5 text-slate-600">{invoice.createdBy?.fullName ?? '-'}</td>
-                        <td className="px-4 py-2.5 text-right text-slate-600">{fmt(Number(invoice.subtotal ?? 0))}</td>
-                        <td className="px-4 py-2.5 text-right text-slate-600">{fmt(Number(invoice.taxTotal ?? 0))}</td>
-                        <td className="px-4 py-2.5 text-right font-semibold text-slate-900">{fmt(Number(invoice.grandTotal ?? 0))}</td>
-                        <td className="px-4 py-2.5 text-slate-600">{statusLabel[invoice.status] ?? invoice.status}</td>
+                        <td className="px-4 py-2.5 text-slate-600">
+                          {invoice.createdBy?.fullName ?? '-'}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-slate-600">
+                          {fmt(Number(invoice.subtotal ?? 0))}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-slate-600">
+                          {fmt(Number(invoice.taxTotal ?? 0))}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-slate-900">
+                          {fmt(Number(invoice.grandTotal ?? 0))}
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-600">
+                          {statusLabel[invoice.status] ?? invoice.status}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -501,6 +716,14 @@ export function ReportsClient({
         <>
           <AgingCard title="Receivables Aging" report={receivables} />
           <AgingTable title="Dokumentet e Hapura te Klienteve" report={receivables} />
+          {receiptsActivity ? (
+            <PaymentActivityPanel
+              title="Arketimet e Fundit"
+              report={receiptsActivity}
+              emptyText="Nuk ka arketime te regjistruara ende."
+              documentBasePath="/sales-invoices"
+            />
+          ) : null}
         </>
       ) : null}
 
@@ -508,6 +731,14 @@ export function ReportsClient({
         <>
           <AgingCard title="Payables Aging" report={payables} />
           <AgingTable title="Detyrimet ndaj Furnitoreve" report={payables} />
+          {supplierPaymentsActivity ? (
+            <PaymentActivityPanel
+              title="Pagesat e Fundit ndaj Furnitoreve"
+              report={supplierPaymentsActivity}
+              emptyText="Nuk ka pagesa te regjistruara ende."
+              documentBasePath="/purchase-invoices"
+            />
+          ) : null}
         </>
       ) : null}
     </div>

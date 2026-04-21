@@ -2,6 +2,7 @@ import { PageHeader } from '@/components/page-header';
 import { DataTable } from '@/components/data-table';
 import { StatusBadge } from '@/components/status-badge';
 import { api } from '@/lib/api';
+import { formatDateOnly } from '@/lib/date';
 import { PERMISSIONS } from '@/lib/permissions';
 import { requirePagePermission } from '@/lib/server-page-auth';
 
@@ -26,8 +27,8 @@ export default async function PurchaseInvoicesPage() {
           { key: 'docNo', title: 'Nr. Doc', render: (row: any) => row.docNo },
           { key: 'supplier', title: 'Furnitori', render: (row: any) => row.supplier?.name ?? '-' },
           { key: 'warehouse', title: 'Magazina', render: (row: any) => row.warehouse?.name ?? '-' },
-          { key: 'docDate', title: 'Data', render: (row: any) => String(row.docDate).slice(0, 10) },
-          { key: 'dueDate', title: 'Afati', render: (row: any) => row.dueDate ? String(row.dueDate).slice(0, 10) : '-' },
+          { key: 'docDate', title: 'Data', render: (row: any) => formatDateOnly(row.docDate) },
+          { key: 'dueDate', title: 'Afati', render: (row: any) => formatDateOnly(row.dueDate) },
           { key: 'grandTotal', title: 'Totali', render: (row: any) => row.grandTotal },
           { key: 'outstandingAmount', title: 'Mbetur', render: (row: any) => row.outstandingAmount },
           { key: 'paymentStatus', title: 'Pagesa', render: (row: any) => <StatusBadge value={row.paymentStatus} /> },

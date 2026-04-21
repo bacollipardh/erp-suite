@@ -10,6 +10,24 @@ function fmtMoney(value: number) {
   })} EUR`;
 }
 
+function buildAgingSubtitle(summary: {
+  openCount?: number;
+  overdueCount?: number;
+  dueTodayCount?: number;
+}) {
+  const parts = [`${summary.openCount ?? 0} dokumente te hapura`];
+
+  if ((summary.overdueCount ?? 0) > 0) {
+    parts.push(`${summary.overdueCount} me vonese`);
+  }
+
+  if ((summary.dueTodayCount ?? 0) > 0) {
+    parts.push(`${summary.dueTodayCount} skadojne sot`);
+  }
+
+  return parts.join(' - ');
+}
+
 export default async function DashboardPage() {
   await requirePagePermission(PERMISSIONS.dashboard);
   const summary = await api.getOne('dashboard/summary');
@@ -32,12 +50,27 @@ export default async function DashboardPage() {
         <StatsCard
           title="Arketime te Hapura"
           value={fmtMoney(Number(summary.outstanding.receivables ?? 0))}
+          subtitle={buildAgingSubtitle(summary.aging?.receivables ?? {})}
         />
         <StatsCard
           title="Detyrime te Hapura"
           value={fmtMoney(Number(summary.outstanding.payables ?? 0))}
+          subtitle={buildAgingSubtitle(summary.aging?.payables ?? {})}
         />
-        <StatsCard title="Shitje te Postuara" value={fmtMoney(Number(summary.totals.postedSales ?? 0))} />
+        <StatsCard
+          title="Arketime Kete Muaj"
+          value={fmtMoney(Number(summary.cashflow?.receiptsMonth ?? 0))}
+          subtitle="Te regjistruara nga pagesat e klienteve"
+        />
+        <StatsCard
+          title="Pagesa Kete Muaj"
+          value={fmtMoney(Number(summary.cashflow?.paymentsMonth ?? 0))}
+          subtitle="Te regjistruara ndaj furnitoreve"
+        />
+        <StatsCard
+          title="Shitje te Postuara"
+          value={fmtMoney(Number(summary.totals.postedSales ?? 0))}
+        />
         <StatsCard
           title="Blerje te Postuara"
           value={fmtMoney(Number(summary.totals.postedPurchases ?? 0))}

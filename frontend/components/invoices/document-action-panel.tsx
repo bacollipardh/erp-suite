@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { formatDateOnly, toDateInputValue } from '@/lib/date';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import { useSession } from '@/components/session-provider';
 import { StatusBadge } from '@/components/status-badge';
@@ -24,11 +25,6 @@ function formatMoney(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return '-';
-  return new Date(value).toLocaleDateString('sq-AL');
 }
 
 function parseApiError(error: unknown) {
@@ -108,7 +104,7 @@ export function DocumentActionPanel({
     status === 'DRAFT' || status === 'CANCELLED' || status === 'STORNO' || remaining <= 0;
 
   const [amount, setAmount] = useState(remaining > 0 ? remaining.toFixed(2) : '');
-  const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 10));
+  const [paidAt, setPaidAt] = useState(toDateInputValue(new Date()));
   const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
   const [busyPayment, setBusyPayment] = useState(false);
@@ -246,7 +242,7 @@ export function DocumentActionPanel({
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {dueState ? <StatusBadge value={dueState} /> : null}
             <span className="text-xs text-slate-400">
-              Afati: {dueDate ? formatDate(dueDate) : 'nuk eshte caktuar'}
+              Afati: {formatDateOnly(dueDate) !== '-' ? formatDateOnly(dueDate) : 'nuk eshte caktuar'}
             </span>
           </div>
           {Number(daysPastDue ?? 0) > 0 ? (
@@ -358,7 +354,7 @@ export function DocumentActionPanel({
               <tbody className="divide-y divide-slate-50">
                 {payments.map((entry) => (
                   <tr key={entry.id} className="hover:bg-slate-50/60">
-                    <td className="px-4 py-2.5 text-slate-600">{formatDate(entry.paidAt)}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{formatDateOnly(entry.paidAt)}</td>
                     <td className="px-4 py-2.5 font-semibold text-slate-900">
                       {formatMoney(Number(entry.amount ?? 0))} EUR
                     </td>

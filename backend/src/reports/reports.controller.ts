@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { SalesReportQueryDto } from './dto/sales-report-query.dto';
 import { AgingReportQueryDto } from './dto/aging-report-query.dto';
+import { PaginationDto } from '../common/dto/pagination.dto';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 
@@ -28,5 +29,17 @@ export class ReportsController {
   @RequirePermissions(PERMISSIONS.reportsPayables)
   getPayablesAging(@Query() query: AgingReportQueryDto) {
     return this.reportsService.getPayablesAging(query);
+  }
+
+  @Get('receipts-activity')
+  @RequirePermissions(PERMISSIONS.reportsReceivables)
+  getReceiptsActivity(@Query() query: PaginationDto) {
+    return this.reportsService.getReceiptsActivity(query);
+  }
+
+  @Get('supplier-payments-activity')
+  @RequirePermissions(PERMISSIONS.reportsPayables)
+  getSupplierPaymentsActivity(@Query() query: PaginationDto) {
+    return this.reportsService.getSupplierPaymentsActivity(query);
   }
 }

@@ -25,7 +25,7 @@ export default async function ReportsPage() {
       <div className="mb-5">
         <h1 className="text-xl font-bold text-slate-900">Raportet</h1>
         <p className="text-sm text-slate-500 mt-0.5">
-          Shitjet, arkëtimet dhe detyrimet me logjike server-side.
+          Shitjet, arketimet dhe detyrimet me logjike server-side.
         </p>
       </div>
       <ReportsClient customers={customers} users={users} />

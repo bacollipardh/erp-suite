@@ -3,6 +3,7 @@ import { PurchaseInvoiceForm } from '@/components/invoices/purchase-invoice-form
 import { PdfButtons } from '@/components/invoices/pdf-download-button';
 import { DocumentActionPanel } from '@/components/invoices/document-action-panel';
 import { api } from '@/lib/api';
+import { formatDateTime } from '@/lib/date';
 import { PERMISSIONS } from '@/lib/permissions';
 import { requirePagePermission } from '@/lib/server-page-auth';
 
@@ -26,7 +27,7 @@ export default async function EditPurchaseInvoicePage({
       <div className="flex items-start justify-between mb-4">
         <PageHeader
           title={`Fature Blerjeje ${doc.docNo}`}
-          description={`Statusi: ${doc.status} · Krijuar: ${new Date(doc.createdAt).toLocaleDateString('sq-AL')}`}
+          description={`Statusi: ${doc.status} - Krijuar: ${formatDateTime(doc.createdAt)}`}
         />
         <PdfButtons baseHref={`/api/proxy/pdf/purchase-invoices/${resolved.id}`} docNo={doc.docNo} />
       </div>

@@ -115,21 +115,35 @@ export class PurchaseInvoicesService {
     }
   }
 
-  private enrichDocumentState<T extends { grandTotal: unknown; amountPaid?: unknown; dueDate?: Date | null; paymentStatus?: unknown }>(
+  private enrichDocumentState<
+    T extends {
+      grandTotal: unknown;
+      amountPaid?: unknown;
+      dueDate?: Date | null;
+      paymentStatus?: unknown;
+    },
+  >(
     doc: T,
   ) {
+    const settlementTotal = round2(Number(doc.grandTotal ?? 0));
+    const settlementStatus = resolvePaymentStatus(
+      settlementTotal,
+      Number(doc.amountPaid ?? 0),
+    );
     const outstandingAmount = calculateOutstandingAmount(
-      Number(doc.grandTotal ?? 0),
+      settlementTotal,
       Number(doc.amountPaid ?? 0),
     );
     const { dueState, daysPastDue } = resolveDueState({
       dueDate: doc.dueDate,
       outstandingAmount,
-      paymentStatus: doc.paymentStatus as any,
+      paymentStatus: settlementStatus,
     });
 
     return {
       ...doc,
+      settlementTotal,
+      settlementStatus,
       outstandingAmount,
       dueState,
       daysPastDue,
