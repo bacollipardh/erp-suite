@@ -5,6 +5,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { formatDateOnly } from '@/lib/date';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
+import {
+  buildAgingCsv,
+  buildAgingExportFilename,
+  buildAgingMailtoHref,
+  type AgingExportKind,
+  triggerCsvDownload,
+} from '@/lib/report-export';
 import { useSession } from '@/components/session-provider';
 import { StatusBadge } from '@/components/status-badge';
 
@@ -90,6 +97,8 @@ type PaymentActivityResponse = {
   page: number;
   limit: number;
 };
+
+const AGING_EXPORT_LIMIT = 500;
 
 function fmt(value: number) {
   return value.toLocaleString('sq-AL', {
@@ -186,9 +195,11 @@ function RankingCard({
 function AgingCard({
   title,
   report,
+  actions,
 }: {
   title: string;
   report: AgingReportResponse;
+  actions?: import('react').ReactNode;
 }) {
   const buckets = [
     { label: 'Aktuale', value: report.summary.current },
@@ -200,16 +211,19 @@ function AgingCard({
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
-        <div className="text-right">
-          <span className="text-sm font-semibold text-slate-900">
-            {fmt(report.totalOutstanding)} EUR
-          </span>
-          <p className="text-xs text-slate-400 mt-1">
-            {report.openCount} dokumente - {report.overdueCount} me vonese
-          </p>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
+          <div className="text-left lg:text-right">
+            <span className="text-sm font-semibold text-slate-900">
+              {fmt(report.totalOutstanding)} EUR
+            </span>
+            <p className="text-xs text-slate-400 mt-1">
+              {report.openCount} dokumente - {report.overdueCount} me vonese
+            </p>
+          </div>
         </div>
+        {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
       </div>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {buckets.map((bucket) => (
@@ -220,6 +234,41 @@ function AgingCard({
         ))}
       </div>
     </div>
+  );
+}
+
+function AgingReportActions({
+  kind,
+  loadingKey,
+  onAction,
+}: {
+  kind: AgingExportKind;
+  loadingKey: string | null;
+  onAction: (kind: AgingExportKind, action: 'csv' | 'email') => void;
+}) {
+  const csvKey = `${kind}-csv`;
+  const emailKey = `${kind}-email`;
+  const isBusy = Boolean(loadingKey);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => onAction(kind, 'csv')}
+        disabled={isBusy}
+        className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {loadingKey === csvKey ? 'Duke eksportuar...' : 'Export CSV'}
+      </button>
+      <button
+        type="button"
+        onClick={() => onAction(kind, 'email')}
+        disabled={isBusy}
+        className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {loadingKey === emailKey ? 'Duke pergatitur...' : 'Email Summary'}
+      </button>
+    </>
   );
 }
 
@@ -426,6 +475,8 @@ export function ReportsClient({
     useState<PaymentActivityResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (sessionLoading) return;
@@ -555,6 +606,32 @@ export function ReportsClient({
     [],
   );
 
+  async function fetchAgingExportReport(kind: AgingExportKind) {
+    const endpoint =
+      kind === 'receivables' ? 'reports/receivables-aging' : 'reports/payables-aging';
+    return (await api.query(endpoint, { limit: AGING_EXPORT_LIMIT })) as AgingReportResponse;
+  }
+
+  async function handleAgingAction(kind: AgingExportKind, action: 'csv' | 'email') {
+    const actionKey = `${kind}-${action}`;
+    setActionError(null);
+    setActionLoadingKey(actionKey);
+
+    try {
+      const report = await fetchAgingExportReport(kind);
+
+      if (action === 'csv') {
+        triggerCsvDownload(buildAgingExportFilename(kind), buildAgingCsv(kind, report));
+      } else {
+        window.location.href = buildAgingMailtoHref(kind, report);
+      }
+    } catch (actionFailure) {
+      setActionError(parseApiError(actionFailure));
+    } finally {
+      setActionLoadingKey(null);
+    }
+  }
+
   if (!sessionLoading && !canSales && !canReceivables && !canPayables) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -636,6 +713,12 @@ export function ReportsClient({
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
+        </div>
+      ) : null}
+
+      {actionError ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {actionError}
         </div>
       ) : null}
 
@@ -735,7 +818,17 @@ export function ReportsClient({
 
       {canReceivables && receivables ? (
         <>
-          <AgingCard title="Receivables Aging" report={receivables} />
+          <AgingCard
+            title="Receivables Aging"
+            report={receivables}
+            actions={
+              <AgingReportActions
+                kind="receivables"
+                loadingKey={actionLoadingKey}
+                onAction={handleAgingAction}
+              />
+            }
+          />
           <AgingTable title="Dokumentet e Hapura te Klienteve" report={receivables} />
           {receiptsActivity ? (
             <PaymentActivityPanel
@@ -751,7 +844,17 @@ export function ReportsClient({
 
       {canPayables && payables ? (
         <>
-          <AgingCard title="Payables Aging" report={payables} />
+          <AgingCard
+            title="Payables Aging"
+            report={payables}
+            actions={
+              <AgingReportActions
+                kind="payables"
+                loadingKey={actionLoadingKey}
+                onAction={handleAgingAction}
+              />
+            }
+          />
           <AgingTable title="Detyrimet ndaj Furnitoreve" report={payables} />
           {supplierPaymentsActivity ? (
             <PaymentActivityPanel
