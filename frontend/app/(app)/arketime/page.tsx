@@ -32,6 +32,7 @@ export default async function ReceiptsPage({
         title="Arketimet e klienteve"
         description="Kontrollo pagesat e regjistruara, mbetjet pas arketimit dhe dokumentet e lidhura."
         endpoint="reports/receipts-activity"
+        exportKind="receipts"
         parties={customers}
         partyLabel="Klienti"
         partyQueryKey="customerId"

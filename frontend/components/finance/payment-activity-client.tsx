@@ -7,6 +7,13 @@ import { StatsCard } from '@/components/stats-card';
 import { StatusBadge } from '@/components/status-badge';
 import { api } from '@/lib/api';
 import { formatDateOnly, formatDateTime } from '@/lib/date';
+import {
+  buildPaymentActivityCsv,
+  buildPaymentActivityExportFilename,
+  buildPaymentActivityMailtoHref,
+  type PaymentActivityExportKind,
+  triggerCsvDownload,
+} from '@/lib/report-export';
 
 type PartyOption = {
   id: string;
@@ -46,6 +53,8 @@ type PaymentActivityResponse = {
   pageCount: number;
 };
 
+const PAYMENT_ACTIVITY_EXPORT_LIMIT = 500;
+
 function formatMoney(value: number | string | null | undefined) {
   return Number(value ?? 0).toLocaleString('sq-AL', {
     minimumFractionDigits: 2,
@@ -59,6 +68,7 @@ export function PaymentActivityClient({
   partyLabel,
   partyQueryKey,
   documentBasePath,
+  exportKind,
   title,
   description,
   emptyText,
@@ -69,6 +79,7 @@ export function PaymentActivityClient({
   partyLabel: string;
   partyQueryKey: 'customerId' | 'supplierId';
   documentBasePath: string;
+  exportKind: PaymentActivityExportKind;
   title: string;
   description?: string;
   emptyText: string;
@@ -112,6 +123,8 @@ export function PaymentActivityClient({
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null);
 
   useEffect(() => {
     setSearch(initialFilters?.search ?? '');
@@ -192,12 +205,74 @@ export function PaymentActivityClient({
     };
   }, [payload.items]);
 
+  async function fetchExportPayload() {
+    return (await api.listPage(endpoint, {
+      page: 1,
+      limit: PAYMENT_ACTIVITY_EXPORT_LIMIT,
+      search,
+      dateFrom,
+      dateTo,
+      [partyQueryKey]: partyId,
+      statusAfter,
+      minAmount: minAmount ? Number(minAmount) : undefined,
+      maxAmount: maxAmount ? Number(maxAmount) : undefined,
+      sortBy,
+      sortOrder,
+    })) as PaymentActivityResponse;
+  }
+
+  async function handleExportAction(action: 'csv' | 'email') {
+    setActionError(null);
+    setActionLoadingKey(action);
+
+    try {
+      const exportPayload = await fetchExportPayload();
+
+      if (action === 'csv') {
+        triggerCsvDownload(
+          buildPaymentActivityExportFilename(exportKind),
+          buildPaymentActivityCsv(exportKind, exportPayload),
+        );
+      } else {
+        window.location.href = buildPaymentActivityMailtoHref(exportKind, exportPayload);
+      }
+    } catch (err: any) {
+      setActionError(err?.message ?? 'Eksporti i aktivitetit financiar deshtoi.');
+    } finally {
+      setActionLoadingKey(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-4">
-          <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-          {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+            {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
+            <p className="mt-2 text-xs text-slate-400">
+              Export-i dhe email summary respektojne filtrat aktuale deri ne{' '}
+              {PAYMENT_ACTIVITY_EXPORT_LIMIT} rreshta.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleExportAction('csv')}
+              disabled={loading || Boolean(actionLoadingKey)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {actionLoadingKey === 'csv' ? 'Duke eksportuar...' : 'Export CSV'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExportAction('email')}
+              disabled={loading || Boolean(actionLoadingKey)}
+              className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {actionLoadingKey === 'email' ? 'Duke pergatitur...' : 'Email Summary'}
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
           <input
@@ -355,6 +430,12 @@ export function PaymentActivityClient({
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
+        </div>
+      ) : null}
+
+      {actionError ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {actionError}
         </div>
       ) : null}
 

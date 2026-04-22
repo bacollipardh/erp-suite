@@ -28,10 +28,51 @@ type AgingExportReport = {
 };
 
 export type AgingExportKind = 'receivables' | 'payables';
+export type PaymentActivityExportKind = 'receipts' | 'supplier-payments';
+
+type PaymentActivityExportItem = {
+  id: string;
+  documentId: string;
+  docNo: string;
+  docDate: string;
+  dueDate?: string | null;
+  settlementTotal: number;
+  currentOutstandingAmount: number;
+  amount: number;
+  paidAt: string;
+  referenceNo?: string | null;
+  notes?: string | null;
+  remainingAmount: number;
+  paymentStatusAfter?: string | null;
+  createdAt: string;
+  user?: { id: string; fullName: string; email?: string | null } | null;
+  party?: { id: string; name: string } | null;
+};
+
+type PaymentActivityExportReport = {
+  summary: {
+    count: number;
+    visibleCount: number;
+    visibleAmount: number;
+    totalAmount: number;
+    currentMonthAmount: number;
+    currentMonthCount: number;
+  };
+  items: PaymentActivityExportItem[];
+  total: number;
+  pageCount: number;
+  page: number;
+  limit: number;
+};
 
 const KIND_LABELS: Record<AgingExportKind, string> = {
   receivables: 'Receivables',
   payables: 'Payables',
+};
+
+const PAYMENT_ACTIVITY_LABELS: Record<PaymentActivityExportKind, string> = {
+  receipts: 'Receipts',
+  'supplier-payments': 'Supplier payments',
 };
 
 const DUE_STATE_LABELS: Record<string, string> = {
@@ -144,6 +185,86 @@ export function buildAgingMailtoHref(kind: AgingExportKind, report: AgingExportR
     ...topOverdue.map(
       (row) =>
         `- ${row.docNo} | ${row.party?.name ?? '-'} | ${formatAmount(Number(row.outstanding ?? 0))} EUR | ${row.daysPastDue} dite | afati ${formatDateOnly(row.dueDate)}`,
+    ),
+  ].join('\n');
+
+  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+export function buildPaymentActivityExportFilename(
+  kind: PaymentActivityExportKind,
+  date = new Date(),
+) {
+  return `${kind}-${slugifyDate(date)}.csv`;
+}
+
+export function buildPaymentActivityCsv(
+  kind: PaymentActivityExportKind,
+  report: PaymentActivityExportReport,
+) {
+  const label = PAYMENT_ACTIVITY_LABELS[kind];
+  const rows = [
+    buildCsvRow([
+      `${label} Report`,
+      'Payment Date',
+      'Document',
+      'Party',
+      'Doc Date',
+      'Due Date',
+      'Amount',
+      'Remaining After',
+      'Current Outstanding',
+      'Status',
+      'Operator',
+      'Reference',
+      'Notes',
+    ]),
+    ...report.items.map((row) =>
+      buildCsvRow([
+        label,
+        formatDateOnly(row.paidAt),
+        row.docNo,
+        row.party?.name ?? '-',
+        formatDateOnly(row.docDate),
+        formatDateOnly(row.dueDate),
+        formatAmount(Number(row.amount ?? 0)),
+        formatAmount(Number(row.remainingAmount ?? 0)),
+        formatAmount(Number(row.currentOutstandingAmount ?? 0)),
+        row.paymentStatusAfter ?? '-',
+        row.user?.fullName ?? row.user?.email ?? '-',
+        row.referenceNo ?? '-',
+        row.notes ?? '',
+      ]),
+    ),
+  ];
+
+  return rows.join('\n');
+}
+
+export function buildPaymentActivityMailtoHref(
+  kind: PaymentActivityExportKind,
+  report: PaymentActivityExportReport,
+) {
+  const label = PAYMENT_ACTIVITY_LABELS[kind];
+  const subject = `${label} summary - ${slugifyDate()}`;
+  const topItems = [...report.items]
+    .sort((left, right) => Number(right.amount ?? 0) - Number(left.amount ?? 0))
+    .slice(0, 10);
+
+  const body = [
+    `${label} summary`,
+    `Gjeneruar me: ${new Date().toLocaleString('sq-AL')}`,
+    '',
+    `Gjithsej regjistrime: ${report.summary.count}`,
+    `Rreshta te filtruar: ${report.total}`,
+    `Shuma totale e filtruar: ${formatAmount(report.summary.totalAmount)} EUR`,
+    `Shuma kete muaj: ${formatAmount(report.summary.currentMonthAmount)} EUR`,
+    `Regjistrime kete muaj: ${report.summary.currentMonthCount}`,
+    '',
+    topItems.length > 0 ? 'Top pagesat sipas shumes:' : 'Nuk ka pagesa per filtrat e zgjedhur.',
+    ...topItems.map(
+      (row) =>
+        `- ${formatDateOnly(row.paidAt)} | ${row.docNo} | ${row.party?.name ?? '-'} | ${formatAmount(Number(row.amount ?? 0))} EUR | mbetur ${formatAmount(Number(row.currentOutstandingAmount ?? 0))} EUR`,
     ),
   ].join('\n');
 

@@ -32,6 +32,7 @@ export default async function SupplierPaymentsPage({
         title="Pagesat ndaj furnitoreve"
         description="Shiko kush eshte paguar, sa ka mbetur pas pageses dhe cila fature eshte prekur."
         endpoint="reports/supplier-payments-activity"
+        exportKind="supplier-payments"
         parties={suppliers}
         partyLabel="Furnitori"
         partyQueryKey="supplierId"
