@@ -1,8 +1,10 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { DueStateReminder } from '@/components/finance/due-state-reminder';
 import { formatDateOnly, toDateInputValue } from '@/lib/date';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import { useSession } from '@/components/session-provider';
@@ -99,6 +101,13 @@ export function DocumentActionPanel({
   const canFiscalize =
     (documentType === 'sales-invoices' || documentType === 'sales-returns') &&
     hasPermission(user?.permissions, PERMISSIONS.fiscalize);
+
+  const dedicatedPaymentHref =
+    documentType === 'sales-invoices'
+      ? `/arketime/new?documentId=${documentId}`
+      : documentType === 'purchase-invoices'
+        ? `/pagesat/new?documentId=${documentId}`
+        : null;
 
   const paymentActionBlocked =
     status === 'DRAFT' || status === 'CANCELLED' || status === 'STORNO' || remaining <= 0;
@@ -206,6 +215,15 @@ export function DocumentActionPanel({
         </div>
       ) : null}
 
+      {(dueState || remaining <= 0) && documentType !== 'sales-returns' ? (
+        <DueStateReminder
+          dueState={dueState}
+          dueDate={dueDate}
+          daysPastDue={daysPastDue}
+          outstandingAmount={remaining}
+        />
+      ) : null}
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
         <div className="rounded-lg bg-slate-50 p-3">
           <p className="text-xs text-slate-500 mb-1">Statusi</p>
@@ -270,11 +288,21 @@ export function DocumentActionPanel({
                 Veprimi perditeson `amountPaid`, `paymentStatus` dhe historikun e pagesave.
               </p>
             </div>
-            {paymentActionBlocked ? (
-              <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-1">
-                {status === 'DRAFT' ? 'Postoje dokumentin para pageses' : remaining <= 0 ? 'Dokumenti eshte i shlyer' : 'Veprimi nuk lejohet'}
-              </span>
-            ) : null}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {dedicatedPaymentHref ? (
+                <Link
+                  href={dedicatedPaymentHref}
+                  className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 hover:text-indigo-900"
+                >
+                  Hap faqen e dedikuar
+                </Link>
+              ) : null}
+              {paymentActionBlocked ? (
+                <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-1">
+                  {status === 'DRAFT' ? 'Postoje dokumentin para pageses' : remaining <= 0 ? 'Dokumenti eshte i shlyer' : 'Veprimi nuk lejohet'}
+                </span>
+              ) : null}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">

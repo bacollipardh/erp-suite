@@ -23,7 +23,7 @@ const STATUS_LABELS: Record<string, string> = {
   FAILED: 'Deshtoi',
   CURRENT: 'Ne Afat',
   DUE_TODAY: 'Afati Sot',
-  OVERDUE: 'Ne Vonesë',
+  OVERDUE: 'Ne Vonese',
   NO_DUE_DATE: 'Pa Afat',
 };
 
@@ -53,14 +53,14 @@ const STATUS_STYLES: Record<string, string> = {
   REJECTED: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
   FAILED: 'bg-red-50 text-red-700 ring-1 ring-red-200',
   CURRENT: 'bg-sky-50 text-sky-700 ring-1 ring-sky-200',
-  DUE_TODAY: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
-  OVERDUE: 'bg-red-50 text-red-700 ring-1 ring-red-200',
+  DUE_TODAY: 'bg-amber-100 text-amber-800 ring-1 ring-amber-300 shadow-sm',
+  OVERDUE: 'bg-red-100 text-red-800 ring-1 ring-red-300 shadow-sm',
   NO_DUE_DATE: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
 };
 
 export function StatusBadge({ value }: { value: string | boolean | null | undefined }) {
   const key = String(value ?? '');
-  const text = value === true ? 'Aktiv' : value === false ? 'Joaktiv' : (STATUS_LABELS[key] ?? key);
+  const text = value === true ? 'Aktiv' : value === false ? 'Joaktiv' : STATUS_LABELS[key] ?? key;
   const style = STATUS_STYLES[key] ?? 'bg-slate-100 text-slate-600 ring-1 ring-slate-200';
 
   return (

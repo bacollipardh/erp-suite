@@ -31,6 +31,11 @@ function buildAgingSubtitle(summary: {
 export default async function DashboardPage() {
   await requirePagePermission(PERMISSIONS.dashboard);
   const summary = await api.getOne('dashboard/summary');
+  const today = new Date();
+  const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1))
+    .toISOString()
+    .slice(0, 10);
+  const todayDate = today.toISOString().slice(0, 10);
 
   return (
     <div className="space-y-6">
@@ -51,21 +56,25 @@ export default async function DashboardPage() {
           title="Arketime te Hapura"
           value={fmtMoney(Number(summary.outstanding.receivables ?? 0))}
           subtitle={buildAgingSubtitle(summary.aging?.receivables ?? {})}
+          href="/arketime"
         />
         <StatsCard
           title="Detyrime te Hapura"
           value={fmtMoney(Number(summary.outstanding.payables ?? 0))}
           subtitle={buildAgingSubtitle(summary.aging?.payables ?? {})}
+          href="/pagesat"
         />
         <StatsCard
           title="Arketime Kete Muaj"
           value={fmtMoney(Number(summary.cashflow?.receiptsMonth ?? 0))}
           subtitle="Te regjistruara nga pagesat e klienteve"
+          href={`/arketime?dateFrom=${monthStart}&dateTo=${todayDate}`}
         />
         <StatsCard
           title="Pagesa Kete Muaj"
           value={fmtMoney(Number(summary.cashflow?.paymentsMonth ?? 0))}
           subtitle="Te regjistruara ndaj furnitoreve"
+          href={`/pagesat?dateFrom=${monthStart}&dateTo=${todayDate}`}
         />
         <StatsCard
           title="Shitje te Postuara"

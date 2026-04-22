@@ -62,6 +62,7 @@ export function PaymentActivityClient({
   title,
   description,
   emptyText,
+  initialFilters,
 }: {
   endpoint: string;
   parties: PartyOption[];
@@ -71,17 +72,29 @@ export function PaymentActivityClient({
   title: string;
   description?: string;
   emptyText: string;
+  initialFilters?: {
+    search?: string;
+    partyId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    statusAfter?: string;
+    minAmount?: string;
+    maxAmount?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+    page?: number;
+  };
 }) {
-  const [search, setSearch] = useState('');
-  const [partyId, setPartyId] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [statusAfter, setStatusAfter] = useState('');
-  const [minAmount, setMinAmount] = useState('');
-  const [maxAmount, setMaxAmount] = useState('');
-  const [sortBy, setSortBy] = useState('paidAt');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState(initialFilters?.search ?? '');
+  const [partyId, setPartyId] = useState(initialFilters?.partyId ?? '');
+  const [dateFrom, setDateFrom] = useState(initialFilters?.dateFrom ?? '');
+  const [dateTo, setDateTo] = useState(initialFilters?.dateTo ?? '');
+  const [statusAfter, setStatusAfter] = useState(initialFilters?.statusAfter ?? '');
+  const [minAmount, setMinAmount] = useState(initialFilters?.minAmount ?? '');
+  const [maxAmount, setMaxAmount] = useState(initialFilters?.maxAmount ?? '');
+  const [sortBy, setSortBy] = useState(initialFilters?.sortBy ?? 'paidAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(initialFilters?.sortOrder ?? 'desc');
+  const [page, setPage] = useState(initialFilters?.page ?? 1);
   const [payload, setPayload] = useState<PaymentActivityResponse>({
     summary: {
       count: 0,
@@ -99,6 +112,30 @@ export function PaymentActivityClient({
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSearch(initialFilters?.search ?? '');
+    setPartyId(initialFilters?.partyId ?? '');
+    setDateFrom(initialFilters?.dateFrom ?? '');
+    setDateTo(initialFilters?.dateTo ?? '');
+    setStatusAfter(initialFilters?.statusAfter ?? '');
+    setMinAmount(initialFilters?.minAmount ?? '');
+    setMaxAmount(initialFilters?.maxAmount ?? '');
+    setSortBy(initialFilters?.sortBy ?? 'paidAt');
+    setSortOrder(initialFilters?.sortOrder ?? 'desc');
+    setPage(initialFilters?.page ?? 1);
+  }, [
+    initialFilters?.dateFrom,
+    initialFilters?.dateTo,
+    initialFilters?.maxAmount,
+    initialFilters?.minAmount,
+    initialFilters?.page,
+    initialFilters?.partyId,
+    initialFilters?.search,
+    initialFilters?.sortBy,
+    initialFilters?.sortOrder,
+    initialFilters?.statusAfter,
+  ]);
 
   useEffect(() => {
     let active = true;
