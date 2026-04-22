@@ -17,6 +17,51 @@ const COSTED_IN_MOVEMENTS = new Set<MovementType>([
   MovementType.COUNT_IN,
 ]);
 
+type StockBalanceSummaryRow = {
+  qtyOnHand: number | { toString(): string };
+  avgCost: number | { toString(): string };
+  warehouseId: string;
+  itemId: string;
+  item: {
+    category: {
+      id: string;
+      name: string;
+    } | null;
+  };
+};
+
+type StockMovementSummaryRow = {
+  movementType: MovementType;
+  qtyIn: number | { toString(): string };
+  qtyOut: number | { toString(): string };
+  referenceNo: string | null;
+  movementAt: Date;
+  warehouseId: string;
+  itemId: string;
+  item: {
+    category: {
+      id: string;
+      name: string;
+    } | null;
+  };
+};
+
+function roundQty(value: number) {
+  return Math.round(value * 1000) / 1000;
+}
+
+function startOfDay(value: string) {
+  const date = new Date(value);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function endOfDay(value: string) {
+  const date = new Date(value);
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999),
+  );
+}
+
 @Injectable()
 export class StockService {
   constructor(
@@ -28,71 +73,140 @@ export class StockService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const { skip, take } = toPagination(page, limit);
-    const search = query.search?.trim();
+    const where = this.buildBalanceWhere(query);
 
-    const where = {
-      warehouseId: query.warehouseId,
-      itemId: query.itemId,
-      ...(search
-        ? {
-            OR: [
-              { warehouse: { name: { contains: search, mode: 'insensitive' as const } } },
-              { item: { name: { contains: search, mode: 'insensitive' as const } } },
-              { item: { code: { contains: search, mode: 'insensitive' as const } } },
-              { item: { barcode: { contains: search, mode: 'insensitive' as const } } },
-            ],
-          }
-        : {}),
-    };
-
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total, summaryRows] = await this.prisma.$transaction([
       this.prisma.stockBalance.findMany({
         where,
-        include: { item: true, warehouse: true },
+        include: {
+          warehouse: true,
+          item: {
+            include: {
+              category: true,
+              unit: true,
+            },
+          },
+        },
         orderBy: this.resolveBalanceOrder(query.sortBy, query.sortOrder),
         skip,
         take,
       }),
       this.prisma.stockBalance.count({ where }),
+      this.prisma.stockBalance.findMany({
+        where,
+        select: {
+          qtyOnHand: true,
+          avgCost: true,
+          warehouseId: true,
+          itemId: true,
+          item: {
+            select: {
+              category: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      }),
     ]);
 
-    return toPaginatedResponse({ items, total, page, limit });
+    return {
+      ...toPaginatedResponse({ items, total, page, limit }),
+      summary: this.buildBalanceSummary(summaryRows as StockBalanceSummaryRow[]),
+      appliedFilters: {
+        search: query.search ?? '',
+        warehouseId: query.warehouseId ?? null,
+        categoryId: query.categoryId ?? null,
+        itemId: query.itemId ?? null,
+        sortBy: query.sortBy ?? 'updatedAt',
+        sortOrder: query.sortOrder ?? 'desc',
+      },
+    };
   }
 
   async findMovements(query: StockMovementQueryDto = {}) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const { skip, take } = toPagination(page, limit);
-    const search = query.search?.trim();
+    const where = this.buildMovementWhere(query);
 
-    const where = {
-      warehouseId: query.warehouseId,
-      itemId: query.itemId,
-      movementType: query.movementType as MovementType | undefined,
-      ...(search
-        ? {
-            OR: [
-              { referenceNo: { contains: search, mode: 'insensitive' as const } },
-              { warehouse: { name: { contains: search, mode: 'insensitive' as const } } },
-              { item: { name: { contains: search, mode: 'insensitive' as const } } },
-              { item: { code: { contains: search, mode: 'insensitive' as const } } },
-            ],
-          }
-        : {}),
-    };
-
-    const [items, total] = await this.prisma.$transaction([
+    const [items, total, summaryRows] = await this.prisma.$transaction([
       this.prisma.stockMovement.findMany({
         where,
-        include: { item: true, warehouse: true },
+        include: {
+          warehouse: true,
+          item: {
+            include: {
+              category: true,
+              unit: true,
+            },
+          },
+          purchaseInvoice: {
+            select: {
+              id: true,
+              docNo: true,
+            },
+          },
+          salesInvoice: {
+            select: {
+              id: true,
+              docNo: true,
+            },
+          },
+          salesReturn: {
+            select: {
+              id: true,
+              docNo: true,
+            },
+          },
+        },
         orderBy: this.resolveMovementOrder(query.sortBy, query.sortOrder),
         skip,
         take,
       }),
       this.prisma.stockMovement.count({ where }),
+      this.prisma.stockMovement.findMany({
+        where,
+        select: {
+          movementType: true,
+          qtyIn: true,
+          qtyOut: true,
+          referenceNo: true,
+          movementAt: true,
+          warehouseId: true,
+          itemId: true,
+          item: {
+            select: {
+              category: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      }),
     ]);
 
-    return toPaginatedResponse({ items, total, page, limit });
+    return {
+      ...toPaginatedResponse({ items, total, page, limit }),
+      summary: this.buildMovementSummary(summaryRows as StockMovementSummaryRow[]),
+      appliedFilters: {
+        search: query.search ?? '',
+        warehouseId: query.warehouseId ?? null,
+        categoryId: query.categoryId ?? null,
+        itemId: query.itemId ?? null,
+        movementType: query.movementType ?? null,
+        dateFrom: query.dateFrom ?? null,
+        dateTo: query.dateTo ?? null,
+        sortBy: query.sortBy ?? 'movementAt',
+        sortOrder: query.sortOrder ?? 'desc',
+      },
+    };
   }
 
   async ensureSufficientStock(params: {
@@ -115,19 +229,22 @@ export class StockService {
     }
   }
 
-  async applyMovement(tx: PrismaService | any, params: {
-    warehouseId: string;
-    itemId: string;
-    movementType: MovementType;
-    qtyIn?: number;
-    qtyOut?: number;
-    unitCost?: number | null;
-    purchaseInvoiceId?: string;
-    salesInvoiceId?: string;
-    salesReturnId?: string;
-    referenceNo?: string;
-    movementAt?: Date;
-  }) {
+  async applyMovement(
+    tx: PrismaService | any,
+    params: {
+      warehouseId: string;
+      itemId: string;
+      movementType: MovementType;
+      qtyIn?: number;
+      qtyOut?: number;
+      unitCost?: number | null;
+      purchaseInvoiceId?: string;
+      salesInvoiceId?: string;
+      salesReturnId?: string;
+      referenceNo?: string;
+      movementAt?: Date;
+    },
+  ) {
     const qtyIn = Number(params.qtyIn ?? 0);
     const qtyOut = Number(params.qtyOut ?? 0);
 
@@ -465,10 +582,240 @@ export class StockService {
     return result;
   }
 
+  private buildBalanceWhere(query: StockBalanceQueryDto) {
+    const search = query.search?.trim();
+
+    return {
+      ...(query.warehouseId ? { warehouseId: query.warehouseId } : {}),
+      ...(query.itemId ? { itemId: query.itemId } : {}),
+      ...(query.categoryId
+        ? {
+            item: {
+              categoryId: query.categoryId,
+            },
+          }
+        : {}),
+      ...(search
+        ? {
+            AND: [
+              {
+                OR: [
+                  { warehouse: { name: { contains: search, mode: 'insensitive' as const } } },
+                  { item: { name: { contains: search, mode: 'insensitive' as const } } },
+                  { item: { code: { contains: search, mode: 'insensitive' as const } } },
+                  { item: { barcode: { contains: search, mode: 'insensitive' as const } } },
+                  {
+                    item: {
+                      category: {
+                        name: { contains: search, mode: 'insensitive' as const },
+                      },
+                    },
+                  },
+                ],
+              },
+            ],
+          }
+        : {}),
+    };
+  }
+
+  private buildMovementWhere(query: StockMovementQueryDto) {
+    const search = query.search?.trim();
+
+    return {
+      ...(query.warehouseId ? { warehouseId: query.warehouseId } : {}),
+      ...(query.itemId ? { itemId: query.itemId } : {}),
+      ...(query.categoryId
+        ? {
+            item: {
+              categoryId: query.categoryId,
+            },
+          }
+        : {}),
+      ...(query.movementType ? { movementType: query.movementType as MovementType } : {}),
+      ...(query.dateFrom || query.dateTo
+        ? {
+            movementAt: {
+              ...(query.dateFrom ? { gte: startOfDay(query.dateFrom) } : {}),
+              ...(query.dateTo ? { lte: endOfDay(query.dateTo) } : {}),
+            },
+          }
+        : {}),
+      ...(search
+        ? {
+            AND: [
+              {
+                OR: [
+                  { referenceNo: { contains: search, mode: 'insensitive' as const } },
+                  { warehouse: { name: { contains: search, mode: 'insensitive' as const } } },
+                  { item: { name: { contains: search, mode: 'insensitive' as const } } },
+                  { item: { code: { contains: search, mode: 'insensitive' as const } } },
+                  {
+                    item: {
+                      category: {
+                        name: { contains: search, mode: 'insensitive' as const },
+                      },
+                    },
+                  },
+                  {
+                    purchaseInvoice: {
+                      docNo: { contains: search, mode: 'insensitive' as const },
+                    },
+                  },
+                  {
+                    salesInvoice: {
+                      docNo: { contains: search, mode: 'insensitive' as const },
+                    },
+                  },
+                  {
+                    salesReturn: {
+                      docNo: { contains: search, mode: 'insensitive' as const },
+                    },
+                  },
+                ],
+              },
+            ],
+          }
+        : {}),
+    };
+  }
+
+  private buildBalanceSummary(rows: StockBalanceSummaryRow[]) {
+    let totalQty = 0;
+    let totalValue = 0;
+    const warehouseIds = new Set<string>();
+    const itemIds = new Set<string>();
+    const categoryMap = new Map<
+      string,
+      {
+        category: { id: string; name: string } | null;
+        totalQty: number;
+        totalValue: number;
+        itemIds: Set<string>;
+      }
+    >();
+
+    for (const row of rows) {
+      const qtyOnHand = Number(row.qtyOnHand ?? 0);
+      const avgCost = Number(row.avgCost ?? 0);
+      const stockValue = qtyOnHand * avgCost;
+      const categoryKey = row.item.category?.id ?? 'uncategorized';
+      const existing = categoryMap.get(categoryKey) ?? {
+        category: row.item.category ?? null,
+        totalQty: 0,
+        totalValue: 0,
+        itemIds: new Set<string>(),
+      };
+
+      totalQty += qtyOnHand;
+      totalValue += stockValue;
+      warehouseIds.add(row.warehouseId);
+      itemIds.add(row.itemId);
+      existing.totalQty += qtyOnHand;
+      existing.totalValue += stockValue;
+      existing.itemIds.add(row.itemId);
+      categoryMap.set(categoryKey, existing);
+    }
+
+    return {
+      rowCount: rows.length,
+      totalQty: roundQty(totalQty),
+      totalValue: Number(totalValue.toFixed(2)),
+      warehouseCount: warehouseIds.size,
+      itemCount: itemIds.size,
+      categoryCount: categoryMap.size,
+      topCategories: Array.from(categoryMap.values())
+        .map((row) => ({
+          category: row.category,
+          totalQty: roundQty(row.totalQty),
+          totalValue: Number(row.totalValue.toFixed(2)),
+          itemCount: row.itemIds.size,
+        }))
+        .sort((left, right) => right.totalValue - left.totalValue)
+        .slice(0, 8),
+    };
+  }
+
+  private buildMovementSummary(rows: StockMovementSummaryRow[]) {
+    let totalIn = 0;
+    let totalOut = 0;
+    let latestMovementAt: Date | null = null;
+    const warehouseIds = new Set<string>();
+    const itemIds = new Set<string>();
+    const categoryIds = new Set<string>();
+    const referenceNos = new Set<string>();
+    const movementMap = new Map<
+      MovementType,
+      {
+        movementType: MovementType;
+        count: number;
+        totalIn: number;
+        totalOut: number;
+      }
+    >();
+
+    for (const row of rows) {
+      const qtyIn = Number(row.qtyIn ?? 0);
+      const qtyOut = Number(row.qtyOut ?? 0);
+      const existing = movementMap.get(row.movementType) ?? {
+        movementType: row.movementType,
+        count: 0,
+        totalIn: 0,
+        totalOut: 0,
+      };
+
+      totalIn += qtyIn;
+      totalOut += qtyOut;
+      warehouseIds.add(row.warehouseId);
+      itemIds.add(row.itemId);
+      if (row.item.category?.id) {
+        categoryIds.add(row.item.category.id);
+      }
+      if (row.referenceNo) {
+        referenceNos.add(row.referenceNo);
+      }
+      if (!latestMovementAt || row.movementAt > latestMovementAt) {
+        latestMovementAt = row.movementAt;
+      }
+
+      existing.count += 1;
+      existing.totalIn += qtyIn;
+      existing.totalOut += qtyOut;
+      movementMap.set(row.movementType, existing);
+    }
+
+    return {
+      movementCount: rows.length,
+      totalIn: roundQty(totalIn),
+      totalOut: roundQty(totalOut),
+      netQty: roundQty(totalIn - totalOut),
+      referenceCount: referenceNos.size,
+      warehouseCount: warehouseIds.size,
+      itemCount: itemIds.size,
+      categoryCount: categoryIds.size,
+      latestMovementAt,
+      byType: Array.from(movementMap.values())
+        .map((row) => ({
+          movementType: row.movementType,
+          count: row.count,
+          totalIn: roundQty(row.totalIn),
+          totalOut: roundQty(row.totalOut),
+          netQty: roundQty(row.totalIn - row.totalOut),
+        }))
+        .sort((left, right) => right.count - left.count),
+    };
+  }
+
   private resolveBalanceOrder(sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc') {
     switch (sortBy) {
       case 'warehouse':
         return [{ warehouse: { name: sortOrder } }, { item: { name: 'asc' as const } }];
+      case 'category':
+        return [
+          { item: { category: { name: sortOrder } } },
+          { item: { name: 'asc' as const } },
+          { warehouse: { name: 'asc' as const } },
+        ];
       case 'item':
         return [{ item: { name: sortOrder } }, { warehouse: { name: 'asc' as const } }];
       case 'qtyOnHand':
@@ -484,6 +831,12 @@ export class StockService {
     switch (sortBy) {
       case 'warehouse':
         return [{ warehouse: { name: sortOrder } }, { movementAt: 'desc' as const }];
+      case 'category':
+        return [
+          { item: { category: { name: sortOrder } } },
+          { item: { name: 'asc' as const } },
+          { movementAt: 'desc' as const },
+        ];
       case 'item':
         return [{ item: { name: sortOrder } }, { movementAt: 'desc' as const }];
       case 'movementType':

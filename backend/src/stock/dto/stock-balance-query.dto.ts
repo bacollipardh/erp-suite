@@ -9,4 +9,8 @@ export class StockBalanceQueryDto extends PaginationDto {
   @IsOptional()
   @IsUUID()
   itemId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
 }

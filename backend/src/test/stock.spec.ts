@@ -1,9 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MovementType } from '@prisma/client';
-import { StockService } from '../stock/stock.service';
-import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { StockService } from '../stock/stock.service';
 
 const mockBalance = {
   warehouseId: 'wh-1',
@@ -16,10 +16,14 @@ const mockPrisma = {
   $transaction: jest.fn(),
   stockBalance: {
     findUnique: jest.fn(),
+    findMany: jest.fn(),
+    count: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   },
   stockMovement: {
+    findMany: jest.fn(),
+    count: jest.fn(),
     create: jest.fn(),
   },
 };
@@ -67,7 +71,141 @@ describe('StockService', () => {
     });
   });
 
-  describe('applyMovement — PURCHASE_IN updates avgCost', () => {
+  describe('findBalances', () => {
+    it('returns summary metadata for filtered balances', async () => {
+      mockPrisma.$transaction.mockResolvedValueOnce([
+        [
+          {
+            id: 'bal-1',
+            qtyOnHand: 5,
+            avgCost: 10,
+            updatedAt: new Date('2026-04-22T10:00:00.000Z'),
+            warehouse: { id: 'wh-1', name: 'Main Warehouse' },
+            item: {
+              id: 'item-1',
+              name: 'Laptop',
+              category: { id: 'cat-1', name: 'Goods' },
+              unit: { id: 'unit-1', name: 'Cope' },
+            },
+          },
+        ],
+        2,
+        [
+          {
+            qtyOnHand: 5,
+            avgCost: 10,
+            warehouseId: 'wh-1',
+            itemId: 'item-1',
+            item: { category: { id: 'cat-1', name: 'Goods' } },
+          },
+          {
+            qtyOnHand: 3,
+            avgCost: 12,
+            warehouseId: 'wh-1',
+            itemId: 'item-2',
+            item: { category: { id: 'cat-1', name: 'Goods' } },
+          },
+        ],
+      ]);
+
+      const result = await service.findBalances({
+        categoryId: 'cat-1',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(result.summary.totalQty).toBe(8);
+      expect(result.summary.totalValue).toBe(86);
+      expect(result.summary.warehouseCount).toBe(1);
+      expect(result.summary.itemCount).toBe(2);
+      expect(result.summary.categoryCount).toBe(1);
+      expect(result.summary.topCategories[0]).toEqual(
+        expect.objectContaining({
+          totalQty: 8,
+          totalValue: 86,
+          itemCount: 2,
+        }),
+      );
+    });
+  });
+
+  describe('findMovements', () => {
+    it('returns movement summary and breakdown for filtered scope', async () => {
+      const lastMovementAt = new Date('2026-04-21T09:30:00.000Z');
+
+      mockPrisma.$transaction.mockResolvedValueOnce([
+        [
+          {
+            id: 'mov-1',
+            movementType: MovementType.PURCHASE_IN,
+            qtyIn: 10,
+            qtyOut: 0,
+            movementAt: lastMovementAt,
+            warehouse: { id: 'wh-1', name: 'Main Warehouse' },
+            item: {
+              id: 'item-1',
+              name: 'Laptop',
+              category: { id: 'cat-1', name: 'Goods' },
+            },
+          },
+        ],
+        2,
+        [
+          {
+            movementType: MovementType.PURCHASE_IN,
+            qtyIn: 10,
+            qtyOut: 0,
+            referenceNo: 'FB-000001',
+            movementAt: new Date('2026-04-20T08:00:00.000Z'),
+            warehouseId: 'wh-1',
+            itemId: 'item-1',
+            item: { category: { id: 'cat-1', name: 'Goods' } },
+          },
+          {
+            movementType: MovementType.SALE_OUT,
+            qtyIn: 0,
+            qtyOut: 4,
+            referenceNo: 'FS-000001',
+            movementAt: lastMovementAt,
+            warehouseId: 'wh-1',
+            itemId: 'item-1',
+            item: { category: { id: 'cat-1', name: 'Goods' } },
+          },
+        ],
+      ]);
+
+      const result = await service.findMovements({
+        categoryId: 'cat-1',
+        dateFrom: '2026-04-01',
+        dateTo: '2026-04-30',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(result.summary.totalIn).toBe(10);
+      expect(result.summary.totalOut).toBe(4);
+      expect(result.summary.netQty).toBe(6);
+      expect(result.summary.referenceCount).toBe(2);
+      expect(result.summary.categoryCount).toBe(1);
+      expect(result.summary.latestMovementAt).toEqual(lastMovementAt);
+      expect(result.summary.byType).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            movementType: MovementType.PURCHASE_IN,
+            totalIn: 10,
+            totalOut: 0,
+          }),
+          expect.objectContaining({
+            movementType: MovementType.SALE_OUT,
+            totalIn: 0,
+            totalOut: 4,
+          }),
+        ]),
+      );
+    });
+  });
+
+  describe('applyMovement - PURCHASE_IN updates avgCost', () => {
     it('creates balance with correct avgCost when none exists', async () => {
       mockPrisma.stockBalance.findUnique.mockResolvedValueOnce(null);
       mockPrisma.stockMovement.create.mockResolvedValueOnce({});

@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsUUID } from 'class-validator';
+import { IsDateString, IsIn, IsOptional, IsUUID } from 'class-validator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
 export class StockMovementQueryDto extends PaginationDto {
@@ -9,6 +9,10 @@ export class StockMovementQueryDto extends PaginationDto {
   @IsOptional()
   @IsUUID()
   itemId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
 
   @IsOptional()
   @IsIn([
@@ -23,4 +27,12 @@ export class StockMovementQueryDto extends PaginationDto {
     'COUNT_OUT',
   ])
   movementType?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
 }
