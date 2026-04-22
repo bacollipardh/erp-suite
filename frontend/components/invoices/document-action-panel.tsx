@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { DueStateReminder } from '@/components/finance/due-state-reminder';
-import { formatDateOnly, toDateInputValue } from '@/lib/date';
+import { formatDateOnly, formatDateTime, toDateInputValue } from '@/lib/date';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import { useSession } from '@/components/session-provider';
 import { StatusBadge } from '@/components/status-badge';
@@ -14,9 +14,19 @@ type DocumentType = 'sales-invoices' | 'purchase-invoices' | 'sales-returns';
 
 type PaymentEntry = {
   id: string;
+  sequence?: number;
   amount: number | string;
   paidAt: string;
   createdAt?: string;
+  amountPaidBefore?: number | string | null;
+  amountPaidAfter?: number | string | null;
+  outstandingBefore?: number | string | null;
+  outstandingAfter?: number | string | null;
+  remainingAmount?: number | string | null;
+  settlementTotal?: number | string | null;
+  paymentStatusBefore?: string | null;
+  paymentStatusAfter?: string | null;
+  usedFallbackSnapshot?: boolean;
   referenceNo?: string | null;
   notes?: string | null;
   user?: { id: string; fullName: string; email?: string | null } | null;
@@ -27,6 +37,10 @@ function formatMoney(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function roundMoney(value: number) {
+  return Math.round((Number(value ?? 0) + Number.EPSILON) * 100) / 100;
 }
 
 function parseApiError(error: unknown) {
@@ -108,6 +122,12 @@ export function DocumentActionPanel({
       : documentType === 'purchase-invoices'
         ? `/pagesat/new?documentId=${documentId}`
         : null;
+  const paymentActivityHref =
+    documentType === 'sales-invoices'
+      ? `/arketime?search=${encodeURIComponent(docNo)}`
+      : documentType === 'purchase-invoices'
+        ? `/pagesat?search=${encodeURIComponent(docNo)}`
+        : null;
 
   const paymentActionBlocked =
     status === 'DRAFT' || status === 'CANCELLED' || status === 'STORNO' || remaining <= 0;
@@ -130,6 +150,31 @@ export function DocumentActionPanel({
     }
     return null;
   }, [documentId, documentType]);
+
+  const reconciliation = useMemo(() => {
+    const historyTotal = roundMoney(
+      payments.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0),
+    );
+    const delta = roundMoney(paid - historyTotal);
+    const hasHistory = payments.length > 0;
+    const hasMismatch = Math.abs(delta) >= 0.01;
+    const hasLegacyFallback = payments.some((entry) => Boolean(entry.usedFallbackSnapshot));
+    const hasAggregateWithoutHistory = paid > 0 && !hasHistory;
+    const isOverpaid = paid - settlementBase > 0.009;
+    const latestPayment = hasHistory ? payments[payments.length - 1] : null;
+
+    return {
+      historyTotal,
+      delta,
+      hasHistory,
+      hasMismatch,
+      hasLegacyFallback,
+      hasAggregateWithoutHistory,
+      isOverpaid,
+      latestPayment,
+      transactionCount: payments.length,
+    };
+  }, [paid, payments, settlementBase]);
 
   async function handlePayment(e: FormEvent) {
     e.preventDefault();
@@ -279,13 +324,110 @@ export function DocumentActionPanel({
         </div>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs text-slate-500 mb-1">Reconciliation</p>
+          <div className="flex items-center gap-2">
+            <StatusBadge
+              value={
+                reconciliation.isOverpaid
+                  ? 'FAILED'
+                  : reconciliation.hasAggregateWithoutHistory || reconciliation.hasMismatch
+                    ? 'PENDING'
+                    : 'ACCEPTED'
+              }
+            />
+            <span className="text-xs text-slate-500">
+              {reconciliation.isOverpaid
+                ? 'Pagese mbi bazen e shlyerjes'
+                : reconciliation.hasAggregateWithoutHistory
+                  ? 'Ka total te paguar pa histori'
+                  : reconciliation.hasMismatch
+                    ? 'Ka diference ne reconciliation'
+                    : 'Historiku perputhet me totalin'}
+            </span>
+          </div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs text-slate-500 mb-1">Totali nga historiku</p>
+          <p className="text-sm font-semibold text-slate-900">
+            {formatMoney(reconciliation.historyTotal)} EUR
+          </p>
+          <p className="text-xs text-slate-400 mt-1">
+            {reconciliation.transactionCount} regjistrime ne audit trail
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs text-slate-500 mb-1">Delta vs `amountPaid`</p>
+          <p
+            className={`text-sm font-semibold ${
+              Math.abs(reconciliation.delta) < 0.01 ? 'text-emerald-700' : 'text-amber-700'
+            }`}
+          >
+            {formatMoney(reconciliation.delta)} EUR
+          </p>
+          <p className="text-xs text-slate-400 mt-1">
+            0.00 do te thote reconciliation i paster
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs text-slate-500 mb-1">Pagesa e fundit</p>
+          {reconciliation.latestPayment ? (
+            <>
+              <p className="text-sm font-semibold text-slate-900">
+                {formatMoney(Number(reconciliation.latestPayment.amount ?? 0))} EUR
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                {formatDateOnly(reconciliation.latestPayment.paidAt)} ·{' '}
+                {reconciliation.latestPayment.user?.fullName ??
+                  reconciliation.latestPayment.user?.email ??
+                  'Pa operator'}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-slate-400">Nuk ka pagesa te regjistruara</p>
+          )}
+        </div>
+      </div>
+
+      {reconciliation.hasAggregateWithoutHistory ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Dokumenti ka `amountPaid` me vlere {formatMoney(paid)} EUR, por nuk ka histori pagesash ne
+          audit trail. Kjo zakonisht tregon data legacy ose hyrje te vjetra jashte workflow-it aktual.
+        </div>
+      ) : null}
+
+      {reconciliation.hasMismatch ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Totali i historikut te pagesave ({formatMoney(reconciliation.historyTotal)} EUR) nuk
+          perputhet me `amountPaid` ({formatMoney(paid)} EUR). Delta aktuale eshte{' '}
+          {formatMoney(reconciliation.delta)} EUR dhe duhet kontrolluar para mbylljes se dokumentit.
+        </div>
+      ) : null}
+
+      {reconciliation.isOverpaid ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          `amountPaid` tejkalon bazen e shlyerjes ({formatMoney(settlementBase)} EUR). Ky eshte sinjal
+          i forte per data inconsistency dhe duhet verifikuar menjehere.
+        </div>
+      ) : null}
+
+      {reconciliation.hasLegacyFallback ? (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+          Disa pagesa po shfaqen me snapshot fallback, sepse jane regjistruar para se te shtonim
+          metadata te plota `before/after`. Historiku vazhdon te lexohet, por entries e reja jane me
+          reconciliation me te detajuar.
+        </div>
+      ) : null}
+
       {canRecordPayment ? (
         <form onSubmit={handlePayment} className="rounded-xl border border-slate-200 p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-slate-900">Regjistro pagese</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Veprimi perditeson `amountPaid`, `paymentStatus` dhe historikun e pagesave.
+                Veprimi perditeson `amountPaid`, `paymentStatus` dhe snapshot-in `before/after` ne
+                historikun e pagesave.
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
@@ -295,6 +437,14 @@ export function DocumentActionPanel({
                   className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 hover:text-indigo-900"
                 >
                   Hap faqen e dedikuar
+                </Link>
+              ) : null}
+              {paymentActivityHref ? (
+                <Link
+                  href={paymentActivityHref}
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 hover:text-slate-900"
+                >
+                  Shiko aktivitetin e filtruar
                 </Link>
               ) : null}
               {paymentActionBlocked ? (
@@ -365,32 +515,107 @@ export function DocumentActionPanel({
 
       {payments.length > 0 ? (
         <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-            <h3 className="text-sm font-semibold text-slate-900">Historiku i Pagesave</h3>
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Timeline e Shlyerjes</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Gjendja para/pas cdo pagese per reconciliation me te thelle.
+              </p>
+            </div>
+            {paymentActivityHref ? (
+              <Link
+                href={paymentActivityHref}
+                className="text-xs font-medium text-indigo-700 hover:text-indigo-900"
+              >
+                Hap listen e plote te aktivitetit
+              </Link>
+            ) : null}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-2.5">#</th>
                   <th className="px-4 py-2.5">Data</th>
                   <th className="px-4 py-2.5">Shuma</th>
-                  <th className="px-4 py-2.5">Referenca</th>
-                  <th className="px-4 py-2.5">Operatori</th>
+                  <th className="px-4 py-2.5">Paguar Para / Pas</th>
+                  <th className="px-4 py-2.5">Mbetur Para / Pas</th>
+                  <th className="px-4 py-2.5">Statusi</th>
+                  <th className="px-4 py-2.5">Referenca / Operatori</th>
                   <th className="px-4 py-2.5">Shenime</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {payments.map((entry) => (
                   <tr key={entry.id} className="hover:bg-slate-50/60">
-                    <td className="px-4 py-2.5 text-slate-600">{formatDateOnly(entry.paidAt)}</td>
+                    <td className="px-4 py-2.5 text-xs font-mono text-slate-500">
+                      #{entry.sequence ?? '-'}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600">
+                      <div className="space-y-1">
+                        <p>{formatDateOnly(entry.paidAt)}</p>
+                        <p className="text-xs text-slate-400">
+                          Audit: {formatDateTime(entry.createdAt)}
+                        </p>
+                        {entry.usedFallbackSnapshot ? (
+                          <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                            legacy snapshot
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
                     <td className="px-4 py-2.5 font-semibold text-slate-900">
                       {formatMoney(Number(entry.amount ?? 0))} EUR
                     </td>
-                    <td className="px-4 py-2.5 text-slate-600">{entry.referenceNo ?? '-'}</td>
                     <td className="px-4 py-2.5 text-slate-600">
-                      {entry.user?.fullName ?? entry.user?.email ?? '-'}
+                      <div className="space-y-1">
+                        <p>{formatMoney(Number(entry.amountPaidBefore ?? 0))} EUR</p>
+                        <p className="text-xs text-slate-400">
+                          Pas: {formatMoney(Number(entry.amountPaidAfter ?? 0))} EUR
+                        </p>
+                      </div>
                     </td>
-                    <td className="px-4 py-2.5 text-slate-600">{entry.notes ?? '-'}</td>
+                    <td className="px-4 py-2.5 text-slate-600">
+                      <div className="space-y-1">
+                        <p>{formatMoney(Number(entry.outstandingBefore ?? 0))} EUR</p>
+                        <p className="text-xs text-slate-400">
+                          Pas: {formatMoney(Number(entry.outstandingAfter ?? entry.remainingAmount ?? 0))} EUR
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {entry.paymentStatusBefore ? <StatusBadge value={entry.paymentStatusBefore} /> : null}
+                        <span className="text-xs text-slate-400">→</span>
+                        {entry.paymentStatusAfter ? <StatusBadge value={entry.paymentStatusAfter} /> : null}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600">
+                      <div className="space-y-1">
+                        <p>{entry.referenceNo ?? '-'}</p>
+                        <p className="text-xs text-slate-400">
+                          {entry.user?.fullName ?? entry.user?.email ?? '-'}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600">
+                      {entry.notes ? (
+                        <div className="space-y-1">
+                          <p>{entry.notes}</p>
+                          {entry.settlementTotal !== undefined && entry.settlementTotal !== null ? (
+                            <p className="text-xs text-slate-400">
+                              Baza: {formatMoney(Number(entry.settlementTotal ?? 0))} EUR
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : entry.settlementTotal !== undefined && entry.settlementTotal !== null ? (
+                        <span className="text-xs text-slate-400">
+                          Baza: {formatMoney(Number(entry.settlementTotal ?? 0))} EUR
+                        </span>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

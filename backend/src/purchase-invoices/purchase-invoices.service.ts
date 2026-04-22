@@ -10,6 +10,7 @@ import { UpdatePurchaseInvoiceDto } from './dto/update-purchase-invoice.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
 import {
+  buildPaymentTimeline,
   calculateOutstandingAmount,
   resolveDueState,
   resolvePaymentStatus,
@@ -167,7 +168,7 @@ export class PurchaseInvoicesService {
   }
 
   async getPayments(id: string) {
-    await this.findOneWithoutPayments(id);
+    const doc = this.enrichDocumentState(await this.findOneWithoutPayments(id));
 
     const entries = await this.auditLogs.findEntityLogs({
       entityType: 'purchase_invoices',
@@ -176,15 +177,10 @@ export class PurchaseInvoicesService {
       limit: 100,
     });
 
-    return entries.map((entry) => ({
-      id: entry.id,
-      createdAt: entry.createdAt,
-      amount: Number((entry.metadata as any)?.amount ?? 0),
-      paidAt: (entry.metadata as any)?.paidAt ?? entry.createdAt,
-      referenceNo: (entry.metadata as any)?.referenceNo ?? null,
-      notes: (entry.metadata as any)?.notes ?? null,
-      user: entry.user,
-    }));
+    return buildPaymentTimeline({
+      entries,
+      settlementTotal: Number(doc.settlementTotal ?? doc.grandTotal ?? 0),
+    });
   }
 
   private async validateDraftInput(
@@ -413,6 +409,10 @@ export class PurchaseInvoicesService {
     const total = Number(existing.grandTotal);
     const currentPaid = Number(existing.amountPaid ?? 0);
     const nextPaid = round2(currentPaid + Number(dto.amount));
+    const outstandingBefore = calculateOutstandingAmount(total, currentPaid);
+    const outstandingAfter = calculateOutstandingAmount(total, nextPaid);
+    const paymentStatusBefore = resolvePaymentStatus(total, currentPaid);
+    const paymentStatusAfter = resolvePaymentStatus(total, nextPaid);
 
     if (nextPaid > total) {
       throw new BadRequestException('Payment exceeds the remaining payable amount');
@@ -422,7 +422,7 @@ export class PurchaseInvoicesService {
       where: { id },
       data: {
         amountPaid: nextPaid,
-        paymentStatus: resolvePaymentStatus(total, nextPaid),
+        paymentStatus: paymentStatusAfter,
       },
     });
 
@@ -436,8 +436,14 @@ export class PurchaseInvoicesService {
         paidAt: dto.paidAt ?? new Date().toISOString(),
         referenceNo: dto.referenceNo,
         notes: dto.notes,
-        remainingAmount: calculateOutstandingAmount(total, nextPaid),
-        paymentStatusAfter: resolvePaymentStatus(total, nextPaid),
+        settlementTotal: total,
+        amountPaidBefore: currentPaid,
+        amountPaidAfter: nextPaid,
+        outstandingBefore,
+        outstandingAfter,
+        remainingAmount: outstandingAfter,
+        paymentStatusBefore,
+        paymentStatusAfter,
       },
     });
 

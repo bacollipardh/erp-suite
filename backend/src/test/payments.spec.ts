@@ -1,5 +1,6 @@
 import { PaymentStatus } from '@prisma/client';
 import {
+  buildPaymentTimeline,
   calculateOutstandingAmount,
   resolveDueState,
   resolvePaymentStatus,
@@ -75,5 +76,95 @@ describe('resolvePaymentStatus', () => {
         today: new Date('2026-04-21T10:00:00Z'),
       }),
     ).toEqual({ dueState: 'PAID', daysPastDue: 0 });
+  });
+
+  it('builds a chronological payment timeline with before and after snapshots', () => {
+    const timeline = buildPaymentTimeline({
+      settlementTotal: 100,
+      entries: [
+        {
+          id: 'payment-2',
+          createdAt: new Date('2026-04-21T12:00:00Z'),
+          metadata: {
+            amount: 40,
+            paidAt: '2026-04-21',
+            settlementTotal: 100,
+            amountPaidBefore: 20,
+            amountPaidAfter: 60,
+            outstandingBefore: 80,
+            outstandingAfter: 40,
+            paymentStatusBefore: PaymentStatus.PARTIALLY_PAID,
+            paymentStatusAfter: PaymentStatus.PARTIALLY_PAID,
+          },
+        },
+        {
+          id: 'payment-1',
+          createdAt: new Date('2026-04-20T12:00:00Z'),
+          metadata: {
+            amount: 20,
+            paidAt: '2026-04-20',
+            settlementTotal: 100,
+            amountPaidBefore: 0,
+            amountPaidAfter: 20,
+            outstandingBefore: 100,
+            outstandingAfter: 80,
+            paymentStatusBefore: PaymentStatus.UNPAID,
+            paymentStatusAfter: PaymentStatus.PARTIALLY_PAID,
+          },
+        },
+      ],
+    });
+
+    expect(timeline).toHaveLength(2);
+    expect(timeline[0]).toMatchObject({
+      id: 'payment-1',
+      sequence: 1,
+      amountPaidBefore: 0,
+      amountPaidAfter: 20,
+      outstandingBefore: 100,
+      outstandingAfter: 80,
+      paymentStatusBefore: PaymentStatus.UNPAID,
+      paymentStatusAfter: PaymentStatus.PARTIALLY_PAID,
+      usedFallbackSnapshot: false,
+    });
+    expect(timeline[1]).toMatchObject({
+      id: 'payment-2',
+      sequence: 2,
+      amountPaidBefore: 20,
+      amountPaidAfter: 60,
+      outstandingBefore: 80,
+      outstandingAfter: 40,
+      paymentStatusBefore: PaymentStatus.PARTIALLY_PAID,
+      paymentStatusAfter: PaymentStatus.PARTIALLY_PAID,
+      usedFallbackSnapshot: false,
+    });
+  });
+
+  it('falls back to derived reconciliation snapshots for legacy payment entries', () => {
+    const timeline = buildPaymentTimeline({
+      settlementTotal: 100,
+      entries: [
+        {
+          id: 'legacy-payment',
+          createdAt: new Date('2026-04-20T10:00:00Z'),
+          metadata: {
+            amount: 35,
+            paidAt: '2026-04-20',
+          },
+        },
+      ],
+    });
+
+    expect(timeline[0]).toMatchObject({
+      id: 'legacy-payment',
+      sequence: 1,
+      amountPaidBefore: 0,
+      amountPaidAfter: 35,
+      outstandingBefore: 100,
+      outstandingAfter: 65,
+      paymentStatusBefore: PaymentStatus.UNPAID,
+      paymentStatusAfter: PaymentStatus.PARTIALLY_PAID,
+      usedFallbackSnapshot: true,
+    });
   });
 });
