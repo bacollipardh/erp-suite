@@ -10,6 +10,41 @@ const ACTIVE_DOCUMENT_STATUSES = [
   DocumentStatus.FULLY_RETURNED,
 ];
 
+type DashboardReceivableRow = {
+  id: string;
+  docNo: string;
+  docDate: Date;
+  dueDate: Date | null;
+  grandTotal: number | { toString(): string };
+  amountPaid: number | { toString(): string };
+  paymentStatus: PaymentStatus;
+  returns: { grandTotal: number | { toString(): string } }[];
+  customer: { id: string; name: string } | null;
+};
+
+type DashboardPayableRow = {
+  id: string;
+  docNo: string;
+  docDate: Date;
+  dueDate: Date | null;
+  grandTotal: number | { toString(): string };
+  amountPaid: number | { toString(): string };
+  paymentStatus: PaymentStatus;
+  supplier: { id: string; name: string } | null;
+};
+
+type CriticalReminder = {
+  id: string;
+  docNo: string;
+  docDate: Date;
+  dueDate: Date | null;
+  outstandingAmount: number;
+  settlementTotal: number;
+  dueState: string;
+  daysPastDue: number;
+  party: { id: string; name: string } | null;
+};
+
 function startOfMonth(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
 }
@@ -18,15 +53,7 @@ function startOfMonth(value: Date) {
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private summarizeReceivables(
-    rows: {
-      grandTotal: number | { toString(): string };
-      amountPaid: number | { toString(): string };
-      dueDate: Date | null;
-      paymentStatus: PaymentStatus;
-      returns: { grandTotal: number | { toString(): string } }[];
-    }[],
-  ) {
+  private summarizeReceivables(rows: DashboardReceivableRow[]) {
     return rows.reduce(
       (summary, row) => {
         const creditedAmount = round2(
@@ -65,14 +92,7 @@ export class DashboardService {
     );
   }
 
-  private summarizePayables(
-    rows: {
-      grandTotal: number | { toString(): string };
-      amountPaid: number | { toString(): string };
-      dueDate: Date | null;
-      paymentStatus: PaymentStatus;
-    }[],
-  ) {
+  private summarizePayables(rows: DashboardPayableRow[]) {
     return rows.reduce(
       (summary, row) => {
         const outstandingAmount = calculateOutstandingAmount(
@@ -105,6 +125,101 @@ export class DashboardService {
         currentCount: 0,
       },
     );
+  }
+
+  private buildReceivableReminderRows(rows: DashboardReceivableRow[]) {
+    return rows
+      .map((row) => {
+        const creditedAmount = round2(
+          row.returns.reduce((sum, entry) => sum + Number(entry.grandTotal ?? 0), 0),
+        );
+        const settlementTotal = round2(Math.max(0, Number(row.grandTotal ?? 0) - creditedAmount));
+        const outstandingAmount = calculateOutstandingAmount(
+          settlementTotal,
+          Number(row.amountPaid ?? 0),
+        );
+
+        if (outstandingAmount <= 0) {
+          return null;
+        }
+
+        const { dueState, daysPastDue } = resolveDueState({
+          dueDate: row.dueDate,
+          outstandingAmount,
+          paymentStatus: row.paymentStatus,
+        });
+
+        return {
+          id: row.id,
+          docNo: row.docNo,
+          docDate: row.docDate,
+          dueDate: row.dueDate,
+          settlementTotal,
+          outstandingAmount,
+          dueState,
+          daysPastDue,
+          party: row.customer,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+  }
+
+  private buildPayableReminderRows(rows: DashboardPayableRow[]) {
+    return rows
+      .map((row) => {
+        const settlementTotal = round2(Number(row.grandTotal ?? 0));
+        const outstandingAmount = calculateOutstandingAmount(
+          settlementTotal,
+          Number(row.amountPaid ?? 0),
+        );
+
+        if (outstandingAmount <= 0) {
+          return null;
+        }
+
+        const { dueState, daysPastDue } = resolveDueState({
+          dueDate: row.dueDate,
+          outstandingAmount,
+          paymentStatus: row.paymentStatus,
+        });
+
+        return {
+          id: row.id,
+          docNo: row.docNo,
+          docDate: row.docDate,
+          dueDate: row.dueDate,
+          settlementTotal,
+          outstandingAmount,
+          dueState,
+          daysPastDue,
+          party: row.supplier,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+  }
+
+  private buildCriticalBuckets(rows: CriticalReminder[]) {
+    const overdue = rows
+      .filter((row) => row.dueState === 'OVERDUE')
+      .sort((left, right) => {
+        if (left.daysPastDue !== right.daysPastDue) {
+          return right.daysPastDue - left.daysPastDue;
+        }
+        return right.outstandingAmount - left.outstandingAmount;
+      })
+      .slice(0, 5);
+
+    const dueToday = rows
+      .filter((row) => row.dueState === 'DUE_TODAY')
+      .sort((left, right) => right.outstandingAmount - left.outstandingAmount)
+      .slice(0, 5);
+
+    return {
+      overdue,
+      dueToday,
+      overdueCount: rows.filter((row) => row.dueState === 'OVERDUE').length,
+      dueTodayCount: rows.filter((row) => row.dueState === 'DUE_TODAY').length,
+    };
   }
 
   async getSummary() {
@@ -152,6 +267,9 @@ export class DashboardService {
           paymentStatus: { not: PaymentStatus.PAID },
         },
         select: {
+          id: true,
+          docNo: true,
+          docDate: true,
           grandTotal: true,
           amountPaid: true,
           dueDate: true,
@@ -159,6 +277,12 @@ export class DashboardService {
           returns: {
             where: { status: DocumentStatus.POSTED },
             select: { grandTotal: true },
+          },
+          customer: {
+            select: {
+              id: true,
+              name: true,
+            },
           },
         },
       }),
@@ -168,10 +292,19 @@ export class DashboardService {
           paymentStatus: { not: PaymentStatus.PAID },
         },
         select: {
+          id: true,
+          docNo: true,
+          docDate: true,
           grandTotal: true,
           amountPaid: true,
           dueDate: true,
           paymentStatus: true,
+          supplier: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
         },
       }),
       this.prisma.auditLog.findMany({
@@ -198,6 +331,12 @@ export class DashboardService {
 
     const receivables = this.summarizeReceivables(openReceivableDocs);
     const payables = this.summarizePayables(openPayableDocs);
+    const receivableCritical = this.buildCriticalBuckets(
+      this.buildReceivableReminderRows(openReceivableDocs),
+    );
+    const payableCritical = this.buildCriticalBuckets(
+      this.buildPayableReminderRows(openPayableDocs),
+    );
 
     const receiptsMonth = round2(
       receiptLogs.reduce((sum, entry) => {
@@ -241,6 +380,10 @@ export class DashboardService {
       aging: {
         receivables,
         payables,
+      },
+      critical: {
+        receivables: receivableCritical,
+        payables: payableCritical,
       },
       cashflow: {
         receiptsMonth,
