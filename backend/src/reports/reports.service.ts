@@ -3,7 +3,7 @@ import { DocumentStatus, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SalesReportQueryDto } from './dto/sales-report-query.dto';
 import { AgingReportQueryDto } from './dto/aging-report-query.dto';
-import { PaginationDto } from '../common/dto/pagination.dto';
+import { PaymentActivityQueryDto } from './dto/payment-activity-query.dto';
 import { round2 } from '../common/utils/money';
 import { calculateOutstandingAmount, resolveDueState } from '../common/utils/payments';
 
@@ -16,6 +16,24 @@ const RECEIVABLE_STATUSES = [
 type AgingBucketKey = 'current' | 'days1To30' | 'days31To60' | 'days61To90' | 'days90Plus';
 type PaymentActivityEntityType = 'sales_invoices' | 'purchase_invoices';
 type PaymentActivityPartyKey = 'customer' | 'supplier';
+type PaymentActivityItem = {
+  id: string;
+  documentId: string;
+  docNo: string;
+  docDate: Date;
+  dueDate: Date | null;
+  settlementTotal: number;
+  currentOutstandingAmount: number;
+  amount: number;
+  paidAt: string;
+  referenceNo: string | null;
+  notes: string | null;
+  remainingAmount: number;
+  paymentStatusAfter: string | null;
+  createdAt: Date;
+  user: { id: string; fullName: string; email: string | null } | null;
+  party: { id: string; name: string } | null;
+};
 
 function formatMonthLabel(key: string) {
   return new Intl.DateTimeFormat('sq-AL', {
@@ -39,6 +57,28 @@ function startOfMonth(value: Date) {
 
 function startOfDay(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+function endOfDay(value: Date) {
+  return new Date(
+    Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 23, 59, 59, 999),
+  );
+}
+
+function toSafeDate(value?: Date | string | null) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function compareNullableDates(left?: Date | string | null, right?: Date | string | null) {
+  return (toSafeDate(left)?.getTime() ?? 0) - (toSafeDate(right)?.getTime() ?? 0);
+}
+
+function compareStrings(left?: string | null, right?: string | null) {
+  return String(left ?? '').localeCompare(String(right ?? ''), 'sq', {
+    sensitivity: 'base',
+  });
 }
 
 function parsePaymentMetadata(entry: { metadata?: unknown; createdAt: Date }) {
@@ -322,7 +362,7 @@ export class ReportsService {
     return this.buildAgingResponse(rows, 'supplier');
   }
 
-  async getReceiptsActivity(query: PaginationDto = {}) {
+  async getReceiptsActivity(query: PaymentActivityQueryDto = {}) {
     return this.getPaymentActivity({
       entityType: 'sales_invoices',
       partyKey: 'customer',
@@ -330,7 +370,7 @@ export class ReportsService {
     });
   }
 
-  async getSupplierPaymentsActivity(query: PaginationDto = {}) {
+  async getSupplierPaymentsActivity(query: PaymentActivityQueryDto = {}) {
     return this.getPaymentActivity({
       entityType: 'purchase_invoices',
       partyKey: 'supplier',
@@ -341,49 +381,36 @@ export class ReportsService {
   private async getPaymentActivity(params: {
     entityType: PaymentActivityEntityType;
     partyKey: PaymentActivityPartyKey;
-    query: PaginationDto;
+    query: PaymentActivityQueryDto;
   }) {
-    const page = params.query.page ?? 1;
-    const limit = params.query.limit ?? 20;
-    const skip = (page - 1) * limit;
-    const monthStart = startOfMonth(new Date());
-
     const where = {
       entityType: params.entityType,
       action: 'RECORD_PAYMENT',
     };
 
-    const [entries, total, monthEntries] = await this.prisma.$transaction([
-      this.prisma.auditLog.findMany({
-        where,
-        include: {
-          user: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-            },
+    const entries = await this.prisma.auditLog.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
           },
         },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.auditLog.count({ where }),
-      this.prisma.auditLog.findMany({
-        where: {
-          ...where,
-          createdAt: { gte: monthStart },
-        },
-        select: {
-          id: true,
-          metadata: true,
-          createdAt: true,
-        },
-      }),
-    ]);
+      },
+      orderBy: { createdAt: 'desc' },
+    });
 
     const documentIds = [...new Set(entries.map((entry) => entry.entityId))];
+
+    if (documentIds.length === 0) {
+      return this.buildPaymentActivityResponse({
+        items: [],
+        query: params.query,
+        partyKey: params.partyKey,
+      });
+    }
 
     if (params.partyKey === 'customer') {
       const docs = await this.prisma.salesInvoice.findMany({
@@ -417,14 +444,16 @@ export class ReportsService {
         }),
       );
 
-      return this.buildPaymentActivityResponse({
+      const items = this.buildPaymentActivityItems({
         entries,
-        total,
-        monthEntries,
         docMap,
         partyKey: params.partyKey,
-        page,
-        limit,
+      });
+
+      return this.buildPaymentActivityResponse({
+        items,
+        query: params.query,
+        partyKey: params.partyKey,
       });
     }
 
@@ -455,18 +484,20 @@ export class ReportsService {
       }),
     );
 
-    return this.buildPaymentActivityResponse({
+    const items = this.buildPaymentActivityItems({
       entries,
-      total,
-      monthEntries,
       docMap,
       partyKey: params.partyKey,
-      page,
-      limit,
+    });
+
+    return this.buildPaymentActivityResponse({
+      items,
+      query: params.query,
+      partyKey: params.partyKey,
     });
   }
 
-  private buildPaymentActivityResponse(params: {
+  private buildPaymentActivityItems(params: {
     entries: {
       id: string;
       entityId: string;
@@ -474,8 +505,6 @@ export class ReportsService {
       createdAt: Date;
       user: { id: string; fullName: string; email: string | null } | null;
     }[];
-    total: number;
-    monthEntries: { id: string; metadata: unknown; createdAt: Date }[];
     docMap: Map<
       string,
       {
@@ -490,10 +519,8 @@ export class ReportsService {
       }
     >;
     partyKey: PaymentActivityPartyKey;
-    page: number;
-    limit: number;
   }) {
-    const items = params.entries
+    return params.entries
       .map((entry) => {
         const doc = params.docMap.get(entry.entityId);
         if (!doc) return null;
@@ -523,12 +550,135 @@ export class ReportsService {
         };
       })
       .filter((row): row is NonNullable<typeof row> => Boolean(row));
+  }
 
-    const monthSummary = params.monthEntries.reduce(
-      (acc, entry) => {
-        const metadata = parsePaymentMetadata(entry);
-        acc.totalAmount += metadata.amount;
-        acc.count += 1;
+  private buildPaymentActivityResponse(params: {
+    items: PaymentActivityItem[];
+    query: PaymentActivityQueryDto;
+    partyKey: PaymentActivityPartyKey;
+  }) {
+    const search = params.query.search?.trim().toLowerCase() ?? '';
+    const page = Math.max(params.query.page ?? 1, 1);
+    const limit = Math.max(params.query.limit ?? 20, 1);
+    const monthStart = startOfMonth(new Date());
+    const dateFrom = params.query.dateFrom ? startOfDay(new Date(params.query.dateFrom)) : null;
+    const dateTo = params.query.dateTo ? endOfDay(new Date(params.query.dateTo)) : null;
+    const partyId =
+      params.partyKey === 'customer' ? params.query.customerId : params.query.supplierId;
+
+    const filteredItems = params.items.filter((row) => {
+      const paidAt = toSafeDate(row.paidAt) ?? row.createdAt;
+
+      if (partyId && row.party?.id !== partyId) {
+        return false;
+      }
+
+      if (params.query.statusAfter && row.paymentStatusAfter !== params.query.statusAfter) {
+        return false;
+      }
+
+      if (params.query.minAmount !== undefined && row.amount < params.query.minAmount) {
+        return false;
+      }
+
+      if (params.query.maxAmount !== undefined && row.amount > params.query.maxAmount) {
+        return false;
+      }
+
+      if (dateFrom && (!paidAt || paidAt < dateFrom)) {
+        return false;
+      }
+
+      if (dateTo && (!paidAt || paidAt > dateTo)) {
+        return false;
+      }
+
+      if (!search) {
+        return true;
+      }
+
+      const searchable = [
+        row.docNo,
+        row.party?.name,
+        row.referenceNo,
+        row.notes,
+        row.user?.fullName,
+        row.user?.email,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return searchable.includes(search);
+    });
+
+    const direction = params.query.sortOrder === 'asc' ? 1 : -1;
+    const sortBy = params.query.sortBy ?? 'paidAt';
+
+    const sortedItems = [...filteredItems].sort((left, right) => {
+      let comparison = 0;
+
+      switch (sortBy) {
+        case 'amount':
+          comparison = left.amount - right.amount;
+          break;
+        case 'remainingAmount':
+          comparison = left.remainingAmount - right.remainingAmount;
+          break;
+        case 'currentOutstandingAmount':
+          comparison = left.currentOutstandingAmount - right.currentOutstandingAmount;
+          break;
+        case 'docDate':
+          comparison = compareNullableDates(left.docDate, right.docDate);
+          break;
+        case 'dueDate':
+          comparison = compareNullableDates(left.dueDate, right.dueDate);
+          break;
+        case 'docNo':
+          comparison = compareStrings(left.docNo, right.docNo);
+          break;
+        case 'party':
+          comparison = compareStrings(left.party?.name, right.party?.name);
+          break;
+        case 'referenceNo':
+          comparison = compareStrings(left.referenceNo, right.referenceNo);
+          break;
+        case 'statusAfter':
+          comparison = compareStrings(left.paymentStatusAfter, right.paymentStatusAfter);
+          break;
+        case 'createdAt':
+          comparison = compareNullableDates(left.createdAt, right.createdAt);
+          break;
+        default:
+          comparison = compareNullableDates(left.paidAt, right.paidAt);
+          break;
+      }
+
+      if (comparison === 0) {
+        comparison = compareNullableDates(left.paidAt, right.paidAt);
+      }
+
+      if (comparison === 0) {
+        comparison = compareStrings(left.docNo, right.docNo);
+      }
+
+      return comparison * direction;
+    });
+
+    const total = sortedItems.length;
+    const totalAmount = round2(sortedItems.reduce((sum, row) => sum + row.amount, 0));
+    const pageCount = Math.max(1, Math.ceil(total / limit));
+    const safePage = Math.min(page, pageCount);
+    const skip = (safePage - 1) * limit;
+    const items = sortedItems.slice(skip, skip + limit);
+
+    const monthSummary = sortedItems.reduce(
+      (acc, row) => {
+        const paidAt = toSafeDate(row.paidAt) ?? row.createdAt;
+        if (paidAt && paidAt >= monthStart) {
+          acc.totalAmount += row.amount;
+          acc.count += 1;
+        }
         return acc;
       },
       { totalAmount: 0, count: 0 },
@@ -536,15 +686,18 @@ export class ReportsService {
 
     return {
       summary: {
-        count: params.total,
+        count: total,
         visibleCount: items.length,
         visibleAmount: round2(items.reduce((sum, row) => sum + row.amount, 0)),
+        totalAmount,
         currentMonthAmount: round2(monthSummary.totalAmount),
         currentMonthCount: monthSummary.count,
       },
       items,
-      page: params.page,
-      limit: params.limit,
+      page: safePage,
+      limit,
+      total,
+      pageCount,
     };
   }
 

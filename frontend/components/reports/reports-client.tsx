@@ -63,6 +63,7 @@ type PaymentActivityResponse = {
     count: number;
     visibleCount: number;
     visibleAmount: number;
+    totalAmount: number;
     currentMonthAmount: number;
     currentMonthCount: number;
   };
@@ -84,6 +85,10 @@ type PaymentActivityResponse = {
     user?: { id: string; fullName: string; email?: string | null } | null;
     party?: { id: string; name: string } | null;
   }[];
+  total: number;
+  pageCount: number;
+  page: number;
+  limit: number;
 };
 
 function fmt(value: number) {
@@ -290,11 +295,13 @@ function PaymentActivityPanel({
   report,
   emptyText,
   documentBasePath,
+  viewAllHref,
 }: {
   title: string;
   report: PaymentActivityResponse;
   emptyText: string;
   documentBasePath: string;
+  viewAllHref?: string;
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
@@ -303,18 +310,32 @@ function PaymentActivityPanel({
           <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
           <p className="text-xs text-slate-500 mt-1">
             {report.summary.visibleCount} rreshta ne pamje - {fmt(report.summary.visibleAmount)} EUR
+            {' / '}
+            gjithsej {fmt(report.summary.totalAmount)} EUR
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2 text-right">
-          <div className="rounded-lg bg-white px-3 py-2 border border-slate-200">
-            <p className="text-[11px] uppercase tracking-wide text-slate-400">Kete muaj</p>
-            <p className="text-sm font-semibold text-slate-900">
-              {fmt(report.summary.currentMonthAmount)} EUR
-            </p>
-          </div>
-          <div className="rounded-lg bg-white px-3 py-2 border border-slate-200">
-            <p className="text-[11px] uppercase tracking-wide text-slate-400">Gjithsej regjistrime</p>
-            <p className="text-sm font-semibold text-slate-900">{report.summary.count}</p>
+        <div className="flex flex-col gap-2 lg:items-end">
+          {viewAllHref ? (
+            <Link
+              href={viewAllHref}
+              className="text-xs font-medium text-indigo-700 hover:text-indigo-900"
+            >
+              Shiko te gjitha
+            </Link>
+          ) : null}
+          <div className="grid grid-cols-2 gap-2 text-right">
+            <div className="rounded-lg bg-white px-3 py-2 border border-slate-200">
+              <p className="text-[11px] uppercase tracking-wide text-slate-400">Kete muaj</p>
+              <p className="text-sm font-semibold text-slate-900">
+                {fmt(report.summary.currentMonthAmount)} EUR
+              </p>
+            </div>
+            <div className="rounded-lg bg-white px-3 py-2 border border-slate-200">
+              <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                Gjithsej regjistrime
+              </p>
+              <p className="text-sm font-semibold text-slate-900">{report.summary.count}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -722,6 +743,7 @@ export function ReportsClient({
               report={receiptsActivity}
               emptyText="Nuk ka arketime te regjistruara ende."
               documentBasePath="/sales-invoices"
+              viewAllHref="/arketime"
             />
           ) : null}
         </>
@@ -737,6 +759,7 @@ export function ReportsClient({
               report={supplierPaymentsActivity}
               emptyText="Nuk ka pagesa te regjistruara ende."
               documentBasePath="/purchase-invoices"
+              viewAllHref="/pagesat"
             />
           ) : null}
         </>
