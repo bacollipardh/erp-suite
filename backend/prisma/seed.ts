@@ -1,4 +1,4 @@
-import { FiscalMode, PrismaClient } from '@prisma/client';
+import { FinanceAccountType, FiscalMode, PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -116,6 +116,61 @@ async function upsertDocumentSeries(params: {
       prefix: params.prefix,
       nextNumber,
       isActive: true,
+    },
+  });
+}
+
+async function upsertFinanceAccount(params: {
+  code: string;
+  name: string;
+  accountType: FinanceAccountType;
+  currencyCode?: string;
+  bankName?: string | null;
+  bankAccountNo?: string | null;
+  iban?: string | null;
+  swiftCode?: string | null;
+  openingBalance?: number;
+  notes?: string | null;
+}) {
+  const existing = await prisma.financeAccount.findUnique({
+    where: { code: params.code },
+    select: {
+      openingBalance: true,
+      currentBalance: true,
+    },
+  });
+
+  const openingBalance = Number(existing?.openingBalance ?? params.openingBalance ?? 0);
+  const currentBalance = Number(existing?.currentBalance ?? openingBalance);
+
+  return prisma.financeAccount.upsert({
+    where: { code: params.code },
+    update: {
+      name: params.name,
+      accountType: params.accountType,
+      currencyCode: params.currencyCode ?? 'EUR',
+      bankName: params.bankName ?? null,
+      bankAccountNo: params.bankAccountNo ?? null,
+      iban: params.iban ?? null,
+      swiftCode: params.swiftCode ?? null,
+      openingBalance,
+      currentBalance,
+      isActive: true,
+      notes: params.notes ?? null,
+    },
+    create: {
+      code: params.code,
+      name: params.name,
+      accountType: params.accountType,
+      currencyCode: params.currencyCode ?? 'EUR',
+      bankName: params.bankName ?? null,
+      bankAccountNo: params.bankAccountNo ?? null,
+      iban: params.iban ?? null,
+      swiftCode: params.swiftCode ?? null,
+      openingBalance,
+      currentBalance,
+      isActive: true,
+      notes: params.notes ?? null,
     },
   });
 }
@@ -329,6 +384,26 @@ async function main() {
     where: { code: 'CREDIT' },
     update: { name: 'Credit / Card', isActive: true },
     create: { code: 'CREDIT', name: 'Credit / Card', isActive: true },
+  });
+
+  await upsertFinanceAccount({
+    code: 'CASH_MAIN',
+    name: 'Main Cash Desk',
+    accountType: FinanceAccountType.CASH,
+    openingBalance: 1500,
+    notes: 'Kasa kryesore per arketime dhe pagesa ditore.',
+  });
+
+  await upsertFinanceAccount({
+    code: 'BANK_MAIN',
+    name: 'Primary Bank Account',
+    accountType: FinanceAccountType.BANK,
+    bankName: 'Bank for Business',
+    bankAccountNo: '210000000001',
+    iban: 'XK051212012345678906',
+    swiftCode: 'BPBUSXK1',
+    openingBalance: 5000,
+    notes: 'Llogaria bankare kryesore e kompanise.',
   });
 
   await upsertDocumentSeries({

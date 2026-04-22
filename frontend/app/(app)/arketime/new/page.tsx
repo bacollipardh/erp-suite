@@ -11,7 +11,15 @@ export default async function NewReceiptPage({
 }) {
   await requirePagePermission(PERMISSIONS.salesInvoicesPay);
   const query = await searchParams;
-  const report = await api.query('reports/receivables-aging', { limit: 500 });
+  const [report, financeAccounts] = await Promise.all([
+    api.query('reports/receivables-aging', { limit: 500 }),
+    api.list('finance-accounts', {
+      isActive: true,
+      limit: 100,
+      sortBy: 'name',
+      sortOrder: 'asc',
+    }),
+  ]);
 
   return (
     <div className="space-y-5">
@@ -25,6 +33,7 @@ export default async function NewReceiptPage({
         detailBasePath="/sales-invoices"
         submitBasePath="sales-invoices"
         listHref="/arketime"
+        financeAccounts={financeAccounts}
         initialDocumentId={typeof query.documentId === 'string' ? query.documentId : undefined}
       />
     </div>

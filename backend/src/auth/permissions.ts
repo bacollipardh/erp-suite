@@ -9,6 +9,8 @@ export const PERMISSIONS = {
   reportsSales: 'reports:sales',
   reportsReceivables: 'reports:receivables',
   reportsPayables: 'reports:payables',
+  financeAccountsRead: 'finance-accounts:read',
+  financeAccountsManage: 'finance-accounts:manage',
   rolesRead: 'roles:read',
   rolesManage: 'roles:manage',
   usersRead: 'users:read',
@@ -60,6 +62,8 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleCode, Permission[]> = {
     PERMISSIONS.reportsSales,
     PERMISSIONS.reportsReceivables,
     PERMISSIONS.reportsPayables,
+    PERMISSIONS.financeAccountsRead,
+    PERMISSIONS.financeAccountsManage,
     PERMISSIONS.usersRead,
     PERMISSIONS.itemCategoriesRead,
     PERMISSIONS.itemCategoriesManage,
@@ -99,6 +103,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleCode, Permission[]> = {
   SALES: [
     PERMISSIONS.dashboard,
     PERMISSIONS.reportsSales,
+    PERMISSIONS.financeAccountsRead,
     PERMISSIONS.customersRead,
     PERMISSIONS.customersManage,
     PERMISSIONS.itemsRead,
@@ -117,6 +122,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleCode, Permission[]> = {
   ],
   PURCHASE: [
     PERMISSIONS.dashboard,
+    PERMISSIONS.financeAccountsRead,
     PERMISSIONS.suppliersRead,
     PERMISSIONS.suppliersManage,
     PERMISSIONS.itemsRead,

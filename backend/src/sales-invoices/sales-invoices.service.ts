@@ -21,6 +21,7 @@ import {
   calculateFinanceSettlementRemainingAmount,
   resolveFinanceSettlementStatus,
 } from '../common/utils/finance-settlements';
+import { FinanceAccountsService } from '../finance-accounts/finance-accounts.service';
 
 @Injectable()
 export class SalesInvoicesService {
@@ -28,6 +29,7 @@ export class SalesInvoicesService {
     private readonly prisma: PrismaService,
     private readonly stockService: StockService,
     private readonly auditLogs: AuditLogsService,
+    private readonly financeAccountsService: FinanceAccountsService,
   ) {}
 
   async findAll(query: PaginationDto = {}) {
@@ -510,6 +512,7 @@ export class SalesInvoicesService {
         },
       });
 
+      let createdSettlementId: string | undefined;
       if (allocation.unappliedAmount > 0) {
         const remainingAmount = calculateFinanceSettlementRemainingAmount(
           allocation.unappliedAmount,
@@ -534,6 +537,7 @@ export class SalesInvoicesService {
             createdById: userId,
           },
         });
+        createdSettlementId = createdSettlement.id;
 
         await tx.auditLog.create({
           data: {
@@ -553,6 +557,54 @@ export class SalesInvoicesService {
               paidAt: paymentTimestamp,
               referenceNo: dto.referenceNo,
               notes: dto.notes,
+            } as Prisma.InputJsonValue,
+          },
+        });
+      }
+
+      if (dto.financeAccountId) {
+        await tx.auditLog.create({
+          data: {
+            userId,
+            entityType: 'finance_accounts',
+            entityId: dto.financeAccountId,
+            action: 'LINK_RECEIPT_ACCOUNT',
+            metadata: {
+              documentId: existing.id,
+              documentNo: existing.docNo,
+              amount: allocation.enteredAmount,
+              appliedAmount: allocation.appliedAmount,
+              unappliedAmount: allocation.unappliedAmount,
+            } as Prisma.InputJsonValue,
+          },
+        });
+
+        const accountTransaction = await this.financeAccountsService.recordReceiptTransactionTx(tx, {
+          financeAccountId: dto.financeAccountId,
+          amount: allocation.enteredAmount,
+          transactionDate: paymentDate,
+          createdById: userId,
+          referenceNo: dto.referenceNo,
+          notes: dto.notes,
+          counterpartyName: existing.customer?.name,
+          sourceDocumentId: existing.id,
+          sourceDocumentNo: existing.docNo,
+          financeSettlementId: createdSettlementId,
+          sourceAuditLogId: paymentAudit.id,
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId,
+            entityType: 'finance_account_transactions',
+            entityId: accountTransaction.id,
+            action: 'CREATE_RECEIPT',
+            metadata: {
+              financeAccountId: dto.financeAccountId,
+              documentId: existing.id,
+              documentNo: existing.docNo,
+              amount: allocation.enteredAmount,
+              accountBalanceAfter: Number(accountTransaction.balanceAfter ?? 0),
             } as Prisma.InputJsonValue,
           },
         });

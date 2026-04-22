@@ -21,6 +21,7 @@ import {
   calculateFinanceSettlementRemainingAmount,
   resolveFinanceSettlementStatus,
 } from '../common/utils/finance-settlements';
+import { FinanceAccountsService } from '../finance-accounts/finance-accounts.service';
 
 @Injectable()
 export class PurchaseInvoicesService {
@@ -28,6 +29,7 @@ export class PurchaseInvoicesService {
     private readonly prisma: PrismaService,
     private readonly stockService: StockService,
     private readonly auditLogs: AuditLogsService,
+    private readonly financeAccountsService: FinanceAccountsService,
   ) {}
 
   async findAll(query: PaginationDto = {}) {
@@ -439,8 +441,8 @@ async recordPayment(id: string, dto: RecordPaymentDto, userId: string) {
   const paymentDate = dto.paidAt ? new Date(dto.paidAt) : new Date();
   const paymentTimestamp = dto.paidAt ?? paymentDate.toISOString();
 
-  const updated = await this.prisma.$transaction(async (tx) => {
-    const updatedInvoice = await tx.purchaseInvoice.update({
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const updatedInvoice = await tx.purchaseInvoice.update({
       where: { id },
       data: {
         amountPaid: nextPaid,
@@ -472,12 +474,13 @@ async recordPayment(id: string, dto: RecordPaymentDto, userId: string) {
           paymentStatusBefore,
           paymentStatusAfter,
         } as Prisma.InputJsonValue,
-      },
-    });
+        },
+      });
 
-    if (allocation.unappliedAmount > 0) {
-      const remainingAmount = calculateFinanceSettlementRemainingAmount(
-        allocation.unappliedAmount,
+      let createdSettlementId: string | undefined;
+      if (allocation.unappliedAmount > 0) {
+        const remainingAmount = calculateFinanceSettlementRemainingAmount(
+          allocation.unappliedAmount,
         0,
       );
 
@@ -496,12 +499,13 @@ async recordPayment(id: string, dto: RecordPaymentDto, userId: string) {
           paidAt: paymentDate,
           referenceNo: dto.referenceNo,
           notes: dto.notes,
-          createdById: userId,
-        },
-      });
+            createdById: userId,
+          },
+        });
+        createdSettlementId = createdSettlement.id;
 
-      await tx.auditLog.create({
-        data: {
+        await tx.auditLog.create({
+          data: {
           userId,
           entityType: 'finance_settlements',
           entityId: createdSettlement.id,
@@ -519,12 +523,60 @@ async recordPayment(id: string, dto: RecordPaymentDto, userId: string) {
             referenceNo: dto.referenceNo,
             notes: dto.notes,
           } as Prisma.InputJsonValue,
-        },
-      });
-    }
+          },
+        });
+      }
 
-    return updatedInvoice;
-  });
+      if (dto.financeAccountId) {
+        await tx.auditLog.create({
+          data: {
+            userId,
+            entityType: 'finance_accounts',
+            entityId: dto.financeAccountId,
+            action: 'LINK_PAYMENT_ACCOUNT',
+            metadata: {
+              documentId: existing.id,
+              documentNo: existing.docNo,
+              amount: allocation.enteredAmount,
+              appliedAmount: allocation.appliedAmount,
+              unappliedAmount: allocation.unappliedAmount,
+            } as Prisma.InputJsonValue,
+          },
+        });
+
+        const accountTransaction = await this.financeAccountsService.recordPaymentTransactionTx(tx, {
+          financeAccountId: dto.financeAccountId,
+          amount: allocation.enteredAmount,
+          transactionDate: paymentDate,
+          createdById: userId,
+          referenceNo: dto.referenceNo,
+          notes: dto.notes,
+          counterpartyName: existing.supplier?.name,
+          sourceDocumentId: existing.id,
+          sourceDocumentNo: existing.docNo,
+          financeSettlementId: createdSettlementId,
+          sourceAuditLogId: paymentAudit.id,
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId,
+            entityType: 'finance_account_transactions',
+            entityId: accountTransaction.id,
+            action: 'CREATE_PAYMENT',
+            metadata: {
+              financeAccountId: dto.financeAccountId,
+              documentId: existing.id,
+              documentNo: existing.docNo,
+              amount: allocation.enteredAmount,
+              accountBalanceAfter: Number(accountTransaction.balanceAfter ?? 0),
+            } as Prisma.InputJsonValue,
+          },
+        });
+      }
+
+      return updatedInvoice;
+    });
 
   return this.enrichDocumentState(updated);
 }

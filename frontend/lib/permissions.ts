@@ -3,6 +3,8 @@ export const PERMISSIONS = {
   reportsSales: 'reports:sales',
   reportsReceivables: 'reports:receivables',
   reportsPayables: 'reports:payables',
+  financeAccountsRead: 'finance-accounts:read',
+  financeAccountsManage: 'finance-accounts:manage',
   rolesRead: 'roles:read',
   rolesManage: 'roles:manage',
   usersRead: 'users:read',

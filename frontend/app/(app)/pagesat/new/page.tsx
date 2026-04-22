@@ -11,7 +11,15 @@ export default async function NewSupplierPaymentPage({
 }) {
   await requirePagePermission(PERMISSIONS.purchaseInvoicesPay);
   const query = await searchParams;
-  const report = await api.query('reports/payables-aging', { limit: 500 });
+  const [report, financeAccounts] = await Promise.all([
+    api.query('reports/payables-aging', { limit: 500 }),
+    api.list('finance-accounts', {
+      isActive: true,
+      limit: 100,
+      sortBy: 'name',
+      sortOrder: 'asc',
+    }),
+  ]);
 
   return (
     <div className="space-y-5">
@@ -25,6 +33,7 @@ export default async function NewSupplierPaymentPage({
         detailBasePath="/purchase-invoices"
         submitBasePath="purchase-invoices"
         listHref="/pagesat"
+        financeAccounts={financeAccounts}
         initialDocumentId={typeof query.documentId === 'string' ? query.documentId : undefined}
       />
     </div>

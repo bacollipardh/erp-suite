@@ -22,6 +22,15 @@ type OpenDocument = {
   party?: { id: string; name: string } | null;
 };
 
+type FinanceAccountOption = {
+  id: string;
+  code: string;
+  name: string;
+  accountType: 'CASH' | 'BANK';
+  currentBalance: number;
+  currencyCode?: string | null;
+};
+
 function formatMoney(value?: number | string | null) {
   return Number(value ?? 0).toLocaleString('sq-AL', {
     minimumFractionDigits: 2,
@@ -78,6 +87,7 @@ function duePriority(dueState?: string | null) {
 export function PaymentEntryClient({
   mode,
   documents,
+  financeAccounts,
   detailBasePath,
   submitBasePath,
   listHref,
@@ -85,6 +95,7 @@ export function PaymentEntryClient({
 }: {
   mode: 'receipt' | 'payment';
   documents: OpenDocument[];
+  financeAccounts: FinanceAccountOption[];
   detailBasePath: string;
   submitBasePath: 'sales-invoices' | 'purchase-invoices';
   listHref: string;
@@ -99,6 +110,9 @@ export function PaymentEntryClient({
   const [paidAt, setPaidAt] = useState(toDateInputValue(new Date()));
   const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
+  const [selectedFinanceAccountId, setSelectedFinanceAccountId] = useState(
+    financeAccounts[0]?.id ?? '',
+  );
   const [allowUnapplied, setAllowUnapplied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -193,6 +207,11 @@ export function PaymentEntryClient({
     );
   }, [items]);
 
+  const selectedFinanceAccount = useMemo(
+    () => financeAccounts.find((account) => account.id === selectedFinanceAccountId) ?? null,
+    [financeAccounts, selectedFinanceAccountId],
+  );
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!selectedDocument) return;
@@ -222,6 +241,12 @@ export function PaymentEntryClient({
       return;
     }
 
+    if (financeAccounts.length > 0 && !selectedFinanceAccountId) {
+      setBusy(false);
+      setError('Zgjidh llogarine cash ose bankare ku do te regjistrohet transaksioni.');
+      return;
+    }
+
     try {
       await api.post(`${submitBasePath}/${selectedDocument.id}/payments`, {
         amount: numericAmount,
@@ -229,6 +254,7 @@ export function PaymentEntryClient({
         referenceNo: referenceNo || undefined,
         notes: notes || undefined,
         allowUnapplied,
+        financeAccountId: selectedFinanceAccountId || undefined,
       });
 
       setItems((current) =>
@@ -418,6 +444,42 @@ export function PaymentEntryClient({
                 daysPastDue={selectedDocument.daysPastDue}
                 outstandingAmount={selectedDocument.outstanding}
               />
+
+              {financeAccounts.length > 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Llogaria financiare</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Arketimi ose pagesa do te shkruhet edhe ne ledger-in e kesaj llogarie.
+                    </p>
+                  </div>
+
+                  <label className="block space-y-1">
+                    <span className="text-sm font-medium text-slate-700">Cash / Bank</span>
+                    <select
+                      value={selectedFinanceAccountId}
+                      onChange={(event) => setSelectedFinanceAccountId(event.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                    >
+                      {financeAccounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.code} - {account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {selectedFinanceAccount ? (
+                    <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
+                      Bilanci aktual: <span className="font-semibold">{formatMoney(selectedFinanceAccount.currentBalance)} {selectedFinanceAccount.currencyCode ?? 'EUR'}</span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Nuk ka ende llogari financiare aktive. Dokumenti do te perditesohet normalisht, por ky transaksion nuk do te hyje ne treasury ledger derisa te krijohet nje llogari cash/bank.
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-lg bg-slate-50 p-3">

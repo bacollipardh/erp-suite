@@ -24,6 +24,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportsModule } from './reports/reports.module';
 import { FiscalizationModule } from './fiscalization/fiscalization.module';
 import { FinanceSettlementsModule } from './finance-settlements/finance-settlements.module';
+import { FinanceAccountsModule } from './finance-accounts/finance-accounts.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { FinanceSettlementsModule } from './finance-settlements/finance-settleme
     ReportsModule,
     FiscalizationModule,
     FinanceSettlementsModule,
+    FinanceAccountsModule,
   ],
 })
 export class AppModule {}

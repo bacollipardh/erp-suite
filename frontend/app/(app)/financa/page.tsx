@@ -17,16 +17,23 @@ export default async function FinanceHubPage() {
     PERMISSIONS.reportsPayables,
     PERMISSIONS.salesInvoicesPay,
     PERMISSIONS.purchaseInvoicesPay,
+    PERMISSIONS.financeAccountsRead,
   ]);
 
-  const summary = hasPermission(user.permissions, PERMISSIONS.dashboard)
-    ? await api.getOne('dashboard/summary')
-    : null;
+  const [summary, accountSummary] = await Promise.all([
+    hasPermission(user.permissions, PERMISSIONS.dashboard)
+      ? api.getOne('dashboard/summary')
+      : Promise.resolve(null),
+    hasPermission(user.permissions, PERMISSIONS.financeAccountsRead)
+      ? api.listPage('finance-accounts', { limit: 1 })
+      : Promise.resolve(null),
+  ]);
 
   const canReceivables = hasPermission(user.permissions, PERMISSIONS.reportsReceivables);
   const canPayables = hasPermission(user.permissions, PERMISSIONS.reportsPayables);
   const canReceiptReallocation = hasPermission(user.permissions, PERMISSIONS.salesInvoicesPay);
   const canPaymentReallocation = hasPermission(user.permissions, PERMISSIONS.purchaseInvoicesPay);
+  const canFinanceAccounts = hasPermission(user.permissions, PERMISSIONS.financeAccountsRead);
   const canFinanceReports = hasPermission(user.permissions, [
     PERMISSIONS.reportsReceivables,
     PERMISSIONS.reportsPayables,
@@ -63,9 +70,29 @@ export default async function FinanceHubPage() {
           value={fmtMoney(summary?.cashflow?.paymentsMonth ?? 0)}
           href={canPayables ? '/pagesat' : undefined}
         />
+        <StatsCard
+          title="Likuiditet Total"
+          value={fmtMoney(accountSummary?.summary?.totalBalance ?? 0)}
+          href={canFinanceAccounts ? '/financa/llogarite' : undefined}
+        />
+        <StatsCard
+          title="Llogari Aktive"
+          value={accountSummary?.summary?.activeCount ?? 0}
+          subtitle={`${accountSummary?.summary?.accountCount ?? 0} gjithsej`}
+          href={canFinanceAccounts ? '/financa/llogarite' : undefined}
+        />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {canFinanceAccounts ? (
+          <DomainActionCard
+            title="Llogarite Cash / Bank"
+            description="Menaxho kasat, bankat, transfertat dhe ledger-in financiar qe mban gjendjen reale te likuiditetit."
+            href="/financa/llogarite"
+            badge="Treasury"
+            tone="emerald"
+          />
+        ) : null}
         {canReceivables ? (
           <DomainActionCard
             title="Arketimet"

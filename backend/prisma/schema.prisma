@@ -74,6 +74,25 @@ enum FinanceSettlementStatus {
   @@map("finance_settlement_status")
 }
 
+enum FinanceAccountType {
+  CASH
+  BANK
+
+  @@map("finance_account_type")
+}
+
+enum FinanceAccountTransactionType {
+  OPENING
+  MANUAL_IN
+  MANUAL_OUT
+  TRANSFER_IN
+  TRANSFER_OUT
+  RECEIPT
+  PAYMENT
+
+  @@map("finance_account_transaction_type")
+}
+
 model Role {
   id        String   @id @default(uuid()) @db.Uuid
   code      String   @unique @db.VarChar(30)
@@ -102,6 +121,7 @@ model User {
   postedReturns    SalesReturn[]     @relation("ReturnPostedBy")
   createdFinanceSettlements FinanceSettlement[] @relation("FinanceSettlementCreatedBy")
   createdFinanceSettlementAllocations FinanceSettlementAllocation[] @relation("FinanceSettlementAllocationCreatedBy")
+  createdFinanceAccountTransactions FinanceAccountTransaction[] @relation("FinanceAccountTransactionCreatedBy")
   auditLogs        AuditLog[]
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -249,6 +269,28 @@ model PaymentMethod {
   updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("payment_methods")
+}
+
+model FinanceAccount {
+  id             String                     @id @default(uuid()) @db.Uuid
+  code           String                     @unique @db.VarChar(30)
+  name           String                     @db.VarChar(120)
+  accountType    FinanceAccountType         @map("account_type")
+  currencyCode   String                     @default("EUR") @map("currency_code") @db.VarChar(10)
+  bankName       String?                    @map("bank_name") @db.VarChar(120)
+  bankAccountNo  String?                    @map("bank_account_no") @db.VarChar(80)
+  iban           String?                    @db.VarChar(80)
+  swiftCode      String?                    @map("swift_code") @db.VarChar(30)
+  openingBalance Decimal                    @default(0) @map("opening_balance") @db.Decimal(18, 2)
+  currentBalance Decimal                    @default(0) @map("current_balance") @db.Decimal(18, 2)
+  isActive       Boolean                    @default(true) @map("is_active")
+  notes          String?
+  transactions   FinanceAccountTransaction[]
+  createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([accountType, isActive])
+  @@map("finance_accounts")
 }
 
 model DocumentSeries {
@@ -559,6 +601,7 @@ model FinanceSettlement {
   sourceSalesInvoice     SalesInvoice?           @relation("FinanceSettlementSourceSalesInvoice", fields: [sourceSalesInvoiceId], references: [id])
   sourcePurchaseInvoice  PurchaseInvoice?        @relation("FinanceSettlementSourcePurchaseInvoice", fields: [sourcePurchaseInvoiceId], references: [id])
   createdBy              User                    @relation("FinanceSettlementCreatedBy", fields: [createdById], references: [id])
+  accountTransactions    FinanceAccountTransaction[]
   allocations            FinanceSettlementAllocation[]
   createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -598,6 +641,38 @@ model FinanceSettlementAllocation {
   @@index([targetPurchaseInvoiceId])
   @@index([createdById])
   @@map("finance_settlement_allocations")
+}
+
+model FinanceAccountTransaction {
+  id                 String                        @id @default(uuid()) @db.Uuid
+  accountId          String                        @map("account_id") @db.Uuid
+  financeSettlementId String?                      @map("finance_settlement_id") @db.Uuid
+  sourceAuditLogId   String?                       @map("source_audit_log_id") @db.Uuid
+  transferGroupId    String?                       @map("transfer_group_id") @db.Uuid
+  transactionType    FinanceAccountTransactionType @map("transaction_type")
+  amount             Decimal                       @db.Decimal(18, 2)
+  balanceBefore      Decimal                       @map("balance_before") @db.Decimal(18, 2)
+  balanceAfter       Decimal                       @map("balance_after") @db.Decimal(18, 2)
+  transactionDate    DateTime                      @map("transaction_date") @db.Date
+  referenceNo        String?                       @map("reference_no") @db.VarChar(100)
+  counterpartyName   String?                       @map("counterparty_name") @db.VarChar(200)
+  sourceDocumentType String?                       @map("source_document_type") @db.VarChar(40)
+  sourceDocumentId   String?                       @map("source_document_id") @db.Uuid
+  sourceDocumentNo   String?                       @map("source_document_no") @db.VarChar(50)
+  notes              String?
+  createdById        String                        @map("created_by") @db.Uuid
+  account            FinanceAccount                @relation(fields: [accountId], references: [id])
+  financeSettlement  FinanceSettlement?            @relation(fields: [financeSettlementId], references: [id])
+  createdBy          User                          @relation("FinanceAccountTransactionCreatedBy", fields: [createdById], references: [id])
+  createdAt          DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([accountId, transactionDate])
+  @@index([financeSettlementId])
+  @@index([sourceAuditLogId])
+  @@index([transferGroupId])
+  @@index([createdById])
+  @@index([sourceDocumentType, sourceDocumentId])
+  @@map("finance_account_transactions")
 }
 
 model AuditLog {

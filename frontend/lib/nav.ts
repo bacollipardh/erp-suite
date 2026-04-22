@@ -72,7 +72,13 @@ export const navSections: NavSection[] = [
           PERMISSIONS.reportsPayables,
           PERMISSIONS.salesInvoicesPay,
           PERMISSIONS.purchaseInvoicesPay,
+          PERMISSIONS.financeAccountsRead,
         ],
+      },
+      {
+        label: 'Llogarite Cash / Bank',
+        href: '/financa/llogarite',
+        permission: PERMISSIONS.financeAccountsRead,
       },
       { label: 'Arketimet', href: '/arketime', permission: PERMISSIONS.reportsReceivables },
       {

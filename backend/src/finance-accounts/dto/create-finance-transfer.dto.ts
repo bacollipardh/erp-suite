@@ -1,22 +1,29 @@
+import { Type } from 'class-transformer';
 import {
-  IsBoolean,
   IsDateString,
-  IsUUID,
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
 } from 'class-validator';
 
-export class RecordPaymentDto {
+export class CreateFinanceTransferDto {
+  @IsUUID()
+  sourceAccountId: string;
+
+  @IsUUID()
+  destinationAccountId: string;
+
+  @Type(() => Number)
   @IsNumber()
   @Min(0.01)
   amount: number;
 
   @IsOptional()
   @IsDateString()
-  paidAt?: string;
+  transactionDate?: string;
 
   @IsOptional()
   @IsString()
@@ -25,14 +32,5 @@ export class RecordPaymentDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(255)
   notes?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  allowUnapplied?: boolean;
-
-  @IsOptional()
-  @IsUUID()
-  financeAccountId?: string;
 }
