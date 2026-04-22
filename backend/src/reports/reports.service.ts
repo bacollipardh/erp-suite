@@ -29,6 +29,10 @@ type PaymentActivityItem = {
   settlementTotal: number;
   currentOutstandingAmount: number;
   amount: number;
+  enteredAmount: number;
+  appliedAmount: number;
+  unappliedAmount: number;
+  allowUnapplied: boolean;
   paidAt: string;
   referenceNo: string | null;
   notes: string | null;
@@ -123,6 +127,17 @@ function parsePaymentMetadata(entry: { metadata?: unknown; createdAt: Date }) {
 
   return {
     amount: Number(metadata.amount ?? 0),
+    enteredAmount: Number(metadata.enteredAmount ?? metadata.amount ?? 0),
+    appliedAmount: Number(metadata.appliedAmount ?? metadata.amount ?? 0),
+    unappliedAmount: Number(
+      metadata.unappliedAmount ??
+        Math.max(
+          0,
+          Number(metadata.enteredAmount ?? metadata.amount ?? 0) -
+            Number(metadata.appliedAmount ?? metadata.amount ?? 0),
+        ),
+    ),
+    allowUnapplied: metadata.allowUnapplied === true,
     paidAt:
       typeof metadata.paidAt === 'string' && metadata.paidAt.trim().length > 0
         ? metadata.paidAt
@@ -605,7 +620,11 @@ export class ReportsService {
           dueDate: doc.dueDate,
           settlementTotal: doc.settlementTotal,
           currentOutstandingAmount: doc.outstandingAmount,
-          amount: metadata.amount,
+          amount: metadata.appliedAmount,
+          enteredAmount: metadata.enteredAmount,
+          appliedAmount: metadata.appliedAmount,
+          unappliedAmount: metadata.unappliedAmount,
+          allowUnapplied: metadata.allowUnapplied,
           paidAt: metadata.paidAt,
           referenceNo: metadata.referenceNo,
           notes: metadata.notes,
@@ -737,6 +756,12 @@ export class ReportsService {
 
     const total = sortedItems.length;
     const totalAmount = round2(sortedItems.reduce((sum, row) => sum + row.amount, 0));
+    const totalEnteredAmount = round2(
+      sortedItems.reduce((sum, row) => sum + row.enteredAmount, 0),
+    );
+    const totalUnappliedAmount = round2(
+      sortedItems.reduce((sum, row) => sum + row.unappliedAmount, 0),
+    );
     const pageCount = Math.max(1, Math.ceil(total / limit));
     const safePage = Math.min(page, pageCount);
     const skip = (safePage - 1) * limit;
@@ -747,11 +772,13 @@ export class ReportsService {
         const paidAt = toSafeDate(row.paidAt) ?? row.createdAt;
         if (paidAt && paidAt >= monthStart) {
           acc.totalAmount += row.amount;
+          acc.enteredAmount += row.enteredAmount;
+          acc.unappliedAmount += row.unappliedAmount;
           acc.count += 1;
         }
         return acc;
       },
-      { totalAmount: 0, count: 0 },
+      { totalAmount: 0, enteredAmount: 0, unappliedAmount: 0, count: 0 },
     );
 
     return {
@@ -759,8 +786,16 @@ export class ReportsService {
         count: total,
         visibleCount: items.length,
         visibleAmount: round2(items.reduce((sum, row) => sum + row.amount, 0)),
+        visibleEnteredAmount: round2(items.reduce((sum, row) => sum + row.enteredAmount, 0)),
+        visibleUnappliedAmount: round2(
+          items.reduce((sum, row) => sum + row.unappliedAmount, 0),
+        ),
         totalAmount,
+        totalEnteredAmount,
+        totalUnappliedAmount,
         currentMonthAmount: round2(monthSummary.totalAmount),
+        currentMonthEnteredAmount: round2(monthSummary.enteredAmount),
+        currentMonthUnappliedAmount: round2(monthSummary.unappliedAmount),
         currentMonthCount: monthSummary.count,
       },
       items,

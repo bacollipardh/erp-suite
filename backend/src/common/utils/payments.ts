@@ -20,6 +20,32 @@ export function calculateOutstandingAmount(total: number, amountPaid: number) {
   return round2(Math.max(0, Number(total ?? 0) - Number(amountPaid ?? 0)));
 }
 
+export type PaymentAllocation = {
+  enteredAmount: number;
+  appliedAmount: number;
+  unappliedAmount: number;
+  outstandingAmount: number;
+};
+
+export function calculatePaymentAllocation(
+  enteredAmount: number,
+  outstandingAmount: number,
+): PaymentAllocation {
+  const normalizedEnteredAmount = round2(Math.max(0, Number(enteredAmount ?? 0)));
+  const normalizedOutstandingAmount = round2(Math.max(0, Number(outstandingAmount ?? 0)));
+  const appliedAmount = round2(
+    Math.min(normalizedEnteredAmount, normalizedOutstandingAmount),
+  );
+  const unappliedAmount = round2(Math.max(0, normalizedEnteredAmount - appliedAmount));
+
+  return {
+    enteredAmount: normalizedEnteredAmount,
+    appliedAmount,
+    unappliedAmount,
+    outstandingAmount: normalizedOutstandingAmount,
+  };
+}
+
 export type PaymentTimelineSourceEntry<TUser = unknown> = {
   id: string;
   createdAt: Date;
@@ -32,6 +58,10 @@ export type PaymentTimelineEntry<TUser = unknown> = {
   sequence: number;
   createdAt: Date;
   amount: number;
+  enteredAmount: number;
+  appliedAmount: number;
+  unappliedAmount: number;
+  allowUnapplied: boolean;
   paidAt: string;
   referenceNo: string | null;
   notes: string | null;
@@ -49,6 +79,10 @@ export type PaymentTimelineEntry<TUser = unknown> = {
 
 type PaymentAuditMetadata = {
   amount: number;
+  enteredAmount: number | null;
+  appliedAmount: number | null;
+  unappliedAmount: number | null;
+  allowUnapplied: boolean;
   paidAt: string;
   referenceNo: string | null;
   notes: string | null;
@@ -102,6 +136,10 @@ export function parsePaymentAuditMetadata(entry: { metadata?: unknown; createdAt
 
   return {
     amount: round2(Number(metadata.amount ?? 0)),
+    enteredAmount: parseOptionalNumber(metadata.enteredAmount),
+    appliedAmount: parseOptionalNumber(metadata.appliedAmount),
+    unappliedAmount: parseOptionalNumber(metadata.unappliedAmount),
+    allowUnapplied: metadata.allowUnapplied === true,
     paidAt: normalizePaidAt(metadata.paidAt, entry.createdAt),
     referenceNo: parseOptionalString(metadata.referenceNo),
     notes: parseOptionalString(metadata.notes),
@@ -138,8 +176,11 @@ export function buildPaymentTimeline<TUser = unknown>(params: {
     })
     .map(({ entry, metadata }, index) => {
       const settlementTotal = metadata.settlementTotal ?? baseSettlementTotal;
+      const appliedAmount = metadata.appliedAmount ?? metadata.amount;
+      const enteredAmount = metadata.enteredAmount ?? appliedAmount;
+      const unappliedAmount = metadata.unappliedAmount ?? round2(Math.max(0, enteredAmount - appliedAmount));
       const amountPaidBefore = metadata.amountPaidBefore ?? runningPaid;
-      const amountPaidAfter = metadata.amountPaidAfter ?? round2(amountPaidBefore + metadata.amount);
+      const amountPaidAfter = metadata.amountPaidAfter ?? round2(amountPaidBefore + appliedAmount);
       const outstandingBefore =
         metadata.outstandingBefore ??
         calculateOutstandingAmount(settlementTotal, amountPaidBefore);
@@ -166,7 +207,11 @@ export function buildPaymentTimeline<TUser = unknown>(params: {
         id: entry.id,
         sequence: index + 1,
         createdAt: entry.createdAt,
-        amount: metadata.amount,
+        amount: appliedAmount,
+        enteredAmount,
+        appliedAmount,
+        unappliedAmount,
+        allowUnapplied: metadata.allowUnapplied,
         paidAt: metadata.paidAt,
         referenceNo: metadata.referenceNo,
         notes: metadata.notes,

@@ -1,4 +1,12 @@
-import { IsDateString, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export class RecordPaymentDto {
   @IsNumber()
@@ -18,4 +26,8 @@ export class RecordPaymentDto {
   @IsString()
   @MaxLength(255)
   notes?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  allowUnapplied?: boolean;
 }

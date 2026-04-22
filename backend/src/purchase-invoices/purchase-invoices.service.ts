@@ -11,6 +11,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
 import {
   buildPaymentTimeline,
+  calculatePaymentAllocation,
   calculateOutstandingAmount,
   resolveDueState,
   resolvePaymentStatus,
@@ -400,23 +401,36 @@ export class PurchaseInvoicesService {
     return doc;
   }
 
-  async recordPayment(id: string, dto: RecordPaymentDto, userId: string) {
-    const existing = await this.findOne(id);
-    if (existing.status === DocumentStatus.DRAFT) {
-      throw new BadRequestException('Only posted purchase invoices can receive payments');
-    }
+async recordPayment(id: string, dto: RecordPaymentDto, userId: string) {
+  const existing = await this.findOne(id);
+  if (existing.status === DocumentStatus.DRAFT) {
+    throw new BadRequestException('Only posted purchase invoices can receive payments');
+  }
 
-    const total = Number(existing.grandTotal);
-    const currentPaid = Number(existing.amountPaid ?? 0);
-    const nextPaid = round2(currentPaid + Number(dto.amount));
-    const outstandingBefore = calculateOutstandingAmount(total, currentPaid);
-    const outstandingAfter = calculateOutstandingAmount(total, nextPaid);
-    const paymentStatusBefore = resolvePaymentStatus(total, currentPaid);
-    const paymentStatusAfter = resolvePaymentStatus(total, nextPaid);
+  const total = Number(existing.grandTotal);
+  const currentPaid = Number(existing.amountPaid ?? 0);
+  const outstandingBefore = calculateOutstandingAmount(total, currentPaid);
+  const paymentStatusBefore = resolvePaymentStatus(total, currentPaid);
 
-    if (nextPaid > total) {
-      throw new BadRequestException('Payment exceeds the remaining payable amount');
-    }
+  if (outstandingBefore <= 0) {
+    throw new BadRequestException('Purchase invoice is already fully settled');
+  }
+
+  const allocation = calculatePaymentAllocation(Number(dto.amount), outstandingBefore);
+
+  if (allocation.unappliedAmount > 0 && !dto.allowUnapplied) {
+    throw new BadRequestException(
+      'Payment exceeds the remaining payable amount. Enable unapplied handling to keep the excess as advance.',
+    );
+  }
+
+  const nextPaid = round2(currentPaid + allocation.appliedAmount);
+  const outstandingAfter = calculateOutstandingAmount(total, nextPaid);
+  const paymentStatusAfter = resolvePaymentStatus(total, nextPaid);
+
+  if (nextPaid > total) {
+    throw new BadRequestException('Payment exceeds the remaining payable amount');
+  }
 
     const updated = await this.prisma.purchaseInvoice.update({
       where: { id },
@@ -426,16 +440,20 @@ export class PurchaseInvoicesService {
       },
     });
 
-    await this.auditLogs.log({
-      userId,
-      entityType: 'purchase_invoices',
-      entityId: updated.id,
-      action: 'RECORD_PAYMENT',
-      metadata: {
-        amount: dto.amount,
-        paidAt: dto.paidAt ?? new Date().toISOString(),
-        referenceNo: dto.referenceNo,
-        notes: dto.notes,
+  await this.auditLogs.log({
+    userId,
+    entityType: 'purchase_invoices',
+    entityId: updated.id,
+    action: 'RECORD_PAYMENT',
+    metadata: {
+      amount: allocation.appliedAmount,
+      enteredAmount: allocation.enteredAmount,
+      appliedAmount: allocation.appliedAmount,
+      unappliedAmount: allocation.unappliedAmount,
+      allowUnapplied: dto.allowUnapplied === true,
+      paidAt: dto.paidAt ?? new Date().toISOString(),
+      referenceNo: dto.referenceNo,
+      notes: dto.notes,
         settlementTotal: total,
         amountPaidBefore: currentPaid,
         amountPaidAfter: nextPaid,

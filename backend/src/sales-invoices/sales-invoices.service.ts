@@ -11,6 +11,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
 import {
   buildPaymentTimeline,
+  calculatePaymentAllocation,
   calculateOutstandingAmount,
   resolveDueState,
   resolvePaymentStatus,
@@ -443,10 +444,23 @@ export class SalesInvoicesService {
 
     const total = Number(existing.settlementTotal ?? existing.grandTotal);
     const currentPaid = Number(existing.amountPaid ?? 0);
-    const nextPaid = round2(currentPaid + Number(dto.amount));
     const outstandingBefore = calculateOutstandingAmount(total, currentPaid);
-    const outstandingAfter = calculateOutstandingAmount(total, nextPaid);
     const paymentStatusBefore = resolvePaymentStatus(total, currentPaid);
+
+    if (outstandingBefore <= 0) {
+      throw new BadRequestException('Sales invoice is already fully settled');
+    }
+
+    const allocation = calculatePaymentAllocation(Number(dto.amount), outstandingBefore);
+
+    if (allocation.unappliedAmount > 0 && !dto.allowUnapplied) {
+      throw new BadRequestException(
+        'Payment exceeds the remaining receivable amount. Enable unapplied handling to keep the excess as advance.',
+      );
+    }
+
+    const nextPaid = round2(currentPaid + allocation.appliedAmount);
+    const outstandingAfter = calculateOutstandingAmount(total, nextPaid);
     const paymentStatusAfter = resolvePaymentStatus(total, nextPaid);
 
     if (nextPaid > total) {
@@ -467,7 +481,11 @@ export class SalesInvoicesService {
       entityId: updated.id,
       action: 'RECORD_PAYMENT',
       metadata: {
-        amount: dto.amount,
+        amount: allocation.appliedAmount,
+        enteredAmount: allocation.enteredAmount,
+        appliedAmount: allocation.appliedAmount,
+        unappliedAmount: allocation.unappliedAmount,
+        allowUnapplied: dto.allowUnapplied === true,
         paidAt: dto.paidAt ?? new Date().toISOString(),
         referenceNo: dto.referenceNo,
         notes: dto.notes,

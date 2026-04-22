@@ -25,8 +25,14 @@ type PaymentActivityResponse = {
     count: number;
     visibleCount: number;
     visibleAmount: number;
+    visibleEnteredAmount: number;
+    visibleUnappliedAmount: number;
     totalAmount: number;
+    totalEnteredAmount: number;
+    totalUnappliedAmount: number;
     currentMonthAmount: number;
+    currentMonthEnteredAmount: number;
+    currentMonthUnappliedAmount: number;
     currentMonthCount: number;
   };
   items: {
@@ -38,6 +44,10 @@ type PaymentActivityResponse = {
     settlementTotal: number;
     currentOutstandingAmount: number;
     amount: number;
+    enteredAmount: number;
+    appliedAmount: number;
+    unappliedAmount: number;
+    allowUnapplied: boolean;
     paidAt: string;
     referenceNo?: string | null;
     notes?: string | null;
@@ -111,8 +121,14 @@ export function PaymentActivityClient({
       count: 0,
       visibleCount: 0,
       visibleAmount: 0,
+      visibleEnteredAmount: 0,
+      visibleUnappliedAmount: 0,
       totalAmount: 0,
+      totalEnteredAmount: 0,
+      totalUnappliedAmount: 0,
       currentMonthAmount: 0,
+      currentMonthEnteredAmount: 0,
+      currentMonthUnappliedAmount: 0,
       currentMonthCount: 0,
     },
     items: [],
@@ -202,6 +218,14 @@ export function PaymentActivityClient({
     return {
       remainingInPage,
       pageAmount: payload.items.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
+      pageEnteredAmount: payload.items.reduce(
+        (sum, row) => sum + Number(row.enteredAmount ?? row.amount ?? 0),
+        0,
+      ),
+      pageUnappliedAmount: payload.items.reduce(
+        (sum, row) => sum + Number(row.unappliedAmount ?? 0),
+        0,
+      ),
     };
   }, [payload.items]);
 
@@ -404,19 +428,29 @@ export function PaymentActivityClient({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-6 gap-3">
         <StatsCard
           title="Gjithsej regjistrime"
           value={payload.summary.count}
           subtitle={`${payload.pageCount} faqe`}
         />
         <StatsCard
-          title="Shuma e filtruar"
+          title="Aplikuar e filtruar"
           value={`${formatMoney(payload.summary.totalAmount)} EUR`}
           subtitle={`${payload.summary.currentMonthCount} kete muaj`}
         />
         <StatsCard
-          title="Shuma ne faqe"
+          title="E hyre ne faqe"
+          value={`${formatMoney(pageSummary.pageEnteredAmount)} EUR`}
+          subtitle={`Aplikuar ${formatMoney(pageSummary.pageAmount)} EUR`}
+        />
+        <StatsCard
+          title="Unapplied e filtruar"
+          value={`${formatMoney(payload.summary.totalUnappliedAmount)} EUR`}
+          subtitle={`Ne faqe ${formatMoney(pageSummary.pageUnappliedAmount)} EUR`}
+        />
+        <StatsCard
+          title="Aplikuar ne faqe"
           value={`${formatMoney(pageSummary.pageAmount)} EUR`}
           subtitle={`${payload.summary.visibleCount} rreshta ne pamje`}
         />
@@ -491,9 +525,19 @@ export function PaymentActivityClient({
               key: 'amount',
               title: 'Shuma',
               render: (row: PaymentActivityResponse['items'][number]) => (
-                <span className="font-semibold text-slate-900">
-                  {formatMoney(row.amount)} EUR
-                </span>
+                <div className="min-w-[150px]">
+                  <p className="font-semibold text-slate-900">
+                    {formatMoney(row.appliedAmount ?? row.amount)} EUR
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    Hyrja: {formatMoney(row.enteredAmount ?? row.amount)} EUR
+                  </p>
+                  {Number(row.unappliedAmount ?? 0) > 0 ? (
+                    <p className="text-xs text-amber-700">
+                      Unapplied: {formatMoney(row.unappliedAmount)} EUR
+                    </p>
+                  ) : null}
+                </div>
               ),
             },
             {

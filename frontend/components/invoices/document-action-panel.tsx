@@ -16,6 +16,10 @@ type PaymentEntry = {
   id: string;
   sequence?: number;
   amount: number | string;
+  enteredAmount?: number | string | null;
+  appliedAmount?: number | string | null;
+  unappliedAmount?: number | string | null;
+  allowUnapplied?: boolean;
   paidAt: string;
   createdAt?: string;
   amountPaidBefore?: number | string | null;
@@ -41,6 +45,20 @@ function formatMoney(value: number) {
 
 function roundMoney(value: number) {
   return Math.round((Number(value ?? 0) + Number.EPSILON) * 100) / 100;
+}
+
+function calculatePaymentAllocation(amount: number, outstanding: number) {
+  const enteredAmount = roundMoney(Math.max(0, Number(amount ?? 0)));
+  const remainingAmount = roundMoney(Math.max(0, Number(outstanding ?? 0)));
+  const appliedAmount = roundMoney(Math.min(enteredAmount, remainingAmount));
+  const unappliedAmount = roundMoney(Math.max(0, enteredAmount - appliedAmount));
+
+  return {
+    enteredAmount,
+    appliedAmount,
+    unappliedAmount,
+    remainingAmount,
+  };
 }
 
 function parseApiError(error: unknown) {
@@ -136,6 +154,7 @@ export function DocumentActionPanel({
   const [paidAt, setPaidAt] = useState(toDateInputValue(new Date()));
   const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
+  const [allowUnapplied, setAllowUnapplied] = useState(false);
   const [busyPayment, setBusyPayment] = useState(false);
   const [busyFiscal, setBusyFiscal] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -151,9 +170,20 @@ export function DocumentActionPanel({
     return null;
   }, [documentId, documentType]);
 
+  const paymentPreview = useMemo(
+    () => calculatePaymentAllocation(Number(amount), remaining),
+    [amount, remaining],
+  );
+
   const reconciliation = useMemo(() => {
     const historyTotal = roundMoney(
-      payments.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0),
+      payments.reduce(
+        (sum, entry) => sum + Number(entry.appliedAmount ?? entry.amount ?? 0),
+        0,
+      ),
+    );
+    const unappliedTotal = roundMoney(
+      payments.reduce((sum, entry) => sum + Number(entry.unappliedAmount ?? 0), 0),
     );
     const delta = roundMoney(paid - historyTotal);
     const hasHistory = payments.length > 0;
@@ -171,6 +201,7 @@ export function DocumentActionPanel({
       hasLegacyFallback,
       hasAggregateWithoutHistory,
       isOverpaid,
+      unappliedTotal,
       latestPayment,
       transactionCount: payments.length,
     };
@@ -189,9 +220,17 @@ export function DocumentActionPanel({
       return;
     }
 
-    if (numericAmount > remaining) {
+    if (paymentPreview.appliedAmount <= 0) {
       setBusyPayment(false);
-      setError('Shuma e pageses nuk mund te kaloje vleren e mbetur.');
+      setError('Dokumenti nuk ka me vlere te hapur per pagese.');
+      return;
+    }
+
+    if (paymentPreview.unappliedAmount > 0 && !allowUnapplied) {
+      setBusyPayment(false);
+      setError(
+        'Shuma kalon vleren e mbetur. Aktivizo opsionin per ta ruajtur tepricen si unapplied.',
+      );
       return;
     }
 
@@ -201,12 +240,18 @@ export function DocumentActionPanel({
         paidAt,
         referenceNo: referenceNo || undefined,
         notes: notes || undefined,
+        allowUnapplied,
       });
 
       setAmount('');
       setReferenceNo('');
       setNotes('');
-      setMessage('Pagesa u regjistrua me sukses.');
+      setAllowUnapplied(false);
+      setMessage(
+        paymentPreview.unappliedAmount > 0
+          ? `Pagesa u regjistrua me sukses. ${formatMoney(paymentPreview.appliedAmount)} EUR u aplikuan ne dokument dhe ${formatMoney(paymentPreview.unappliedAmount)} EUR mbeten si unapplied.`
+          : 'Pagesa u regjistrua me sukses.',
+      );
       router.refresh();
     } catch (err) {
       setError(parseApiError(err));
@@ -375,14 +420,27 @@ export function DocumentActionPanel({
           {reconciliation.latestPayment ? (
             <>
               <p className="text-sm font-semibold text-slate-900">
-                {formatMoney(Number(reconciliation.latestPayment.amount ?? 0))} EUR
+                {formatMoney(
+                  Number(
+                    reconciliation.latestPayment.appliedAmount ??
+                      reconciliation.latestPayment.amount ??
+                      0,
+                  ),
+                )}{' '}
+                EUR
               </p>
               <p className="text-xs text-slate-400 mt-1">
-                {formatDateOnly(reconciliation.latestPayment.paidAt)} ·{' '}
+                {formatDateOnly(reconciliation.latestPayment.paidAt)} |{' '}
                 {reconciliation.latestPayment.user?.fullName ??
                   reconciliation.latestPayment.user?.email ??
                   'Pa operator'}
               </p>
+              {Number(reconciliation.latestPayment.unappliedAmount ?? 0) > 0 ? (
+                <p className="text-xs text-amber-700 mt-1">
+                  Unapplied:{' '}
+                  {formatMoney(Number(reconciliation.latestPayment.unappliedAmount ?? 0))} EUR
+                </p>
+              ) : null}
             </>
           ) : (
             <p className="text-sm text-slate-400">Nuk ka pagesa te regjistruara</p>
@@ -417,6 +475,14 @@ export function DocumentActionPanel({
           Disa pagesa po shfaqen me snapshot fallback, sepse jane regjistruar para se te shtonim
           metadata te plota `before/after`. Historiku vazhdon te lexohet, por entries e reja jane me
           reconciliation me te detajuar.
+        </div>
+      ) : null}
+
+      {reconciliation.unappliedTotal > 0 ? (
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
+          Ky dokument ka edhe {formatMoney(reconciliation.unappliedTotal)} EUR te regjistruara si
+          `unapplied`. Kjo pjese nuk shtohet te `amountPaid` dhe mbetet per trajtim ose rialokim te
+          mevonshem.
         </div>
       ) : null}
 
@@ -461,7 +527,7 @@ export function DocumentActionPanel({
               <input
                 type="number"
                 min={0.01}
-                max={remaining > 0 ? remaining : undefined}
+                max={!allowUnapplied && remaining > 0 ? remaining : undefined}
                 step="0.01"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
@@ -499,6 +565,33 @@ export function DocumentActionPanel({
                 disabled={paymentActionBlocked}
               />
             </label>
+          </div>
+
+          <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={allowUnapplied}
+              onChange={(event) => setAllowUnapplied(event.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+              disabled={paymentActionBlocked}
+            />
+            <span>
+              Lejo tepricen si `unapplied` nese shuma kalon vleren e mbetur ne kete dokument.
+            </span>
+          </label>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+            <p className="font-medium text-slate-800">Preview i aplikimit</p>
+            <div className="mt-2 grid grid-cols-1 gap-2 text-slate-600 sm:grid-cols-3">
+              <p>Hyrja: {formatMoney(paymentPreview.enteredAmount)} EUR</p>
+              <p>Aplikuar: {formatMoney(paymentPreview.appliedAmount)} EUR</p>
+              <p>Unapplied: {formatMoney(paymentPreview.unappliedAmount)} EUR</p>
+            </div>
+            {paymentPreview.unappliedAmount > 0 && !allowUnapplied ? (
+              <p className="mt-2 text-xs text-amber-700">
+                Aktivizo opsionin sipas mesiper nese don ta pranosh tepricen si pagese te papershtatur.
+              </p>
+            ) : null}
           </div>
 
           <div className="flex justify-end">
@@ -565,7 +658,19 @@ export function DocumentActionPanel({
                       </div>
                     </td>
                     <td className="px-4 py-2.5 font-semibold text-slate-900">
-                      {formatMoney(Number(entry.amount ?? 0))} EUR
+                      <div className="space-y-1">
+                        <p>{formatMoney(Number(entry.appliedAmount ?? entry.amount ?? 0))} EUR</p>
+                        {Number(entry.unappliedAmount ?? 0) > 0 ? (
+                          <>
+                            <p className="text-xs text-slate-400">
+                              Hyrja: {formatMoney(Number(entry.enteredAmount ?? 0))} EUR
+                            </p>
+                            <p className="text-xs text-amber-700">
+                              Unapplied: {formatMoney(Number(entry.unappliedAmount ?? 0))} EUR
+                            </p>
+                          </>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-2.5 text-slate-600">
                       <div className="space-y-1">
@@ -586,7 +691,7 @@ export function DocumentActionPanel({
                     <td className="px-4 py-2.5">
                       <div className="flex flex-wrap items-center gap-2">
                         {entry.paymentStatusBefore ? <StatusBadge value={entry.paymentStatusBefore} /> : null}
-                        <span className="text-xs text-slate-400">→</span>
+                        <span className="text-xs text-slate-400">to</span>
                         {entry.paymentStatusAfter ? <StatusBadge value={entry.paymentStatusAfter} /> : null}
                       </div>
                     </td>

@@ -39,6 +39,10 @@ type PaymentActivityExportItem = {
   settlementTotal: number;
   currentOutstandingAmount: number;
   amount: number;
+  enteredAmount: number;
+  appliedAmount: number;
+  unappliedAmount: number;
+  allowUnapplied: boolean;
   paidAt: string;
   referenceNo?: string | null;
   notes?: string | null;
@@ -54,8 +58,14 @@ type PaymentActivityExportReport = {
     count: number;
     visibleCount: number;
     visibleAmount: number;
+    visibleEnteredAmount: number;
+    visibleUnappliedAmount: number;
     totalAmount: number;
+    totalEnteredAmount: number;
+    totalUnappliedAmount: number;
     currentMonthAmount: number;
+    currentMonthEnteredAmount: number;
+    currentMonthUnappliedAmount: number;
     currentMonthCount: number;
   };
   items: PaymentActivityExportItem[];
@@ -211,7 +221,9 @@ export function buildPaymentActivityCsv(
       'Party',
       'Doc Date',
       'Due Date',
-      'Amount',
+      'Entered Amount',
+      'Applied Amount',
+      'Unapplied Amount',
       'Remaining After',
       'Current Outstanding',
       'Status',
@@ -227,7 +239,9 @@ export function buildPaymentActivityCsv(
         row.party?.name ?? '-',
         formatDateOnly(row.docDate),
         formatDateOnly(row.dueDate),
-        formatAmount(Number(row.amount ?? 0)),
+        formatAmount(Number(row.enteredAmount ?? row.amount ?? 0)),
+        formatAmount(Number(row.appliedAmount ?? row.amount ?? 0)),
+        formatAmount(Number(row.unappliedAmount ?? 0)),
         formatAmount(Number(row.remainingAmount ?? 0)),
         formatAmount(Number(row.currentOutstandingAmount ?? 0)),
         row.paymentStatusAfter ?? '-',
@@ -257,14 +271,18 @@ export function buildPaymentActivityMailtoHref(
     '',
     `Gjithsej regjistrime: ${report.summary.count}`,
     `Rreshta te filtruar: ${report.total}`,
-    `Shuma totale e filtruar: ${formatAmount(report.summary.totalAmount)} EUR`,
-    `Shuma kete muaj: ${formatAmount(report.summary.currentMonthAmount)} EUR`,
+    `Shuma totale e hyre: ${formatAmount(report.summary.totalEnteredAmount)} EUR`,
+    `Shuma totale e aplikuar: ${formatAmount(report.summary.totalAmount)} EUR`,
+    `Shuma totale unapplied: ${formatAmount(report.summary.totalUnappliedAmount)} EUR`,
+    `Shuma e hyre kete muaj: ${formatAmount(report.summary.currentMonthEnteredAmount)} EUR`,
+    `Shuma e aplikuar kete muaj: ${formatAmount(report.summary.currentMonthAmount)} EUR`,
+    `Shuma unapplied kete muaj: ${formatAmount(report.summary.currentMonthUnappliedAmount)} EUR`,
     `Regjistrime kete muaj: ${report.summary.currentMonthCount}`,
     '',
     topItems.length > 0 ? 'Top pagesat sipas shumes:' : 'Nuk ka pagesa per filtrat e zgjedhur.',
     ...topItems.map(
       (row) =>
-        `- ${formatDateOnly(row.paidAt)} | ${row.docNo} | ${row.party?.name ?? '-'} | ${formatAmount(Number(row.amount ?? 0))} EUR | mbetur ${formatAmount(Number(row.currentOutstandingAmount ?? 0))} EUR`,
+        `- ${formatDateOnly(row.paidAt)} | ${row.docNo} | ${row.party?.name ?? '-'} | hyrja ${formatAmount(Number(row.enteredAmount ?? row.amount ?? 0))} EUR | aplikuar ${formatAmount(Number(row.appliedAmount ?? row.amount ?? 0))} EUR | unapplied ${formatAmount(Number(row.unappliedAmount ?? 0))} EUR | mbetur ${formatAmount(Number(row.currentOutstandingAmount ?? 0))} EUR`,
     ),
   ].join('\n');
 

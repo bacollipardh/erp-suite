@@ -29,6 +29,24 @@ function formatMoney(value?: number | string | null) {
   });
 }
 
+function roundMoney(value: number) {
+  return Math.round((Number(value ?? 0) + Number.EPSILON) * 100) / 100;
+}
+
+function calculatePaymentAllocation(amount: number, outstanding: number) {
+  const enteredAmount = roundMoney(Math.max(0, Number(amount ?? 0)));
+  const remainingAmount = roundMoney(Math.max(0, Number(outstanding ?? 0)));
+  const appliedAmount = roundMoney(Math.min(enteredAmount, remainingAmount));
+  const unappliedAmount = roundMoney(Math.max(0, enteredAmount - appliedAmount));
+
+  return {
+    enteredAmount,
+    appliedAmount,
+    unappliedAmount,
+    remainingAmount,
+  };
+}
+
 function parseApiError(error: unknown) {
   if (error instanceof Error) {
     try {
@@ -81,6 +99,7 @@ export function PaymentEntryClient({
   const [paidAt, setPaidAt] = useState(toDateInputValue(new Date()));
   const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
+  const [allowUnapplied, setAllowUnapplied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -147,10 +166,20 @@ export function PaymentEntryClient({
         setSelectedId(selectedDocument.id);
       }
       setAmount(selectedDocument.outstanding.toFixed(2));
+      setAllowUnapplied(false);
     } else {
       setAmount('');
+      setAllowUnapplied(false);
     }
   }, [selectedDocument?.id, selectedDocument?.outstanding, selectedId]);
+
+  const paymentPreview = useMemo(() => {
+    if (!selectedDocument) {
+      return calculatePaymentAllocation(0, 0);
+    }
+
+    return calculatePaymentAllocation(Number(amount), Number(selectedDocument.outstanding ?? 0));
+  }, [amount, selectedDocument]);
 
   const summary = useMemo(() => {
     return items.reduce(
@@ -179,9 +208,17 @@ export function PaymentEntryClient({
       return;
     }
 
-    if (numericAmount > Number(selectedDocument.outstanding ?? 0)) {
+    if (paymentPreview.appliedAmount <= 0) {
       setBusy(false);
-      setError('Shuma nuk mund te kaloje vleren e mbetur ne dokument.');
+      setError('Dokumenti nuk ka me vlere te hapur per kete veprim.');
+      return;
+    }
+
+    if (paymentPreview.unappliedAmount > 0 && !allowUnapplied) {
+      setBusy(false);
+      setError(
+        'Shuma kalon vleren e mbetur ne dokument. Aktivizo opsionin per te ruajtur tepricen si unapplied.',
+      );
       return;
     }
 
@@ -191,14 +228,18 @@ export function PaymentEntryClient({
         paidAt,
         referenceNo: referenceNo || undefined,
         notes: notes || undefined,
+        allowUnapplied,
       });
 
       setItems((current) =>
         current.flatMap((item) => {
           if (item.id !== selectedDocument.id) return [item];
 
-          const nextPaid = Number(item.paid ?? 0) + numericAmount;
-          const nextOutstanding = Math.max(0, Number(item.outstanding ?? 0) - numericAmount);
+          const nextPaid = Number(item.paid ?? 0) + paymentPreview.appliedAmount;
+          const nextOutstanding = Math.max(
+            0,
+            Number(item.outstanding ?? 0) - paymentPreview.appliedAmount,
+          );
 
           if (nextOutstanding <= 0) {
             return [];
@@ -216,7 +257,12 @@ export function PaymentEntryClient({
 
       setReferenceNo('');
       setNotes('');
-      setMessage(labels.success);
+      setAllowUnapplied(false);
+      setMessage(
+        paymentPreview.unappliedAmount > 0
+          ? `${labels.success} ${formatMoney(paymentPreview.appliedAmount)} EUR u aplikuan ne dokument dhe ${formatMoney(paymentPreview.unappliedAmount)} EUR mbeten si unapplied.`
+          : labels.success,
+      );
     } catch (err) {
       setError(parseApiError(err));
     } finally {
@@ -416,7 +462,7 @@ export function PaymentEntryClient({
                   <input
                     type="number"
                     min={0.01}
-                    max={selectedDocument.outstanding}
+                    max={allowUnapplied ? undefined : selectedDocument.outstanding}
                     step="0.01"
                     value={amount}
                     onChange={(event) => setAmount(event.target.value)}
@@ -450,6 +496,32 @@ export function PaymentEntryClient({
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                   />
                 </label>
+
+                <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={allowUnapplied}
+                    onChange={(event) => setAllowUnapplied(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>
+                    Lejo tepricen si `unapplied` kur shuma kalon vleren e mbetur te dokumentit.
+                  </span>
+                </label>
+
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+                  <p className="font-medium text-slate-800">Preview i aplikimit</p>
+                  <div className="mt-2 grid grid-cols-1 gap-2 text-slate-600 sm:grid-cols-3">
+                    <p>Hyrja: {formatMoney(paymentPreview.enteredAmount)} EUR</p>
+                    <p>Aplikuar: {formatMoney(paymentPreview.appliedAmount)} EUR</p>
+                    <p>Unapplied: {formatMoney(paymentPreview.unappliedAmount)} EUR</p>
+                  </div>
+                  {paymentPreview.unappliedAmount > 0 && !allowUnapplied ? (
+                    <p className="mt-2 text-xs text-amber-700">
+                      Aktivizo opsionin sipas mesiper per te ruajtur tepricen pa e refuzuar pagesen.
+                    </p>
+                  ) : null}
+                </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                   <div className="flex gap-3 text-sm">

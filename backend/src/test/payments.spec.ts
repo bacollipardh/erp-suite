@@ -1,6 +1,7 @@
 import { PaymentStatus } from '@prisma/client';
 import {
   buildPaymentTimeline,
+  calculatePaymentAllocation,
   calculateOutstandingAmount,
   resolveDueState,
   resolvePaymentStatus,
@@ -24,6 +25,22 @@ describe('resolvePaymentStatus', () => {
   it('calculates outstanding amount without going below zero', () => {
     expect(calculateOutstandingAmount(100, 25)).toBe(75);
     expect(calculateOutstandingAmount(100, 125)).toBe(0);
+  });
+
+  it('splits an entered payment into applied and unapplied amounts', () => {
+    expect(calculatePaymentAllocation(100, 80)).toEqual({
+      enteredAmount: 100,
+      appliedAmount: 80,
+      unappliedAmount: 20,
+      outstandingAmount: 80,
+    });
+
+    expect(calculatePaymentAllocation(40, 80)).toEqual({
+      enteredAmount: 40,
+      appliedAmount: 40,
+      unappliedAmount: 0,
+      outstandingAmount: 80,
+    });
   });
 
   it('marks documents without due date as NO_DUE_DATE when still open', () => {
@@ -130,6 +147,10 @@ describe('resolvePaymentStatus', () => {
     expect(timeline[1]).toMatchObject({
       id: 'payment-2',
       sequence: 2,
+      amount: 40,
+      enteredAmount: 40,
+      appliedAmount: 40,
+      unappliedAmount: 0,
       amountPaidBefore: 20,
       amountPaidAfter: 60,
       outstandingBefore: 80,
@@ -158,6 +179,10 @@ describe('resolvePaymentStatus', () => {
     expect(timeline[0]).toMatchObject({
       id: 'legacy-payment',
       sequence: 1,
+      amount: 35,
+      enteredAmount: 35,
+      appliedAmount: 35,
+      unappliedAmount: 0,
       amountPaidBefore: 0,
       amountPaidAfter: 35,
       outstandingBefore: 100,
@@ -165,6 +190,45 @@ describe('resolvePaymentStatus', () => {
       paymentStatusBefore: PaymentStatus.UNPAID,
       paymentStatusAfter: PaymentStatus.PARTIALLY_PAID,
       usedFallbackSnapshot: true,
+    });
+  });
+
+  it('keeps unapplied amounts visible without affecting reconciliation totals', () => {
+    const timeline = buildPaymentTimeline({
+      settlementTotal: 100,
+      entries: [
+        {
+          id: 'payment-over',
+          createdAt: new Date('2026-04-22T10:00:00Z'),
+          metadata: {
+            amount: 100,
+            enteredAmount: 120,
+            appliedAmount: 100,
+            unappliedAmount: 20,
+            allowUnapplied: true,
+            paidAt: '2026-04-22',
+            settlementTotal: 100,
+            amountPaidBefore: 0,
+            amountPaidAfter: 100,
+            outstandingBefore: 100,
+            outstandingAfter: 0,
+            paymentStatusBefore: PaymentStatus.UNPAID,
+            paymentStatusAfter: PaymentStatus.PAID,
+          },
+        },
+      ],
+    });
+
+    expect(timeline[0]).toMatchObject({
+      id: 'payment-over',
+      amount: 100,
+      enteredAmount: 120,
+      appliedAmount: 100,
+      unappliedAmount: 20,
+      allowUnapplied: true,
+      amountPaidAfter: 100,
+      outstandingAfter: 0,
+      paymentStatusAfter: PaymentStatus.PAID,
     });
   });
 });
