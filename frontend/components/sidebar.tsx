@@ -30,7 +30,7 @@ function ChevronIcon({ open }: { open: boolean }) {
       viewBox="0 0 24 24"
       strokeWidth={2}
       stroke="currentColor"
-      className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
+      className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
     >
       <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
     </svg>
@@ -77,18 +77,18 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   }
 
   return (
-    <aside className="h-full flex flex-col bg-slate-900 text-slate-100 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-4 border-b border-slate-700/60">
+    <aside className="flex h-full flex-col overflow-hidden bg-slate-900 text-slate-100">
+      <div className="flex items-center justify-between border-b border-slate-700/60 px-4 py-4">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-indigo-500 flex items-center justify-center text-white text-xs font-bold">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500 text-xs font-bold text-white">
             bp
           </div>
           <span className="text-base font-semibold tracking-tight">bp ERP</span>
         </div>
-        {onClose && (
+        {onClose ? (
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors lg:hidden"
+            className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-700 hover:text-white lg:hidden"
             aria-label="Mbyll menune"
           >
             <svg
@@ -97,15 +97,15 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
               viewBox="0 0 24 24"
               strokeWidth={2}
               stroke="currentColor"
-              className="w-4 h-4"
+              className="h-4 w-4"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-        )}
+        ) : null}
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
         {visibleSections.map((section) => {
           const isOpen = openSections[section.title] ?? false;
           const hasActive = section.items.some(
@@ -116,48 +116,49 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             <div key={section.title}>
               <button
                 onClick={() => toggle(section.title)}
-                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors
-                  ${
-                    hasActive
-                      ? 'text-slate-100 bg-slate-800'
-                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
-                  }`}
+                className={`w-full rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                  hasActive
+                    ? 'bg-slate-800 text-slate-100'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                }`}
               >
-                <NavIcon path={section.iconPath} className="w-4 h-4 shrink-0" />
-                <span className="flex-1 text-left font-medium">{section.title}</span>
-                <ChevronIcon open={isOpen} />
+                <span className="flex items-center gap-2.5">
+                  <NavIcon path={section.iconPath} className="h-4 w-4 shrink-0" />
+                  <span className="flex-1 text-left font-medium">{section.title}</span>
+                  <ChevronIcon open={isOpen} />
+                </span>
               </button>
 
-              {isOpen && (
-                <div className="mt-0.5 ml-3 pl-4 border-l border-slate-700/60 space-y-0.5">
+              {isOpen ? (
+                <div className="ml-3 mt-0.5 space-y-0.5 border-l border-slate-700/60 pl-4">
                   {section.items.map((item) => {
                     const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+
                     return (
                       <Link
                         key={item.href}
                         href={item.href}
                         onClick={onClose}
-                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm transition-colors
-                          ${
-                            active
-                              ? 'bg-indigo-600 text-white font-medium'
-                              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                          }`}
+                        className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+                          active
+                            ? 'bg-indigo-600 font-medium text-white'
+                            : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                        }`}
                       >
-                        {active && <span className="w-1 h-1 rounded-full bg-white shrink-0" />}
+                        {active ? <span className="h-1 w-1 shrink-0 rounded-full bg-white" /> : null}
                         <span>{item.label}</span>
                       </Link>
                     );
                   })}
                 </div>
-              )}
+              ) : null}
             </div>
           );
         })}
       </nav>
 
-      <div className="px-4 py-3 border-t border-slate-700/60">
-        <p className="text-xs text-slate-500">v1.0 · bp ERP Suite</p>
+      <div className="border-t border-slate-700/60 px-4 py-3">
+        <p className="text-xs text-slate-500">v1.0 | bp ERP Suite</p>
       </div>
     </aside>
   );

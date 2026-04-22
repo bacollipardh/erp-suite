@@ -16,11 +16,11 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   }
 
   return (
-    <header className="sticky top-0 z-20 h-14 border-b bg-white/95 backdrop-blur-sm px-4 flex items-center justify-between shadow-sm">
+    <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-white/95 px-4 shadow-sm backdrop-blur-sm">
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
-          className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 lg:hidden transition-colors"
+          className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 lg:hidden"
           aria-label="Hap menune"
         >
           <svg
@@ -29,7 +29,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             viewBox="0 0 24 24"
             strokeWidth={1.8}
             stroke="currentColor"
-            className="w-5 h-5"
+            className="h-5 w-5"
           >
             <path
               strokeLinecap="round"
@@ -39,23 +39,23 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           </svg>
         </button>
         <div>
-          <p className="text-sm font-semibold text-slate-800 leading-tight">bp ERP</p>
-          <p className="text-xs text-slate-400 hidden sm:block leading-tight">
-            Blerje · Shitje · Stok · Kthime
+          <p className="text-sm font-semibold leading-tight text-slate-800">bp ERP</p>
+          <p className="hidden text-xs leading-tight text-slate-400 sm:block">
+            Shitje | Blerje | Financa | Stok
           </p>
         </div>
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="hidden md:block text-right">
-          <p className="text-sm font-medium text-slate-700 leading-tight">
+        <div className="hidden text-right md:block">
+          <p className="text-sm font-medium leading-tight text-slate-700">
             {user?.fullName ?? 'Perdoruesi'}
           </p>
-          <p className="text-xs text-slate-400 leading-tight">{user?.role ?? 'SESSION'}</p>
+          <p className="text-xs leading-tight text-slate-400">{user?.role ?? 'SESSION'}</p>
         </div>
         <button
           onClick={() => void handleLogout()}
-          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -63,7 +63,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             viewBox="0 0 24 24"
             strokeWidth={1.8}
             stroke="currentColor"
-            className="w-4 h-4"
+            className="h-4 w-4"
           >
             <path
               strokeLinecap="round"

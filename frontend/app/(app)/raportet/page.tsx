@@ -50,6 +50,7 @@ export default async function ReportsHubPage() {
     PERMISSIONS.reportsSales,
     PERMISSIONS.reportsReceivables,
     PERMISSIONS.reportsPayables,
+    PERMISSIONS.stockRead,
   ]);
 
   const canSales = hasPermission(user.permissions, PERMISSIONS.reportsSales);
@@ -57,6 +58,7 @@ export default async function ReportsHubPage() {
     PERMISSIONS.reportsReceivables,
     PERMISSIONS.reportsPayables,
   ]);
+  const canStock = hasPermission(user.permissions, PERMISSIONS.stockRead);
 
   return (
     <div className="space-y-6">
@@ -67,7 +69,7 @@ export default async function ReportsHubPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {canSales ? (
           <ReportHubCard
             title="Raportet e Shitjes"
@@ -85,11 +87,19 @@ export default async function ReportsHubPage() {
             description="Receivables, payables, aging, exposure, arketimet dhe pagesat e fundit me filtra te ndare nga raportet e shitjes."
           />
         ) : null}
+        {canStock ? (
+          <ReportHubCard
+            title="Raportet e Stokut"
+            badge="Stoku"
+            href="/raportet/stoku"
+            description="Gjendja e stokut, levizjet materiale dhe qasja e ndare e raportimit per artikujt dhe magazinat."
+          />
+        ) : null}
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-base font-semibold text-slate-900">Parimi i organizimit</h2>
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-600">
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600">
           <div className="rounded-xl bg-slate-50 p-4">
             <p className="font-medium text-slate-900">Shitja</p>
             <p className="mt-1">
@@ -100,6 +110,12 @@ export default async function ReportsHubPage() {
             <p className="font-medium text-slate-900">Financa</p>
             <p className="mt-1">
               Arketimet, pagesat, rialokimet, aging dhe exposure qendrojne te gjitha ne nje domain financiar te vecuar.
+            </p>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-4">
+            <p className="font-medium text-slate-900">Stoku & Materialet</p>
+            <p className="mt-1">
+              Balancat, levizjet dhe operacionet materiale po ndahen si domain i trete i raportimit, i pavarur nga shitja dhe financa.
             </p>
           </div>
         </div>
