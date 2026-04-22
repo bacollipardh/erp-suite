@@ -51,7 +51,17 @@ export const navSections: NavSection[] = [
     defaultOpen: true,
     items: [
       { label: 'Arketimet', href: '/arketime', permission: PERMISSIONS.reportsReceivables },
+      {
+        label: 'Rialokimi i Arketimeve',
+        href: '/arketime/rialokime',
+        permission: PERMISSIONS.salesInvoicesPay,
+      },
       { label: 'Pagesat', href: '/pagesat', permission: PERMISSIONS.reportsPayables },
+      {
+        label: 'Rialokimi i Pagesave',
+        href: '/pagesat/rialokime',
+        permission: PERMISSIONS.purchaseInvoicesPay,
+      },
     ],
   },
   {

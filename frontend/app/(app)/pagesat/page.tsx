@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { PageHeader } from '@/components/page-header';
 import { PaymentActivityClient } from '@/components/finance/payment-activity-client';
 import { api } from '@/lib/api';
@@ -27,6 +28,23 @@ export default async function SupplierPaymentsPage({
         createLabel="Pagese e re"
         createPermission={PERMISSIONS.purchaseInvoicesPay}
       />
+
+      <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-medium text-indigo-900">Ke balance unapplied per t'u rialokuar?</p>
+            <p className="mt-1 text-sm text-indigo-800/80">
+              Hape workflow-in e rialokimit kur nje pagese ka teprice qe duhet aplikuar me vone te nje fature tjeter te te njejtit furnitor.
+            </p>
+          </div>
+          <Link
+            href="/pagesat/rialokime"
+            className="inline-flex rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:text-indigo-900"
+          >
+            Hap rialokimet
+          </Link>
+        </div>
+      </div>
 
       <PaymentActivityClient
         title="Pagesat ndaj furnitoreve"

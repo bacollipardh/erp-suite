@@ -23,6 +23,7 @@ import { CompanyProfileModule } from './company-profile/company-profile.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportsModule } from './reports/reports.module';
 import { FiscalizationModule } from './fiscalization/fiscalization.module';
+import { FinanceSettlementsModule } from './finance-settlements/finance-settlements.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { FiscalizationModule } from './fiscalization/fiscalization.module';
     DashboardModule,
     ReportsModule,
     FiscalizationModule,
+    FinanceSettlementsModule,
   ],
 })
 export class AppModule {}

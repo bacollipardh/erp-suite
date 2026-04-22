@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DocumentStatus, MovementType, Prisma } from '@prisma/client';
+import { DocumentStatus, FinanceSettlementType, MovementType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { StockService } from '../stock/stock.service';
@@ -17,6 +17,10 @@ import {
   resolvePaymentStatus,
 } from '../common/utils/payments';
 import { RecordPaymentDto } from '../common/dto/record-payment.dto';
+import {
+  calculateFinanceSettlementRemainingAmount,
+  resolveFinanceSettlementStatus,
+} from '../common/utils/finance-settlements';
 
 @Injectable()
 export class PurchaseInvoicesService {
@@ -174,7 +178,7 @@ export class PurchaseInvoicesService {
     const entries = await this.auditLogs.findEntityLogs({
       entityType: 'purchase_invoices',
       entityId: id,
-      action: 'RECORD_PAYMENT',
+      actions: ['RECORD_PAYMENT', 'APPLY_UNAPPLIED_PAYMENT'],
       limit: 100,
     });
 
@@ -432,7 +436,11 @@ async recordPayment(id: string, dto: RecordPaymentDto, userId: string) {
     throw new BadRequestException('Payment exceeds the remaining payable amount');
   }
 
-    const updated = await this.prisma.purchaseInvoice.update({
+  const paymentDate = dto.paidAt ? new Date(dto.paidAt) : new Date();
+  const paymentTimestamp = dto.paidAt ?? paymentDate.toISOString();
+
+  const updated = await this.prisma.$transaction(async (tx) => {
+    const updatedInvoice = await tx.purchaseInvoice.update({
       where: { id },
       data: {
         amountPaid: nextPaid,
@@ -440,31 +448,84 @@ async recordPayment(id: string, dto: RecordPaymentDto, userId: string) {
       },
     });
 
-  await this.auditLogs.log({
-    userId,
-    entityType: 'purchase_invoices',
-    entityId: updated.id,
-    action: 'RECORD_PAYMENT',
-    metadata: {
-      amount: allocation.appliedAmount,
-      enteredAmount: allocation.enteredAmount,
-      appliedAmount: allocation.appliedAmount,
-      unappliedAmount: allocation.unappliedAmount,
-      allowUnapplied: dto.allowUnapplied === true,
-      paidAt: dto.paidAt ?? new Date().toISOString(),
-      referenceNo: dto.referenceNo,
-      notes: dto.notes,
-        settlementTotal: total,
-        amountPaidBefore: currentPaid,
-        amountPaidAfter: nextPaid,
-        outstandingBefore,
-        outstandingAfter,
-        remainingAmount: outstandingAfter,
-        paymentStatusBefore,
-        paymentStatusAfter,
+    const paymentAudit = await tx.auditLog.create({
+      data: {
+        userId,
+        entityType: 'purchase_invoices',
+        entityId: updatedInvoice.id,
+        action: 'RECORD_PAYMENT',
+        metadata: {
+          amount: allocation.appliedAmount,
+          enteredAmount: allocation.enteredAmount,
+          appliedAmount: allocation.appliedAmount,
+          unappliedAmount: allocation.unappliedAmount,
+          allowUnapplied: dto.allowUnapplied === true,
+          paidAt: paymentTimestamp,
+          referenceNo: dto.referenceNo,
+          notes: dto.notes,
+          settlementTotal: total,
+          amountPaidBefore: currentPaid,
+          amountPaidAfter: nextPaid,
+          outstandingBefore,
+          outstandingAfter,
+          remainingAmount: outstandingAfter,
+          paymentStatusBefore,
+          paymentStatusAfter,
+        } as Prisma.InputJsonValue,
       },
     });
 
-    return this.enrichDocumentState(updated);
-  }
+    if (allocation.unappliedAmount > 0) {
+      const remainingAmount = calculateFinanceSettlementRemainingAmount(
+        allocation.unappliedAmount,
+        0,
+      );
+
+      const createdSettlement = await tx.financeSettlement.create({
+        data: {
+          entryType: FinanceSettlementType.PAYMENT,
+          status: resolveFinanceSettlementStatus(allocation.unappliedAmount, 0),
+          supplierId: existing.supplierId,
+          sourcePurchaseInvoiceId: existing.id,
+          sourceAuditLogId: paymentAudit.id,
+          enteredAmount: allocation.enteredAmount,
+          sourceAppliedAmount: allocation.appliedAmount,
+          unappliedAmount: allocation.unappliedAmount,
+          allocatedAmount: 0,
+          remainingAmount,
+          paidAt: paymentDate,
+          referenceNo: dto.referenceNo,
+          notes: dto.notes,
+          createdById: userId,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          entityType: 'finance_settlements',
+          entityId: createdSettlement.id,
+          action: 'CREATE_UNAPPLIED_SETTLEMENT',
+          metadata: {
+            financeSettlementId: createdSettlement.id,
+            sourceDocumentId: existing.id,
+            sourceDocumentNo: existing.docNo,
+            sourceDocumentType: 'purchase-invoices',
+            enteredAmount: allocation.enteredAmount,
+            sourceAppliedAmount: allocation.appliedAmount,
+            unappliedAmount: allocation.unappliedAmount,
+            remainingAmount,
+            paidAt: paymentTimestamp,
+            referenceNo: dto.referenceNo,
+            notes: dto.notes,
+          } as Prisma.InputJsonValue,
+        },
+      });
+    }
+
+    return updatedInvoice;
+  });
+
+  return this.enrichDocumentState(updated);
+}
 }

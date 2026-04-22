@@ -65,6 +65,11 @@ export type PaymentTimelineEntry<TUser = unknown> = {
   paidAt: string;
   referenceNo: string | null;
   notes: string | null;
+  sourceDocumentNo: string | null;
+  sourceDocumentType: string | null;
+  financeSettlementId: string | null;
+  financeSettlementAllocationId: string | null;
+  isReallocation: boolean;
   amountPaidBefore: number;
   amountPaidAfter: number;
   outstandingBefore: number;
@@ -86,6 +91,11 @@ type PaymentAuditMetadata = {
   paidAt: string;
   referenceNo: string | null;
   notes: string | null;
+  sourceDocumentNo: string | null;
+  sourceDocumentType: string | null;
+  financeSettlementId: string | null;
+  financeSettlementAllocationId: string | null;
+  isReallocation: boolean;
   amountPaidBefore: number | null;
   amountPaidAfter: number | null;
   outstandingBefore: number | null;
@@ -143,6 +153,11 @@ export function parsePaymentAuditMetadata(entry: { metadata?: unknown; createdAt
     paidAt: normalizePaidAt(metadata.paidAt, entry.createdAt),
     referenceNo: parseOptionalString(metadata.referenceNo),
     notes: parseOptionalString(metadata.notes),
+    sourceDocumentNo: parseOptionalString(metadata.sourceDocumentNo),
+    sourceDocumentType: parseOptionalString(metadata.sourceDocumentType),
+    financeSettlementId: parseOptionalString(metadata.financeSettlementId),
+    financeSettlementAllocationId: parseOptionalString(metadata.financeSettlementAllocationId),
+    isReallocation: metadata.isReallocation === true,
     amountPaidBefore: parseOptionalNumber(metadata.amountPaidBefore),
     amountPaidAfter: parseOptionalNumber(metadata.amountPaidAfter),
     outstandingBefore: parseOptionalNumber(metadata.outstandingBefore),
@@ -215,6 +230,11 @@ export function buildPaymentTimeline<TUser = unknown>(params: {
         paidAt: metadata.paidAt,
         referenceNo: metadata.referenceNo,
         notes: metadata.notes,
+        sourceDocumentNo: metadata.sourceDocumentNo,
+        sourceDocumentType: metadata.sourceDocumentType,
+        financeSettlementId: metadata.financeSettlementId,
+        financeSettlementAllocationId: metadata.financeSettlementAllocationId,
+        isReallocation: metadata.isReallocation,
         amountPaidBefore,
         amountPaidAfter,
         outstandingBefore,

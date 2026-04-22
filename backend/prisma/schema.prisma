@@ -59,6 +59,21 @@ enum FiscalMode {
   @@map("fiscal_mode")
 }
 
+enum FinanceSettlementType {
+  RECEIPT
+  PAYMENT
+
+  @@map("finance_settlement_type")
+}
+
+enum FinanceSettlementStatus {
+  OPEN
+  PARTIALLY_ALLOCATED
+  FULLY_ALLOCATED
+
+  @@map("finance_settlement_status")
+}
+
 model Role {
   id        String   @id @default(uuid()) @db.Uuid
   code      String   @unique @db.VarChar(30)
@@ -85,6 +100,8 @@ model User {
   postedSales      SalesInvoice[]    @relation("SalesPostedBy")
   createdReturns   SalesReturn[]     @relation("ReturnCreatedBy")
   postedReturns    SalesReturn[]     @relation("ReturnPostedBy")
+  createdFinanceSettlements FinanceSettlement[] @relation("FinanceSettlementCreatedBy")
+  createdFinanceSettlementAllocations FinanceSettlementAllocation[] @relation("FinanceSettlementAllocationCreatedBy")
   auditLogs        AuditLog[]
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -192,6 +209,7 @@ model Supplier {
   isActive         Boolean           @default(true) @map("is_active")
   notes            String?
   purchaseInvoices PurchaseInvoice[]
+  financeSettlements FinanceSettlement[] @relation("SupplierFinanceSettlements")
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -214,6 +232,7 @@ model Customer {
   notes                  String?
   salesInvoices          SalesInvoice[]
   salesReturns           SalesReturn[]
+  financeSettlements     FinanceSettlement[] @relation("CustomerFinanceSettlements")
   createdAt              DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -275,6 +294,8 @@ model PurchaseInvoice {
   postedBy          User?                 @relation("PurchasePostedBy", fields: [postedById], references: [id])
   lines             PurchaseInvoiceLine[]
   stockMovements    StockMovement[]
+  sourceFinanceSettlements FinanceSettlement[] @relation("FinanceSettlementSourcePurchaseInvoice")
+  financeSettlementAllocations FinanceSettlementAllocation[] @relation("FinanceSettlementTargetPurchaseInvoice")
   createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   postedAt          DateTime?             @map("posted_at") @db.Timestamptz(6)
   updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -344,6 +365,8 @@ model SalesInvoice {
   lines           SalesInvoiceLine[]
   returns         SalesReturn[]
   stockMovements  StockMovement[]
+  sourceFinanceSettlements FinanceSettlement[] @relation("FinanceSettlementSourceSalesInvoice")
+  financeSettlementAllocations FinanceSettlementAllocation[] @relation("FinanceSettlementTargetSalesInvoice")
   createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   postedAt        DateTime?         @map("posted_at") @db.Timestamptz(6)
   updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -511,6 +534,70 @@ model CompanyProfile {
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("company_profile")
+}
+
+model FinanceSettlement {
+  id                     String                  @id @default(uuid()) @db.Uuid
+  entryType              FinanceSettlementType   @map("entry_type")
+  status                 FinanceSettlementStatus @default(OPEN)
+  customerId             String?                 @map("customer_id") @db.Uuid
+  supplierId             String?                 @map("supplier_id") @db.Uuid
+  sourceSalesInvoiceId   String?                 @map("source_sales_invoice_id") @db.Uuid
+  sourcePurchaseInvoiceId String?                @map("source_purchase_invoice_id") @db.Uuid
+  sourceAuditLogId       String?                 @map("source_audit_log_id") @db.Uuid
+  enteredAmount          Decimal                 @map("entered_amount") @db.Decimal(18, 2)
+  sourceAppliedAmount    Decimal                 @map("source_applied_amount") @db.Decimal(18, 2)
+  unappliedAmount        Decimal                 @map("unapplied_amount") @db.Decimal(18, 2)
+  allocatedAmount        Decimal                 @default(0) @map("allocated_amount") @db.Decimal(18, 2)
+  remainingAmount        Decimal                 @map("remaining_amount") @db.Decimal(18, 2)
+  paidAt                 DateTime                @map("paid_at") @db.Date
+  referenceNo            String?                 @map("reference_no") @db.VarChar(100)
+  notes                  String?
+  createdById            String                  @map("created_by") @db.Uuid
+  customer               Customer?               @relation("CustomerFinanceSettlements", fields: [customerId], references: [id])
+  supplier               Supplier?               @relation("SupplierFinanceSettlements", fields: [supplierId], references: [id])
+  sourceSalesInvoice     SalesInvoice?           @relation("FinanceSettlementSourceSalesInvoice", fields: [sourceSalesInvoiceId], references: [id])
+  sourcePurchaseInvoice  PurchaseInvoice?        @relation("FinanceSettlementSourcePurchaseInvoice", fields: [sourcePurchaseInvoiceId], references: [id])
+  createdBy              User                    @relation("FinanceSettlementCreatedBy", fields: [createdById], references: [id])
+  allocations            FinanceSettlementAllocation[]
+  createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([entryType, status])
+  @@index([customerId])
+  @@index([supplierId])
+  @@index([sourceSalesInvoiceId])
+  @@index([sourcePurchaseInvoiceId])
+  @@index([createdById])
+  @@map("finance_settlements")
+}
+
+model FinanceSettlementAllocation {
+  id                     String           @id @default(uuid()) @db.Uuid
+  settlementId           String           @map("settlement_id") @db.Uuid
+  targetSalesInvoiceId   String?          @map("target_sales_invoice_id") @db.Uuid
+  targetPurchaseInvoiceId String?         @map("target_purchase_invoice_id") @db.Uuid
+  amount                 Decimal          @db.Decimal(18, 2)
+  allocatedAt            DateTime         @map("allocated_at") @db.Date
+  notes                  String?
+  amountPaidBefore       Decimal          @map("amount_paid_before") @db.Decimal(18, 2)
+  amountPaidAfter        Decimal          @map("amount_paid_after") @db.Decimal(18, 2)
+  outstandingBefore      Decimal          @map("outstanding_before") @db.Decimal(18, 2)
+  outstandingAfter       Decimal          @map("outstanding_after") @db.Decimal(18, 2)
+  paymentStatusBefore    PaymentStatus    @map("payment_status_before")
+  paymentStatusAfter     PaymentStatus    @map("payment_status_after")
+  createdById            String           @map("created_by") @db.Uuid
+  settlement             FinanceSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  targetSalesInvoice     SalesInvoice?    @relation("FinanceSettlementTargetSalesInvoice", fields: [targetSalesInvoiceId], references: [id])
+  targetPurchaseInvoice  PurchaseInvoice? @relation("FinanceSettlementTargetPurchaseInvoice", fields: [targetPurchaseInvoiceId], references: [id])
+  createdBy              User             @relation("FinanceSettlementAllocationCreatedBy", fields: [createdById], references: [id])
+  createdAt              DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([settlementId])
+  @@index([targetSalesInvoiceId])
+  @@index([targetPurchaseInvoiceId])
+  @@index([createdById])
+  @@map("finance_settlement_allocations")
 }
 
 model AuditLog {

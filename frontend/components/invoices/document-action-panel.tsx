@@ -20,6 +20,11 @@ type PaymentEntry = {
   appliedAmount?: number | string | null;
   unappliedAmount?: number | string | null;
   allowUnapplied?: boolean;
+  sourceDocumentNo?: string | null;
+  sourceDocumentType?: string | null;
+  financeSettlementId?: string | null;
+  financeSettlementAllocationId?: string | null;
+  isReallocation?: boolean;
   paidAt: string;
   createdAt?: string;
   amountPaidBefore?: number | string | null;
@@ -145,6 +150,12 @@ export function DocumentActionPanel({
       ? `/arketime?search=${encodeURIComponent(docNo)}`
       : documentType === 'purchase-invoices'
         ? `/pagesat?search=${encodeURIComponent(docNo)}`
+        : null;
+  const reallocationHref =
+    documentType === 'sales-invoices'
+      ? `/arketime/rialokime?search=${encodeURIComponent(docNo)}`
+      : documentType === 'purchase-invoices'
+        ? `/pagesat/rialokime?search=${encodeURIComponent(docNo)}`
         : null;
 
   const paymentActionBlocked =
@@ -483,6 +494,15 @@ export function DocumentActionPanel({
           Ky dokument ka edhe {formatMoney(reconciliation.unappliedTotal)} EUR te regjistruara si
           `unapplied`. Kjo pjese nuk shtohet te `amountPaid` dhe mbetet per trajtim ose rialokim te
           mevonshem.
+          {reallocationHref ? (
+            <>
+              {' '}
+              <Link href={reallocationHref} className="font-medium text-indigo-900 underline">
+                Hape faqen e rialokimeve
+              </Link>
+              .
+            </>
+          ) : null}
         </div>
       ) : null}
 
@@ -701,12 +721,22 @@ export function DocumentActionPanel({
                         <p className="text-xs text-slate-400">
                           {entry.user?.fullName ?? entry.user?.email ?? '-'}
                         </p>
+                        {entry.isReallocation ? (
+                          <span className="inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
+                            rialokim
+                          </span>
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-4 py-2.5 text-slate-600">
-                      {entry.notes ? (
+                      {entry.notes || entry.sourceDocumentNo ? (
                         <div className="space-y-1">
-                          <p>{entry.notes}</p>
+                          {entry.notes ? <p>{entry.notes}</p> : null}
+                          {entry.sourceDocumentNo ? (
+                            <p className="text-xs text-indigo-700">
+                              Burimi: {entry.sourceDocumentType ?? 'document'} / {entry.sourceDocumentNo}
+                            </p>
+                          ) : null}
                           {entry.settlementTotal !== undefined && entry.settlementTotal !== null ? (
                             <p className="text-xs text-slate-400">
                               Baza: {formatMoney(Number(entry.settlementTotal ?? 0))} EUR

@@ -61,13 +61,16 @@ export class AuditLogsService {
     entityType: string;
     entityId: string;
     action?: string;
+    actions?: string[];
     limit?: number;
   }) {
     return this.prisma.auditLog.findMany({
       where: {
         entityType: params.entityType,
         entityId: params.entityId,
-        action: params.action,
+        action: params.actions?.length
+          ? { in: params.actions }
+          : params.action,
       },
       include: {
         user: {
