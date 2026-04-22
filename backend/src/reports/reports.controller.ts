@@ -25,10 +25,22 @@ export class ReportsController {
     return this.reportsService.getReceivablesAging(query);
   }
 
+  @Get('receivables-exposure')
+  @RequirePermissions(PERMISSIONS.reportsReceivables)
+  getReceivablesExposure(@Query() query: AgingReportQueryDto) {
+    return this.reportsService.getReceivablesExposure(query);
+  }
+
   @Get('payables-aging')
   @RequirePermissions(PERMISSIONS.reportsPayables)
   getPayablesAging(@Query() query: AgingReportQueryDto) {
     return this.reportsService.getPayablesAging(query);
+  }
+
+  @Get('payables-exposure')
+  @RequirePermissions(PERMISSIONS.reportsPayables)
+  getPayablesExposure(@Query() query: AgingReportQueryDto) {
+    return this.reportsService.getPayablesExposure(query);
   }
 
   @Get('receipts-activity')

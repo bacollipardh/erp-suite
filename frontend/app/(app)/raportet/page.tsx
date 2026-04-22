@@ -10,13 +10,16 @@ export default async function ReportsPage() {
     PERMISSIONS.reportsPayables,
   ]);
 
-  const [customers, users] = await Promise.all([
+  const [customers, users, suppliers] = await Promise.all([
     hasPermission(user.permissions, PERMISSIONS.reportsSales)
       ? api.list('customers', { limit: 100 })
       : Promise.resolve([]),
     hasPermission(user.permissions, PERMISSIONS.reportsSales) &&
     hasPermission(user.permissions, PERMISSIONS.usersRead)
       ? api.list('users', { limit: 100 })
+      : Promise.resolve([]),
+    hasPermission(user.permissions, PERMISSIONS.reportsPayables)
+      ? api.list('suppliers', { limit: 100, sortBy: 'name', sortOrder: 'asc' })
       : Promise.resolve([]),
   ]);
 
@@ -28,7 +31,7 @@ export default async function ReportsPage() {
           Shitjet, arketimet dhe detyrimet me logjike server-side.
         </p>
       </div>
-      <ReportsClient customers={customers} users={users} />
+      <ReportsClient customers={customers} suppliers={suppliers} users={users} />
     </div>
   );
 }

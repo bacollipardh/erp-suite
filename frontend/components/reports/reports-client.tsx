@@ -50,7 +50,9 @@ type AgingReportResponse = {
   };
   totalOutstanding: number;
   openCount: number;
+  visibleCount: number;
   overdueCount: number;
+  truncated: boolean;
   items: {
     id: string;
     docNo: string;
@@ -61,7 +63,37 @@ type AgingReportResponse = {
     daysPastDue: number;
     outstanding: number;
     dueState: string;
+    paymentStatus?: string | null;
     party?: { id: string; name: string } | null;
+  }[];
+};
+
+type ExposureReportResponse = {
+  summary: {
+    partyCount: number;
+    overduePartyCount: number;
+    documentCount: number;
+    totalOutstanding: number;
+    overdueOutstanding: number;
+    dueTodayOutstanding: number;
+    currentOutstanding: number;
+  };
+  visibleCount: number;
+  truncated: boolean;
+  items: {
+    party?: { id: string; name: string } | null;
+    openCount: number;
+    overdueCount: number;
+    dueTodayCount: number;
+    unpaidCount: number;
+    partiallyPaidCount: number;
+    totalOutstanding: number;
+    overdueOutstanding: number;
+    dueTodayOutstanding: number;
+    currentOutstanding: number;
+    maxDaysPastDue: number;
+    oldestDueDate?: string | null;
+    newestDocDate?: string | null;
   }[];
 };
 
@@ -99,6 +131,36 @@ type PaymentActivityResponse = {
 };
 
 const AGING_EXPORT_LIMIT = 500;
+
+type PartyOption = {
+  id: string;
+  name: string;
+};
+
+type FinanceFilterState = {
+  search: string;
+  partyId: string;
+  dueState: string;
+  paymentStatus: string;
+  minOutstanding: string;
+  maxOutstanding: string;
+  sortBy: string;
+  sortOrder: 'asc' | 'desc';
+};
+
+function createFinanceFilterState(overrides?: Partial<FinanceFilterState>): FinanceFilterState {
+  return {
+    search: '',
+    partyId: '',
+    dueState: 'ALL',
+    paymentStatus: 'ALL',
+    minOutstanding: '',
+    maxOutstanding: '',
+    sortBy: 'daysPastDue',
+    sortOrder: 'desc',
+    ...overrides,
+  };
+}
 
 function fmt(value: number) {
   return value.toLocaleString('sq-AL', {
@@ -220,6 +282,7 @@ function AgingCard({
             </span>
             <p className="text-xs text-slate-400 mt-1">
               {report.openCount} dokumente - {report.overdueCount} me vonese
+              {report.truncated ? ` - duke shfaqur ${report.visibleCount}` : ''}
             </p>
           </div>
         </div>
@@ -272,12 +335,248 @@ function AgingReportActions({
   );
 }
 
-function AgingTable({
+function FinanceFilterPanel({
+  title,
+  description,
+  filters,
+  onChange,
+  onReset,
+  parties,
+  partyLabel,
+}: {
+  title: string;
+  description: string;
+  filters: FinanceFilterState;
+  onChange: (patch: Partial<FinanceFilterState>) => void;
+  onReset: () => void;
+  parties: PartyOption[];
+  partyLabel: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4">
+        <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
+        <p className="mt-1 text-sm text-slate-500">{description}</p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <input
+          type="text"
+          value={filters.search}
+          onChange={(e) => onChange({ search: e.target.value })}
+          placeholder="Kerko dokument ose subjekt..."
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+        <select
+          value={filters.partyId}
+          onChange={(e) => onChange({ partyId: e.target.value })}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        >
+          <option value="">Te gjithe {partyLabel.toLowerCase()}t</option>
+          {parties.map((party) => (
+            <option key={party.id} value={party.id}>
+              {party.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filters.dueState}
+          onChange={(e) => onChange({ dueState: e.target.value })}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        >
+          <option value="ALL">Te gjitha afatet</option>
+          <option value="OVERDUE">Vetem overdue</option>
+          <option value="DUE_TODAY">Afati sot</option>
+          <option value="CURRENT">Ne afat</option>
+          <option value="NO_DUE_DATE">Pa afat</option>
+        </select>
+        <select
+          value={filters.paymentStatus}
+          onChange={(e) => onChange({ paymentStatus: e.target.value })}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        >
+          <option value="ALL">Te gjitha pagesat e hapura</option>
+          <option value="UNPAID">Vetem pa pagese</option>
+          <option value="PARTIALLY_PAID">Vetem pjeserisht paguar</option>
+        </select>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={filters.minOutstanding}
+          onChange={(e) => onChange({ minOutstanding: e.target.value })}
+          placeholder="Outstanding min"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={filters.maxOutstanding}
+          onChange={(e) => onChange({ maxOutstanding: e.target.value })}
+          placeholder="Outstanding max"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+        <select
+          value={filters.sortBy}
+          onChange={(e) => onChange({ sortBy: e.target.value })}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        >
+          <option value="daysPastDue">Ditet e voneses</option>
+          <option value="outstanding">Outstanding</option>
+          <option value="dueDate">Afati</option>
+          <option value="docDate">Data e dokumentit</option>
+          <option value="party">Subjekti</option>
+          <option value="docNo">Nr. dokumentit</option>
+          <option value="paymentStatus">Statusi i pageses</option>
+        </select>
+        <div className="flex gap-2">
+          <select
+            value={filters.sortOrder}
+            onChange={(e) => onChange({ sortOrder: e.target.value as 'asc' | 'desc' })}
+            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="desc">Zbrites</option>
+            <option value="asc">Rrites</option>
+          </select>
+          <button
+            type="button"
+            onClick={onReset}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            Reseto
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExposureSummary({
   title,
   report,
 }: {
   title: string;
+  report: ExposureReportResponse;
+}) {
+  return (
+    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+      <StatCard
+        label={`${title} Total`}
+        value={`${fmt(report.summary.totalOutstanding)} EUR`}
+        sub={`${report.summary.partyCount} subjekte`}
+      />
+      <StatCard
+        label="Overdue Exposure"
+        value={`${fmt(report.summary.overdueOutstanding)} EUR`}
+        sub={`${report.summary.overduePartyCount} subjekte overdue`}
+      />
+      <StatCard
+        label="Due Today"
+        value={`${fmt(report.summary.dueTodayOutstanding)} EUR`}
+        sub={`${report.summary.documentCount} dokumente ne scope`}
+      />
+      <StatCard
+        label="Current Exposure"
+        value={`${fmt(report.summary.currentOutstanding)} EUR`}
+        sub={report.truncated ? `Duke shfaqur ${report.visibleCount}` : 'Pamje e plote'}
+      />
+    </div>
+  );
+}
+
+function ExposureTable({
+  title,
+  report,
+  activityBasePath,
+  partyQueryKey,
+}: {
+  title: string;
+  report: ExposureReportResponse;
+  activityBasePath: string;
+  partyQueryKey: 'customerId' | 'supplierId';
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+      <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+        <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Ekspozimi sipas subjektit per dokumentet e hapura dhe overdue.
+        </p>
+      </div>
+      {report.items.length === 0 ? (
+        <div className="py-10 text-center text-sm text-slate-400">Nuk ka ekspozim per filtrat aktuale.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-2.5">Subjekti</th>
+                <th className="px-4 py-2.5 text-right">Dokumente</th>
+                <th className="px-4 py-2.5 text-right">Outstanding</th>
+                <th className="px-4 py-2.5 text-right">Overdue</th>
+                <th className="px-4 py-2.5 text-right">Due Today</th>
+                <th className="px-4 py-2.5 text-right">Max Dite</th>
+                <th className="px-4 py-2.5">Afati me i vjeter</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {report.items.map((row, index) => {
+                const href = row.party?.id
+                  ? `${activityBasePath}?${partyQueryKey}=${encodeURIComponent(row.party.id)}`
+                  : activityBasePath;
+
+                return (
+                  <tr key={`${row.party?.id ?? 'none'}-${index}`} className="hover:bg-slate-50/60">
+                    <td className="px-4 py-2.5">
+                      <div className="min-w-[180px]">
+                        <Link
+                          href={href}
+                          className="font-medium text-indigo-700 hover:text-indigo-900"
+                        >
+                          {row.party?.name ?? 'Pa subjekt'}
+                        </Link>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Unpaid: {row.unpaidCount} · Partial: {row.partiallyPaidCount}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-slate-600">
+                      {row.openCount} / {row.overdueCount}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-slate-900">
+                      {fmt(Number(row.totalOutstanding ?? 0))} EUR
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-red-700">
+                      {fmt(Number(row.overdueOutstanding ?? 0))} EUR
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-amber-700">
+                      {fmt(Number(row.dueTodayOutstanding ?? 0))} EUR
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-slate-600">
+                      {row.maxDaysPastDue > 0 ? `${row.maxDaysPastDue} dite` : '-'}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600">
+                      {formatDateOnly(row.oldestDueDate)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgingTable({
+  title,
+  report,
+  documentBasePath,
+}: {
+  title: string;
   report: AgingReportResponse;
+  documentBasePath: string;
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
@@ -295,6 +594,7 @@ function AgingTable({
                 <th className="px-4 py-2.5">Subjekti</th>
                 <th className="px-4 py-2.5">Data</th>
                 <th className="px-4 py-2.5">Afati</th>
+                <th className="px-4 py-2.5">Pagesa</th>
                 <th className="px-4 py-2.5 text-right">Totali</th>
                 <th className="px-4 py-2.5 text-right">Paguar</th>
                 <th className="px-4 py-2.5 text-right">Mbetur</th>
@@ -304,10 +604,20 @@ function AgingTable({
             <tbody className="divide-y divide-slate-50">
               {report.items.map((row) => (
                 <tr key={row.id} className="hover:bg-slate-50/60">
-                  <td className="px-4 py-2.5 font-mono text-xs text-slate-800">{row.docNo}</td>
+                  <td className="px-4 py-2.5">
+                    <Link
+                      href={`${documentBasePath}/${row.id}`}
+                      className="font-mono text-xs text-indigo-700 hover:text-indigo-900"
+                    >
+                      {row.docNo}
+                    </Link>
+                  </td>
                   <td className="px-4 py-2.5 text-slate-700">{row.party?.name ?? '-'}</td>
                   <td className="px-4 py-2.5 text-slate-600">{formatDateOnly(row.docDate)}</td>
                   <td className="px-4 py-2.5 text-slate-600">{formatDateOnly(row.dueDate)}</td>
+                  <td className="px-4 py-2.5">
+                    {row.paymentStatus ? <StatusBadge value={row.paymentStatus} /> : '-'}
+                  </td>
                   <td className="px-4 py-2.5 text-right text-slate-600">
                     {fmt(Number(row.total ?? 0))} EUR
                   </td>
@@ -451,9 +761,11 @@ function PaymentActivityPanel({
 
 export function ReportsClient({
   customers,
+  suppliers,
   users,
 }: {
-  customers: any[];
+  customers: PartyOption[];
+  suppliers: PartyOption[];
   users: any[];
 }) {
   const { user, loading: sessionLoading } = useSession();
@@ -467,9 +779,19 @@ export function ReportsClient({
   const [customerId, setCustomerId] = useState('');
   const [userId, setUserId] = useState('');
   const [statusFilter, setStatusFilter] = useState('POSTED');
+  const [receivablesFilters, setReceivablesFilters] = useState<FinanceFilterState>(
+    createFinanceFilterState({ sortBy: 'daysPastDue', sortOrder: 'desc' }),
+  );
+  const [payablesFilters, setPayablesFilters] = useState<FinanceFilterState>(
+    createFinanceFilterState({ sortBy: 'daysPastDue', sortOrder: 'desc' }),
+  );
   const [salesReport, setSalesReport] = useState<SalesReportResponse | null>(null);
   const [receivables, setReceivables] = useState<AgingReportResponse | null>(null);
   const [payables, setPayables] = useState<AgingReportResponse | null>(null);
+  const [receivablesExposure, setReceivablesExposure] = useState<ExposureReportResponse | null>(
+    null,
+  );
+  const [payablesExposure, setPayablesExposure] = useState<ExposureReportResponse | null>(null);
   const [receiptsActivity, setReceiptsActivity] = useState<PaymentActivityResponse | null>(null);
   const [supplierPaymentsActivity, setSupplierPaymentsActivity] =
     useState<PaymentActivityResponse | null>(null);
@@ -477,6 +799,37 @@ export function ReportsClient({
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null);
+
+  function buildAgingQuery(
+    filters: FinanceFilterState,
+    partyQueryKey: 'customerId' | 'supplierId',
+  ) {
+    return {
+      limit: 100,
+      search: filters.search || undefined,
+      [partyQueryKey]: filters.partyId || undefined,
+      dueState: filters.dueState !== 'ALL' ? filters.dueState : undefined,
+      paymentStatus: filters.paymentStatus !== 'ALL' ? filters.paymentStatus : undefined,
+      minOutstanding: filters.minOutstanding ? Number(filters.minOutstanding) : undefined,
+      maxOutstanding: filters.maxOutstanding ? Number(filters.maxOutstanding) : undefined,
+      sortBy: filters.sortBy || undefined,
+      sortOrder: filters.sortOrder,
+    };
+  }
+
+  function patchReceivablesFilters(patch: Partial<FinanceFilterState>) {
+    setReceivablesFilters((current) => ({
+      ...current,
+      ...patch,
+    }));
+  }
+
+  function patchPayablesFilters(patch: Partial<FinanceFilterState>) {
+    setPayablesFilters((current) => ({
+      ...current,
+      ...patch,
+    }));
+  }
 
   useEffect(() => {
     if (sessionLoading) return;
@@ -490,6 +843,8 @@ export function ReportsClient({
           setSalesReport(null);
           setReceivables(null);
           setPayables(null);
+          setReceivablesExposure(null);
+          setPayablesExposure(null);
           setReceiptsActivity(null);
           setSupplierPaymentsActivity(null);
         }
@@ -511,10 +866,25 @@ export function ReportsClient({
             })
           : Promise.resolve(null),
         canReceivables
-          ? api.query('reports/receivables-aging', { limit: 100 })
+          ? api.query(
+              'reports/receivables-aging',
+              buildAgingQuery(receivablesFilters, 'customerId'),
+            )
+          : Promise.resolve(null),
+        canReceivables
+          ? api.query(
+              'reports/receivables-exposure',
+              buildAgingQuery({ ...receivablesFilters, sortBy: 'totalOutstanding' }, 'customerId'),
+            )
           : Promise.resolve(null),
         canPayables
-          ? api.query('reports/payables-aging', { limit: 100 })
+          ? api.query('reports/payables-aging', buildAgingQuery(payablesFilters, 'supplierId'))
+          : Promise.resolve(null),
+        canPayables
+          ? api.query(
+              'reports/payables-exposure',
+              buildAgingQuery({ ...payablesFilters, sortBy: 'totalOutstanding' }, 'supplierId'),
+            )
           : Promise.resolve(null),
         canReceivables
           ? api.query('reports/receipts-activity', { limit: 10 })
@@ -529,7 +899,9 @@ export function ReportsClient({
       const [
         salesResult,
         receivableResult,
+        receivableExposureResult,
         payableResult,
+        payableExposureResult,
         receiptsActivityResult,
         supplierPaymentsResult,
       ] = tasks;
@@ -546,10 +918,22 @@ export function ReportsClient({
         setError(parseApiError(receivableResult.reason));
       }
 
+      if (receivableExposureResult.status === 'fulfilled') {
+        setReceivablesExposure(receivableExposureResult.value as ExposureReportResponse | null);
+      } else if (canReceivables) {
+        setError(parseApiError(receivableExposureResult.reason));
+      }
+
       if (payableResult.status === 'fulfilled') {
         setPayables(payableResult.value as AgingReportResponse | null);
       } else if (canPayables) {
         setError(parseApiError(payableResult.reason));
+      }
+
+      if (payableExposureResult.status === 'fulfilled') {
+        setPayablesExposure(payableExposureResult.value as ExposureReportResponse | null);
+      } else if (canPayables) {
+        setError(parseApiError(payableExposureResult.reason));
       }
 
       if (receiptsActivityResult.status === 'fulfilled') {
@@ -581,6 +965,8 @@ export function ReportsClient({
     customerId,
     dateFrom,
     dateTo,
+    payablesFilters,
+    receivablesFilters,
     sessionLoading,
     statusFilter,
     userId,
@@ -609,7 +995,25 @@ export function ReportsClient({
   async function fetchAgingExportReport(kind: AgingExportKind) {
     const endpoint =
       kind === 'receivables' ? 'reports/receivables-aging' : 'reports/payables-aging';
-    return (await api.query(endpoint, { limit: AGING_EXPORT_LIMIT })) as AgingReportResponse;
+    const query =
+      kind === 'receivables'
+        ? buildAgingQuery(
+            {
+              ...receivablesFilters,
+            },
+            'customerId',
+          )
+        : buildAgingQuery(
+            {
+              ...payablesFilters,
+            },
+            'supplierId',
+          );
+
+    return (await api.query(endpoint, {
+      ...query,
+      limit: AGING_EXPORT_LIMIT,
+    })) as AgingReportResponse;
   }
 
   async function handleAgingAction(kind: AgingExportKind, action: 'csv' | 'email') {
@@ -818,6 +1222,19 @@ export function ReportsClient({
 
       {canReceivables && receivables ? (
         <>
+          <FinanceFilterPanel
+            title="Filtrat e Receivables"
+            description="Filtro dokumentet e hapura sipas klientit, afatit, payment status dhe outstanding amount."
+            filters={receivablesFilters}
+            onChange={patchReceivablesFilters}
+            onReset={() =>
+              setReceivablesFilters(
+                createFinanceFilterState({ sortBy: 'daysPastDue', sortOrder: 'desc' }),
+              )
+            }
+            parties={customers}
+            partyLabel="Klienti"
+          />
           <AgingCard
             title="Receivables Aging"
             report={receivables}
@@ -829,7 +1246,22 @@ export function ReportsClient({
               />
             }
           />
-          <AgingTable title="Dokumentet e Hapura te Klienteve" report={receivables} />
+          {receivablesExposure ? (
+            <>
+              <ExposureSummary title="Debtor Exposure" report={receivablesExposure} />
+              <ExposureTable
+                title="Debtor Exposure"
+                report={receivablesExposure}
+                activityBasePath="/arketime"
+                partyQueryKey="customerId"
+              />
+            </>
+          ) : null}
+          <AgingTable
+            title="Dokumentet e Hapura te Klienteve"
+            report={receivables}
+            documentBasePath="/sales-invoices"
+          />
           {receiptsActivity ? (
             <PaymentActivityPanel
               title="Arketimet e Fundit"
@@ -844,6 +1276,19 @@ export function ReportsClient({
 
       {canPayables && payables ? (
         <>
+          <FinanceFilterPanel
+            title="Filtrat e Payables"
+            description="Filtro detyrimet sipas furnitorit, afatit, payment status dhe outstanding amount."
+            filters={payablesFilters}
+            onChange={patchPayablesFilters}
+            onReset={() =>
+              setPayablesFilters(
+                createFinanceFilterState({ sortBy: 'daysPastDue', sortOrder: 'desc' }),
+              )
+            }
+            parties={suppliers}
+            partyLabel="Furnitori"
+          />
           <AgingCard
             title="Payables Aging"
             report={payables}
@@ -855,7 +1300,22 @@ export function ReportsClient({
               />
             }
           />
-          <AgingTable title="Detyrimet ndaj Furnitoreve" report={payables} />
+          {payablesExposure ? (
+            <>
+              <ExposureSummary title="Creditor Exposure" report={payablesExposure} />
+              <ExposureTable
+                title="Creditor Exposure"
+                report={payablesExposure}
+                activityBasePath="/pagesat"
+                partyQueryKey="supplierId"
+              />
+            </>
+          ) : null}
+          <AgingTable
+            title="Detyrimet ndaj Furnitoreve"
+            report={payables}
+            documentBasePath="/purchase-invoices"
+          />
           {supplierPaymentsActivity ? (
             <PaymentActivityPanel
               title="Pagesat e Fundit ndaj Furnitoreve"

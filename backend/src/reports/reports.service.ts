@@ -5,7 +5,11 @@ import { SalesReportQueryDto } from './dto/sales-report-query.dto';
 import { AgingReportQueryDto } from './dto/aging-report-query.dto';
 import { PaymentActivityQueryDto } from './dto/payment-activity-query.dto';
 import { round2 } from '../common/utils/money';
-import { calculateOutstandingAmount, resolveDueState } from '../common/utils/payments';
+import {
+  calculateOutstandingAmount,
+  resolveDueState,
+  resolvePaymentStatus,
+} from '../common/utils/payments';
 
 const RECEIVABLE_STATUSES = [
   DocumentStatus.POSTED,
@@ -33,6 +37,36 @@ type PaymentActivityItem = {
   createdAt: Date;
   user: { id: string; fullName: string; email: string | null } | null;
   party: { id: string; name: string } | null;
+};
+
+type AgingReportItem = {
+  id: string;
+  docNo: string;
+  docDate: Date;
+  dueDate: Date | null;
+  total: number;
+  paid: number;
+  daysPastDue: number;
+  outstanding: number;
+  dueState: string;
+  paymentStatus: string | null;
+  party: { id: string; name: string } | null;
+};
+
+type ExposureReportItem = {
+  party: { id: string; name: string } | null;
+  openCount: number;
+  overdueCount: number;
+  dueTodayCount: number;
+  unpaidCount: number;
+  partiallyPaidCount: number;
+  totalOutstanding: number;
+  overdueOutstanding: number;
+  dueTodayOutstanding: number;
+  currentOutstanding: number;
+  maxDaysPastDue: number;
+  oldestDueDate: Date | null;
+  newestDocDate: Date | null;
 };
 
 function formatMonthLabel(key: string) {
@@ -156,6 +190,8 @@ export class ReportsService {
       outstandingAmount,
       dueState,
       daysPastDue,
+      paymentStatus:
+        doc.paymentStatus ?? resolvePaymentStatus(settlementTotal, amountPaid),
     };
   }
 
@@ -180,6 +216,8 @@ export class ReportsService {
       outstandingAmount,
       dueState,
       daysPastDue,
+      paymentStatus:
+        doc.paymentStatus ?? resolvePaymentStatus(settlementTotal, amountPaid),
     };
   }
 
@@ -313,10 +351,7 @@ export class ReportsService {
   async getReceivablesAging(query: AgingReportQueryDto) {
     const limit = query.limit ?? 200;
     const rows = await this.prisma.salesInvoice.findMany({
-      where: {
-        status: { in: RECEIVABLE_STATUSES },
-        paymentStatus: { not: PaymentStatus.PAID },
-      },
+      where: this.buildAgingWhere(query, 'customer'),
       select: {
         id: true,
         docNo: true,
@@ -331,20 +366,38 @@ export class ReportsService {
         },
         customer: { select: { id: true, name: true } },
       },
-      orderBy: [{ dueDate: 'asc' }, { docDate: 'asc' }],
-      take: limit,
     });
 
-    return this.buildAgingResponse(rows, 'customer');
+    return this.buildAgingResponse(rows, 'customer', limit, query);
+  }
+
+  async getReceivablesExposure(query: AgingReportQueryDto) {
+    const limit = query.limit ?? 20;
+    const rows = await this.prisma.salesInvoice.findMany({
+      where: this.buildAgingWhere(query, 'customer'),
+      select: {
+        id: true,
+        docNo: true,
+        docDate: true,
+        dueDate: true,
+        grandTotal: true,
+        amountPaid: true,
+        paymentStatus: true,
+        returns: {
+          where: { status: DocumentStatus.POSTED },
+          select: { grandTotal: true },
+        },
+        customer: { select: { id: true, name: true } },
+      },
+    });
+
+    return this.buildExposureResponse(rows, 'customer', limit, query);
   }
 
   async getPayablesAging(query: AgingReportQueryDto) {
     const limit = query.limit ?? 200;
     const rows = await this.prisma.purchaseInvoice.findMany({
-      where: {
-        status: { in: RECEIVABLE_STATUSES },
-        paymentStatus: { not: PaymentStatus.PAID },
-      },
+      where: this.buildAgingWhere(query, 'supplier'),
       select: {
         id: true,
         docNo: true,
@@ -355,11 +408,28 @@ export class ReportsService {
         paymentStatus: true,
         supplier: { select: { id: true, name: true } },
       },
-      orderBy: [{ dueDate: 'asc' }, { docDate: 'asc' }],
-      take: limit,
     });
 
-    return this.buildAgingResponse(rows, 'supplier');
+    return this.buildAgingResponse(rows, 'supplier', limit, query);
+  }
+
+  async getPayablesExposure(query: AgingReportQueryDto) {
+    const limit = query.limit ?? 20;
+    const rows = await this.prisma.purchaseInvoice.findMany({
+      where: this.buildAgingWhere(query, 'supplier'),
+      select: {
+        id: true,
+        docNo: true,
+        docDate: true,
+        dueDate: true,
+        grandTotal: true,
+        amountPaid: true,
+        paymentStatus: true,
+        supplier: { select: { id: true, name: true } },
+      },
+    });
+
+    return this.buildExposureResponse(rows, 'supplier', limit, query);
   }
 
   async getReceiptsActivity(query: PaymentActivityQueryDto = {}) {
@@ -701,7 +771,35 @@ export class ReportsService {
     };
   }
 
-  private buildAgingResponse<
+  private buildAgingWhere(query: AgingReportQueryDto, partyKey: PaymentActivityPartyKey) {
+    const search = query.search?.trim();
+    const partyRelation = partyKey === 'customer' ? 'customer' : 'supplier';
+
+    return {
+      status: { in: RECEIVABLE_STATUSES },
+      paymentStatus:
+        query.paymentStatus && query.paymentStatus !== 'ALL'
+          ? (query.paymentStatus as PaymentStatus)
+          : { not: PaymentStatus.PAID },
+      ...(partyKey === 'customer'
+        ? { customerId: query.customerId }
+        : { supplierId: query.supplierId }),
+      ...(search
+        ? {
+            OR: [
+              { docNo: { contains: search, mode: 'insensitive' as const } },
+              {
+                [partyRelation]: {
+                  name: { contains: search, mode: 'insensitive' as const },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+  }
+
+  private buildAgingItems<
     T extends {
       id: string;
       docNo: string;
@@ -716,15 +814,8 @@ export class ReportsService {
     },
   >(rows: T[], partyKey: PaymentActivityPartyKey) {
     const today = new Date();
-    const summary: Record<AgingBucketKey, number> = {
-      current: 0,
-      days1To30: 0,
-      days31To60: 0,
-      days61To90: 0,
-      days90Plus: 0,
-    };
 
-    const items = rows
+    return rows
       .map((row) => {
         const settlement =
           partyKey === 'customer'
@@ -747,12 +838,11 @@ export class ReportsService {
           dueDate,
           outstandingAmount: settlement.outstandingAmount,
           paymentStatus:
-            settlement.outstandingAmount <= 0 ? PaymentStatus.PAID : PaymentStatus.UNPAID,
+            settlement.outstandingAmount <= 0
+              ? PaymentStatus.PAID
+              : (settlement.paymentStatus ?? PaymentStatus.UNPAID),
           today,
         });
-
-        const bucket = resolveAgingBucket(daysPastDue);
-        summary[bucket] += settlement.outstandingAmount;
 
         return {
           id: row.id,
@@ -764,17 +854,292 @@ export class ReportsService {
           daysPastDue,
           outstanding: settlement.outstandingAmount,
           dueState,
+          paymentStatus: settlement.paymentStatus ?? PaymentStatus.UNPAID,
           party: partyKey === 'customer' ? row.customer ?? null : row.supplier ?? null,
-        };
+        } satisfies AgingReportItem;
       })
       .filter((row) => row.outstanding > 0);
+  }
+
+  private filterAgingItems(
+    items: AgingReportItem[],
+    query: AgingReportQueryDto,
+    partyKey: PaymentActivityPartyKey,
+  ) {
+    const search = query.search?.trim().toLowerCase() ?? '';
+    const partyId = partyKey === 'customer' ? query.customerId : query.supplierId;
+
+    return items.filter((row) => {
+      if (partyId && row.party?.id !== partyId) {
+        return false;
+      }
+
+      if (query.dueState && query.dueState !== 'ALL' && row.dueState !== query.dueState) {
+        return false;
+      }
+
+      if (
+        query.paymentStatus &&
+        query.paymentStatus !== 'ALL' &&
+        row.paymentStatus !== query.paymentStatus
+      ) {
+        return false;
+      }
+
+      if (query.minOutstanding !== undefined && row.outstanding < query.minOutstanding) {
+        return false;
+      }
+
+      if (query.maxOutstanding !== undefined && row.outstanding > query.maxOutstanding) {
+        return false;
+      }
+
+      if (!search) {
+        return true;
+      }
+
+      const searchable = [row.docNo, row.party?.name, row.paymentStatus, row.dueState]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return searchable.includes(search);
+    });
+  }
+
+  private sortAgingItems(items: AgingReportItem[], query: AgingReportQueryDto) {
+    const direction = query.sortOrder === 'asc' ? 1 : -1;
+    const sortBy = query.sortBy ?? 'daysPastDue';
+
+    return [...items].sort((left, right) => {
+      let comparison = 0;
+
+      switch (sortBy) {
+        case 'outstanding':
+          comparison = left.outstanding - right.outstanding;
+          break;
+        case 'total':
+          comparison = left.total - right.total;
+          break;
+        case 'paid':
+          comparison = left.paid - right.paid;
+          break;
+        case 'docDate':
+          comparison = compareNullableDates(left.docDate, right.docDate);
+          break;
+        case 'dueDate':
+          comparison = compareNullableDates(left.dueDate, right.dueDate);
+          break;
+        case 'party':
+          comparison = compareStrings(left.party?.name, right.party?.name);
+          break;
+        case 'docNo':
+          comparison = compareStrings(left.docNo, right.docNo);
+          break;
+        case 'paymentStatus':
+          comparison = compareStrings(left.paymentStatus, right.paymentStatus);
+          break;
+        default:
+          comparison = left.daysPastDue - right.daysPastDue;
+          break;
+      }
+
+      if (comparison === 0) {
+        comparison = compareNullableDates(left.dueDate, right.dueDate);
+      }
+
+      if (comparison === 0) {
+        comparison = compareStrings(left.docNo, right.docNo);
+      }
+
+      return comparison * direction;
+    });
+  }
+
+  private buildExposureItems(items: AgingReportItem[]) {
+    const groups = new Map<string, ExposureReportItem>();
+
+    for (const row of items) {
+      const key = row.party?.id ?? `unknown:${row.party?.name ?? 'Pa subjekt'}`;
+      const existing = groups.get(key) ?? {
+        party: row.party ?? null,
+        openCount: 0,
+        overdueCount: 0,
+        dueTodayCount: 0,
+        unpaidCount: 0,
+        partiallyPaidCount: 0,
+        totalOutstanding: 0,
+        overdueOutstanding: 0,
+        dueTodayOutstanding: 0,
+        currentOutstanding: 0,
+        maxDaysPastDue: 0,
+        oldestDueDate: null,
+        newestDocDate: null,
+      };
+
+      existing.openCount += 1;
+      existing.totalOutstanding += row.outstanding;
+      existing.maxDaysPastDue = Math.max(existing.maxDaysPastDue, row.daysPastDue);
+      existing.oldestDueDate =
+        !existing.oldestDueDate || compareNullableDates(row.dueDate, existing.oldestDueDate) < 0
+          ? row.dueDate
+          : existing.oldestDueDate;
+      existing.newestDocDate =
+        !existing.newestDocDate || compareNullableDates(row.docDate, existing.newestDocDate) > 0
+          ? row.docDate
+          : existing.newestDocDate;
+
+      if (row.paymentStatus === PaymentStatus.UNPAID) {
+        existing.unpaidCount += 1;
+      }
+
+      if (row.paymentStatus === PaymentStatus.PARTIALLY_PAID) {
+        existing.partiallyPaidCount += 1;
+      }
+
+      if (row.dueState === 'OVERDUE') {
+        existing.overdueCount += 1;
+        existing.overdueOutstanding += row.outstanding;
+      } else if (row.dueState === 'DUE_TODAY') {
+        existing.dueTodayCount += 1;
+        existing.dueTodayOutstanding += row.outstanding;
+      } else {
+        existing.currentOutstanding += row.outstanding;
+      }
+
+      groups.set(key, existing);
+    }
+
+    return Array.from(groups.values()).map((row) => ({
+      ...row,
+      totalOutstanding: round2(row.totalOutstanding),
+      overdueOutstanding: round2(row.overdueOutstanding),
+      dueTodayOutstanding: round2(row.dueTodayOutstanding),
+      currentOutstanding: round2(row.currentOutstanding),
+    }));
+  }
+
+  private sortExposureItems(items: ExposureReportItem[], query: AgingReportQueryDto) {
+    const direction = query.sortOrder === 'asc' ? 1 : -1;
+    const sortBy = query.sortBy ?? 'totalOutstanding';
+
+    return [...items].sort((left, right) => {
+      let comparison = 0;
+
+      switch (sortBy) {
+        case 'party':
+          comparison = compareStrings(left.party?.name, right.party?.name);
+          break;
+        case 'openCount':
+          comparison = left.openCount - right.openCount;
+          break;
+        case 'overdueCount':
+          comparison = left.overdueCount - right.overdueCount;
+          break;
+        case 'overdueOutstanding':
+          comparison = left.overdueOutstanding - right.overdueOutstanding;
+          break;
+        case 'currentOutstanding':
+          comparison = left.currentOutstanding - right.currentOutstanding;
+          break;
+        case 'maxDaysPastDue':
+          comparison = left.maxDaysPastDue - right.maxDaysPastDue;
+          break;
+        default:
+          comparison = left.totalOutstanding - right.totalOutstanding;
+          break;
+      }
+
+      if (comparison === 0) {
+        comparison = compareStrings(left.party?.name, right.party?.name);
+      }
+
+      return comparison * direction;
+    });
+  }
+
+  private buildAgingResponse<
+    T extends {
+      id: string;
+      docNo: string;
+      docDate: Date;
+      dueDate: Date | null;
+      grandTotal: number | { toString(): string };
+      amountPaid: number | { toString(): string };
+      paymentStatus?: PaymentStatus | null;
+      returns?: { grandTotal: number | { toString(): string } }[];
+      customer?: { id: string; name: string } | null;
+      supplier?: { id: string; name: string } | null;
+    },
+  >(rows: T[], partyKey: PaymentActivityPartyKey, limit: number, query: AgingReportQueryDto) {
+    const filteredItems = this.filterAgingItems(this.buildAgingItems(rows, partyKey), query, partyKey);
+    const sortedItems = this.sortAgingItems(filteredItems, query);
+    const visibleItems = sortedItems.slice(0, limit);
+    const summary: Record<AgingBucketKey, number> = {
+      current: 0,
+      days1To30: 0,
+      days31To60: 0,
+      days61To90: 0,
+      days90Plus: 0,
+    };
+
+    for (const row of filteredItems) {
+      const bucket = resolveAgingBucket(row.daysPastDue);
+      summary[bucket] += row.outstanding;
+    }
 
     return {
       summary,
-      totalOutstanding: Object.values(summary).reduce((total, amount) => total + amount, 0),
-      openCount: items.length,
-      overdueCount: items.filter((row) => row.dueState === 'OVERDUE').length,
-      items,
+      totalOutstanding: round2(
+        Object.values(summary).reduce((total, amount) => total + amount, 0),
+      ),
+      openCount: filteredItems.length,
+      visibleCount: visibleItems.length,
+      overdueCount: filteredItems.filter((row) => row.dueState === 'OVERDUE').length,
+      truncated: filteredItems.length > visibleItems.length,
+      items: visibleItems,
+    };
+  }
+
+  private buildExposureResponse<
+    T extends {
+      id: string;
+      docNo: string;
+      docDate: Date;
+      dueDate: Date | null;
+      grandTotal: number | { toString(): string };
+      amountPaid: number | { toString(): string };
+      paymentStatus?: PaymentStatus | null;
+      returns?: { grandTotal: number | { toString(): string } }[];
+      customer?: { id: string; name: string } | null;
+      supplier?: { id: string; name: string } | null;
+    },
+  >(rows: T[], partyKey: PaymentActivityPartyKey, limit: number, query: AgingReportQueryDto) {
+    const filteredItems = this.filterAgingItems(this.buildAgingItems(rows, partyKey), query, partyKey);
+    const exposures = this.sortExposureItems(this.buildExposureItems(filteredItems), query);
+    const visibleItems = exposures.slice(0, limit);
+
+    return {
+      summary: {
+        partyCount: exposures.length,
+        overduePartyCount: exposures.filter((row) => row.overdueCount > 0).length,
+        documentCount: filteredItems.length,
+        totalOutstanding: round2(
+          exposures.reduce((total, row) => total + row.totalOutstanding, 0),
+        ),
+        overdueOutstanding: round2(
+          exposures.reduce((total, row) => total + row.overdueOutstanding, 0),
+        ),
+        dueTodayOutstanding: round2(
+          exposures.reduce((total, row) => total + row.dueTodayOutstanding, 0),
+        ),
+        currentOutstanding: round2(
+          exposures.reduce((total, row) => total + row.currentOutstanding, 0),
+        ),
+      },
+      visibleCount: visibleItems.length,
+      truncated: exposures.length > visibleItems.length,
+      items: visibleItems,
     };
   }
 }
