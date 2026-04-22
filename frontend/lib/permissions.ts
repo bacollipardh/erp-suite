@@ -45,8 +45,11 @@ export const PERMISSIONS = {
 
 export function hasPermission(
   permissions: string[] | undefined | null,
-  permission?: string,
+  permission?: string | string[],
 ) {
   if (!permission) return true;
+  if (Array.isArray(permission)) {
+    return permission.some((entry) => (permissions ?? []).includes(entry));
+  }
   return (permissions ?? []).includes(permission);
 }

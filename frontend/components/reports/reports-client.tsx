@@ -763,15 +763,22 @@ export function ReportsClient({
   customers,
   suppliers,
   users,
+  includeSales = true,
+  includeReceivables = true,
+  includePayables = true,
 }: {
   customers: PartyOption[];
   suppliers: PartyOption[];
   users: any[];
+  includeSales?: boolean;
+  includeReceivables?: boolean;
+  includePayables?: boolean;
 }) {
   const { user, loading: sessionLoading } = useSession();
-  const canSales = hasPermission(user?.permissions, PERMISSIONS.reportsSales);
-  const canReceivables = hasPermission(user?.permissions, PERMISSIONS.reportsReceivables);
-  const canPayables = hasPermission(user?.permissions, PERMISSIONS.reportsPayables);
+  const canSales = includeSales && hasPermission(user?.permissions, PERMISSIONS.reportsSales);
+  const canReceivables =
+    includeReceivables && hasPermission(user?.permissions, PERMISSIONS.reportsReceivables);
+  const canPayables = includePayables && hasPermission(user?.permissions, PERMISSIONS.reportsPayables);
 
   const thisYear = new Date().getFullYear();
   const [dateFrom, setDateFrom] = useState(`${thisYear}-01-01`);
