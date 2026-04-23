@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   FinanceAccountTransactionType,
@@ -16,6 +17,10 @@ import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApplyFinanceStatementMatchDto } from './dto/apply-finance-statement-match.dto';
 import { CreateFinanceStatementLineDto } from './dto/create-finance-statement-line.dto';
+import {
+  FinanceStatementLineImportRowDto,
+  ImportFinanceStatementLinesDto,
+} from './dto/import-finance-statement-lines.dto';
 import { ListFinanceStatementLinesQueryDto } from './dto/list-finance-statement-lines-query.dto';
 
 function normalizeOptional(value?: string | null) {
@@ -61,6 +66,33 @@ function dateDistanceDays(left: Date, right: Date) {
   return Math.abs(left.getTime() - right.getTime()) / 86_400_000;
 }
 
+function sameDate(left: Date | string, right: Date | string) {
+  return new Date(left).toISOString().slice(0, 10) === new Date(right).toISOString().slice(0, 10);
+}
+
+function amountEquals(left: number, right: number) {
+  return Math.abs(round2(left) - round2(right)) < 0.005;
+}
+
+function normalizeMatchToken(value?: string | null) {
+  return normalizeOptional(value)?.toLowerCase().replace(/[^a-z0-9]/g, '') ?? null;
+}
+
+function buildImportFingerprint(
+  accountId: string,
+  row: FinanceStatementLineImportRowDto,
+) {
+  return [
+    accountId,
+    row.externalId ? normalizeMatchToken(row.externalId) : '',
+    row.statementDate,
+    row.direction,
+    round2(Number(row.amount)).toFixed(2),
+    normalizeMatchToken(row.referenceNo) ?? '',
+    normalizeMatchToken(row.counterpartyName) ?? '',
+  ].join('|');
+}
+
 type StatementLineForMatching = {
   accountId: string;
   direction: FinanceStatementLineDirection;
@@ -69,6 +101,8 @@ type StatementLineForMatching = {
   referenceNo?: string | null;
   counterpartyName?: string | null;
 };
+
+type TransactionClient = Prisma.TransactionClient;
 
 @Injectable()
 export class FinanceReconciliationService {
@@ -241,6 +275,171 @@ export class FinanceReconciliationService {
     });
 
     return this.mapStatementLine(line);
+  }
+
+  async importStatementLines(dto: ImportFinanceStatementLinesDto, userId: string) {
+    const account = await this.prisma.financeAccount.findUnique({
+      where: { id: dto.financeAccountId },
+    });
+
+    if (!account) {
+      throw new NotFoundException('Finance account not found');
+    }
+
+    if (!account.isActive) {
+      throw new BadRequestException('Finance account is inactive');
+    }
+
+    if (account.accountType !== FinanceAccountType.BANK) {
+      throw new BadRequestException('Statement import can only be used with bank accounts');
+    }
+
+    const importBatchId = randomUUID();
+    const seenFingerprints = new Set<string>();
+
+    return this.prisma.$transaction(async (tx) => {
+      const results: any[] = [];
+      let importedCount = 0;
+      let skippedCount = 0;
+      let duplicateCount = 0;
+      let autoMatchedCount = 0;
+      let ambiguousAutoMatchCount = 0;
+
+      for (const [index, row] of dto.lines.entries()) {
+        const rowNo = row.rowNo ?? index + 1;
+        const amount = round2(Number(row.amount));
+        const statementDate = toSafeDate(row.statementDate);
+        const valueDate = row.valueDate ? toSafeDate(row.valueDate) : null;
+        const fingerprint = buildImportFingerprint(account.id, row);
+
+        if (seenFingerprints.has(fingerprint)) {
+          skippedCount += 1;
+          duplicateCount += 1;
+          results.push({
+            rowNo,
+            status: 'SKIPPED_DUPLICATE_IN_FILE',
+            message: 'Ky rresht perseritet brenda file-it te importit.',
+            referenceNo: normalizeOptional(row.referenceNo),
+            externalId: normalizeOptional(row.externalId),
+            amount,
+          });
+          continue;
+        }
+        seenFingerprints.add(fingerprint);
+
+        const existing = await this.findDuplicateStatementLineTx(tx, account.id, {
+          ...row,
+          amount,
+          statementDate: statementDate.toISOString(),
+        });
+
+        if (existing) {
+          skippedCount += 1;
+          duplicateCount += 1;
+          results.push({
+            rowNo,
+            status: 'SKIPPED_DUPLICATE_IN_DATABASE',
+            message: 'Ky rresht ekziston tashme ne statement lines.',
+            statementLineId: existing.id,
+            referenceNo: normalizeOptional(row.referenceNo),
+            externalId: normalizeOptional(row.externalId),
+            amount,
+          });
+          continue;
+        }
+
+        const created = await tx.financeStatementLine.create({
+          data: {
+            accountId: account.id,
+            direction: row.direction,
+            statementDate,
+            valueDate,
+            amount,
+            matchedAmount: 0,
+            status: FinanceStatementLineStatus.UNMATCHED,
+            statementBalance:
+              row.statementBalance === undefined ? undefined : round2(Number(row.statementBalance)),
+            referenceNo: normalizeOptional(row.referenceNo),
+            externalId: normalizeOptional(row.externalId),
+            counterpartyName: normalizeOptional(row.counterpartyName),
+            description: normalizeOptional(row.description),
+            notes: normalizeOptional(row.notes),
+            createdById: userId,
+          },
+        });
+
+        importedCount += 1;
+        const autoMatch =
+          dto.autoMatch === false
+            ? { status: 'DISABLED' as const }
+            : await this.autoMatchImportedLineTx(tx, created, userId, importBatchId);
+
+        if (autoMatch.status === 'MATCHED') {
+          autoMatchedCount += 1;
+        }
+
+        if (autoMatch.status === 'AMBIGUOUS') {
+          ambiguousAutoMatchCount += 1;
+        }
+
+        results.push({
+          rowNo,
+          status: autoMatch.status === 'MATCHED' ? 'IMPORTED_AUTO_MATCHED' : 'IMPORTED',
+          message:
+            autoMatch.status === 'MATCHED'
+              ? 'Rreshti u importua dhe u pajtua automatikisht.'
+              : autoMatch.status === 'AMBIGUOUS'
+                ? 'Rreshti u importua, por auto-match u la manual sepse ka me shume se nje kandidat.'
+                : autoMatch.status === 'NO_CANDIDATE'
+                  ? 'Rreshti u importua, por nuk u gjet kandidat 100% per auto-match.'
+                  : 'Rreshti u importua pa auto-match.',
+          statementLineId: created.id,
+          matchedTransactionId:
+            autoMatch.status === 'MATCHED' ? autoMatch.financeAccountTransactionId : null,
+          referenceNo: normalizeOptional(row.referenceNo),
+          externalId: normalizeOptional(row.externalId),
+          amount,
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          entityType: 'finance_statement_imports',
+          entityId: importBatchId,
+          action: 'IMPORT',
+          metadata: {
+            accountId: account.id,
+            accountCode: account.code,
+            requestedRows: dto.lines.length,
+            importedCount,
+            skippedCount,
+            duplicateCount,
+            autoMatchedCount,
+            ambiguousAutoMatchCount,
+            autoMatch: dto.autoMatch !== false,
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      return {
+        importBatchId,
+        account: {
+          id: account.id,
+          code: account.code,
+          name: account.name,
+        },
+        summary: {
+          requestedRows: dto.lines.length,
+          importedCount,
+          skippedCount,
+          duplicateCount,
+          autoMatchedCount,
+          ambiguousAutoMatchCount,
+        },
+        results,
+      };
+    });
   }
 
   async getStatementLineWorkspace(id: string) {
@@ -466,6 +665,148 @@ export class FinanceReconciliationService {
     }
 
     return line;
+  }
+
+  private async findDuplicateStatementLineTx(
+    tx: TransactionClient,
+    accountId: string,
+    row: FinanceStatementLineImportRowDto,
+  ) {
+    const amount = round2(Number(row.amount));
+    const statementDate = toSafeDate(row.statementDate);
+    const externalId = normalizeOptional(row.externalId);
+
+    if (externalId) {
+      const existingByExternalId = await tx.financeStatementLine.findFirst({
+        where: {
+          accountId,
+          externalId,
+        },
+      });
+
+      if (existingByExternalId) return existingByExternalId;
+    }
+
+    return tx.financeStatementLine.findFirst({
+      where: {
+        accountId,
+        direction: row.direction,
+        statementDate,
+        amount,
+        referenceNo: normalizeOptional(row.referenceNo),
+        counterpartyName: normalizeOptional(row.counterpartyName),
+      },
+    });
+  }
+
+  private async autoMatchImportedLineTx(
+    tx: TransactionClient,
+    line: {
+      id: string;
+      accountId: string;
+      direction: FinanceStatementLineDirection;
+      amount: Prisma.Decimal | number | string;
+      statementDate: Date;
+      referenceNo?: string | null;
+      counterpartyName?: string | null;
+    },
+    userId: string,
+    importBatchId: string,
+  ) {
+    const transactions = await tx.financeAccountTransaction.findMany({
+      where: {
+        accountId: line.accountId,
+      },
+      include: {
+        statementMatches: true,
+      },
+      orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
+      take: 250,
+    });
+
+    const lineAmount = Number(line.amount ?? 0);
+    const lineReference = normalizeMatchToken(line.referenceNo);
+    const lineParty = normalizeMatchToken(line.counterpartyName);
+
+    const candidates = transactions.filter((transaction) => {
+      if (!directionMatchesTransaction(line.direction, transaction.transactionType)) {
+        return false;
+      }
+
+      const matchedAmount = round2(
+        transaction.statementMatches.reduce((sum, match) => sum + Number(match.amount ?? 0), 0),
+      );
+      const availableAmount = calculateTransactionAvailableAmount(
+        Number(transaction.amount ?? 0),
+        matchedAmount,
+      );
+
+      if (!amountEquals(lineAmount, availableAmount)) {
+        return false;
+      }
+
+      const transactionReference = normalizeMatchToken(transaction.referenceNo);
+      const transactionParty = normalizeMatchToken(transaction.counterpartyName);
+      const referenceMatch =
+        Boolean(lineReference && transactionReference) && lineReference === transactionReference;
+      const partyMatch =
+        Boolean(lineParty && transactionParty) &&
+        (lineParty === transactionParty ||
+          lineParty.includes(transactionParty ?? '') ||
+          transactionParty?.includes(lineParty ?? ''));
+
+      return referenceMatch || (sameDate(line.statementDate, transaction.transactionDate) && partyMatch);
+    });
+
+    if (candidates.length === 0) {
+      return { status: 'NO_CANDIDATE' as const };
+    }
+
+    if (candidates.length > 1) {
+      return { status: 'AMBIGUOUS' as const };
+    }
+
+    const transaction = candidates[0];
+    const amount = round2(lineAmount);
+
+    const match = await tx.financeStatementMatch.create({
+      data: {
+        statementLineId: line.id,
+        financeAccountTransactionId: transaction.id,
+        amount,
+        notes: 'Auto-match nga importi bankar',
+        createdById: userId,
+      },
+    });
+
+    await tx.financeStatementLine.update({
+      where: { id: line.id },
+      data: {
+        matchedAmount: amount,
+        status: FinanceStatementLineStatus.MATCHED,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId,
+        entityType: 'finance_statement_lines',
+        entityId: line.id,
+        action: 'AUTO_MATCH_LEDGER_TRANSACTION',
+        metadata: {
+          importBatchId,
+          matchId: match.id,
+          financeAccountTransactionId: transaction.id,
+          amount,
+          statusAfter: FinanceStatementLineStatus.MATCHED,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    return {
+      status: 'MATCHED' as const,
+      financeAccountTransactionId: transaction.id,
+    };
   }
 
   private async getCandidatesForLine(line: StatementLineForMatching) {

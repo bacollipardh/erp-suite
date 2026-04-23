@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { BankStatementImportPanel } from '@/components/finance/bank-statement-import-panel';
 import { StatsCard } from '@/components/stats-card';
 import { StatusBadge } from '@/components/status-badge';
 import { api } from '@/lib/api';
@@ -103,6 +104,14 @@ type StatementLineListResponse = {
 type StatementWorkspace = {
   statementLine: StatementLine;
   candidates: CandidateTransaction[];
+};
+
+type ImportResult = {
+  summary: {
+    importedCount: number;
+    skippedCount: number;
+    autoMatchedCount: number;
+  };
 };
 
 function formatMoney(value?: number | string | null) {
@@ -357,6 +366,15 @@ export function BankReconciliationClient({
     }
   }
 
+  function handleImported(result: ImportResult) {
+    setMessage(
+      `Importi perfundoi: ${result.summary.importedCount} rreshta u importuan, ${result.summary.autoMatchedCount} u pajtuan automatikisht, ${result.summary.skippedCount} u anashkaluan.`,
+    );
+    setStatus('ALL');
+    setPage(1);
+    void loadList();
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
@@ -401,6 +419,13 @@ export function BankReconciliationClient({
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           {actionError}
         </div>
+      ) : null}
+
+      {canManage ? (
+        <BankStatementImportPanel
+          bankAccounts={bankAccounts}
+          onImported={handleImported}
+        />
       ) : null}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">

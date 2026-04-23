@@ -5,6 +5,7 @@ import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 import { ApplyFinanceStatementMatchDto } from './dto/apply-finance-statement-match.dto';
 import { CreateFinanceStatementLineDto } from './dto/create-finance-statement-line.dto';
+import { ImportFinanceStatementLinesDto } from './dto/import-finance-statement-lines.dto';
 import { ListFinanceStatementLinesQueryDto } from './dto/list-finance-statement-lines-query.dto';
 import { FinanceReconciliationService } from './finance-reconciliation.service';
 
@@ -33,6 +34,15 @@ export class FinanceReconciliationController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.financeReconciliationService.createStatementLine(dto, user.sub);
+  }
+
+  @Post('statement-lines/import')
+  @RequirePermissions(PERMISSIONS.financeAccountsManage)
+  importStatementLines(
+    @Body() dto: ImportFinanceStatementLinesDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.financeReconciliationService.importStatementLines(dto, user.sub);
   }
 
   @Post('statement-lines/:id/matches')
