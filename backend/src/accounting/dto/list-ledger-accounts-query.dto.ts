@@ -25,4 +25,8 @@ export class ListLedgerAccountsQueryDto extends PaginationDto {
   @IsOptional()
   @IsIn(['true', 'false'])
   isActive?: string;
+
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  allowManual?: string;
 }

@@ -6,15 +6,18 @@ import {
 export const SYSTEM_LEDGER_ACCOUNT_CODES = {
   accountsReceivable: 'AR_TRADE',
   accountsPayable: 'AP_TRADE',
+  prepaidExpenses: 'PREPAID_EXPENSES',
   inventory: 'INVENTORY',
   vatInput: 'VAT_INPUT',
   vatOutput: 'VAT_OUTPUT',
+  accruedLiabilities: 'ACCRUED_LIABILITIES',
   salesRevenue: 'SALES_REVENUE',
   salesReturns: 'SALES_RETURNS',
   costOfSales: 'COST_OF_SALES',
   customerAdvances: 'CUSTOMER_ADVANCES',
   supplierAdvances: 'SUPPLIER_ADVANCES',
   openingEquity: 'OPENING_EQUITY',
+  retainedEarnings: 'RETAINED_EARNINGS',
   otherIncome: 'OTHER_INCOME',
   otherExpense: 'OTHER_EXPENSE',
   inventoryGain: 'INVENTORY_GAIN',
@@ -28,6 +31,7 @@ export const SYSTEM_LEDGER_ACCOUNTS: Array<{
   reportSection: LedgerAccountReportSection;
   sortOrder: number;
   description: string;
+  allowManual?: boolean;
 }> = [
   {
     code: SYSTEM_LEDGER_ACCOUNT_CODES.accountsReceivable,
@@ -46,6 +50,15 @@ export const SYSTEM_LEDGER_ACCOUNTS: Array<{
     description: 'Parapagimet dhe tepricat ndaj furnitoreve.',
   },
   {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.prepaidExpenses,
+    name: 'Shpenzime te Parapaguar',
+    category: LedgerAccountCategory.ASSET,
+    reportSection: LedgerAccountReportSection.CURRENT_ASSET,
+    sortOrder: 1175,
+    description: 'Konto manuale per parapagime dhe deferrals te shpenzimeve.',
+    allowManual: true,
+  },
+  {
     code: SYSTEM_LEDGER_ACCOUNT_CODES.inventory,
     name: 'Inventari',
     category: LedgerAccountCategory.ASSET,
@@ -60,6 +73,7 @@ export const SYSTEM_LEDGER_ACCOUNTS: Array<{
     reportSection: LedgerAccountReportSection.CURRENT_ASSET,
     sortOrder: 1300,
     description: 'TVSH hyrse e zbritshme nga blerjet.',
+    allowManual: true,
   },
   {
     code: SYSTEM_LEDGER_ACCOUNT_CODES.accountsPayable,
@@ -78,12 +92,22 @@ export const SYSTEM_LEDGER_ACCOUNTS: Array<{
     description: 'Parapagime dhe teprica te marra nga klientet.',
   },
   {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.accruedLiabilities,
+    name: 'Detyrime te Akumuluara',
+    category: LedgerAccountCategory.LIABILITY,
+    reportSection: LedgerAccountReportSection.CURRENT_LIABILITY,
+    sortOrder: 2175,
+    description: 'Konto manuale per accruals, detyrime te pambyllura dhe provizione operative.',
+    allowManual: true,
+  },
+  {
     code: SYSTEM_LEDGER_ACCOUNT_CODES.vatOutput,
     name: 'TVSH e Daljes',
     category: LedgerAccountCategory.LIABILITY,
     reportSection: LedgerAccountReportSection.CURRENT_LIABILITY,
     sortOrder: 2200,
     description: 'TVSH dalese nga shitjet.',
+    allowManual: true,
   },
   {
     code: SYSTEM_LEDGER_ACCOUNT_CODES.openingEquity,
@@ -92,6 +116,14 @@ export const SYSTEM_LEDGER_ACCOUNTS: Array<{
     reportSection: LedgerAccountReportSection.EQUITY,
     sortOrder: 3000,
     description: 'Konto e balancave hapese dhe kapitalit fillestar.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.retainedEarnings,
+    name: 'Fitim i Mbartur',
+    category: LedgerAccountCategory.EQUITY,
+    reportSection: LedgerAccountReportSection.EQUITY,
+    sortOrder: 3100,
+    description: 'Konto e mbylljes se periudhave dhe rezultatit te mbartur.',
   },
   {
     code: SYSTEM_LEDGER_ACCOUNT_CODES.salesRevenue,
@@ -124,6 +156,7 @@ export const SYSTEM_LEDGER_ACCOUNTS: Array<{
     reportSection: LedgerAccountReportSection.OPERATING_EXPENSE,
     sortOrder: 6100,
     description: 'Humbje nga inventari, adjustime negative dhe count-out.',
+    allowManual: true,
   },
   {
     code: SYSTEM_LEDGER_ACCOUNT_CODES.otherExpense,
@@ -132,6 +165,7 @@ export const SYSTEM_LEDGER_ACCOUNTS: Array<{
     reportSection: LedgerAccountReportSection.OTHER_EXPENSE,
     sortOrder: 6900,
     description: 'Konto default per pagesa manuale dalese.',
+    allowManual: true,
   },
   {
     code: SYSTEM_LEDGER_ACCOUNT_CODES.inventoryGain,
@@ -140,6 +174,7 @@ export const SYSTEM_LEDGER_ACCOUNTS: Array<{
     reportSection: LedgerAccountReportSection.OTHER_INCOME,
     sortOrder: 7100,
     description: 'Fitime nga inventari, adjustime pozitive dhe count-in.',
+    allowManual: true,
   },
   {
     code: SYSTEM_LEDGER_ACCOUNT_CODES.otherIncome,
@@ -148,5 +183,6 @@ export const SYSTEM_LEDGER_ACCOUNTS: Array<{
     reportSection: LedgerAccountReportSection.OTHER_INCOME,
     sortOrder: 7900,
     description: 'Konto default per hyrje manuale financiare.',
+    allowManual: true,
   },
 ];

@@ -91,6 +91,16 @@ export const navSections: NavSection[] = [
         permission: PERMISSIONS.accountingRead,
       },
       {
+        label: 'Journal Entry Manuale',
+        href: '/financa/libri-kontabel/new',
+        permission: PERMISSIONS.accountingManage,
+      },
+      {
+        label: 'Mbyllja Kontabel',
+        href: '/financa/mbyllja-kontabel',
+        permission: PERMISSIONS.accountingManage,
+      },
+      {
         label: 'Pajtimi Bankar',
         href: '/financa/pajtimi-bankar',
         permission: PERMISSIONS.financeAccountsRead,

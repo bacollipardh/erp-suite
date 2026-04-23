@@ -223,6 +223,9 @@ export default async function AccountingLedgerPage({
       <PageHeader
         title="Libri Kontabel"
         description="Chart of accounts, journal entries dhe gjendja aktuale e ledger-it ne nje vend te vetem."
+        createHref="/financa/libri-kontabel/new"
+        createLabel="Journal Manual"
+        createPermission={PERMISSIONS.accountingManage}
       />
 
       <div className="flex flex-wrap gap-2">
@@ -232,6 +235,14 @@ export default async function AccountingLedgerPage({
             className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:text-indigo-900"
           >
             Hap raportet kontabel
+          </Link>
+        ) : null}
+        {hasPermission(user.permissions, PERMISSIONS.accountingManage) ? (
+          <Link
+            href="/financa/mbyllja-kontabel"
+            className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:text-amber-900"
+          >
+            Hap mbylljen kontabel
           </Link>
         ) : null}
         <Link
@@ -413,6 +424,11 @@ export default async function AccountingLedgerPage({
                           System
                         </span>
                       ) : null}
+                      {account.allowManual ? (
+                        <span className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+                          Manual
+                        </span>
+                      ) : null}
                       {account.financeAccounts?.[0] ? (
                         <span className="inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-sky-200">
                           {account.financeAccounts[0].code}
@@ -449,7 +465,7 @@ export default async function AccountingLedgerPage({
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-base font-semibold text-slate-900">Journal Entries</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Hyrjet kontabël te gjeneruara nga shitja, blerja, financa dhe stoku.
+            Hyrjet kontabel te gjeneruara nga shitja, blerja, financa, stoku dhe journal-et manuale.
           </p>
         </div>
         <div className="divide-y divide-slate-100">
@@ -468,8 +484,8 @@ export default async function AccountingLedgerPage({
                   <p className="mt-1 text-sm text-slate-600">{entry.description}</p>
                   <p className="mt-1 text-xs text-slate-400">
                     {formatDateOnly(entry.entryDate)}
-                    {entry.sourceNo ? ` • ${entry.sourceNo}` : ''}
-                    {entry.createdBy?.fullName ? ` • ${entry.createdBy.fullName}` : ''}
+                    {entry.sourceNo ? ` | ${entry.sourceNo}` : ''}
+                    {entry.createdBy?.fullName ? ` | ${entry.createdBy.fullName}` : ''}
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-right">
@@ -516,7 +532,7 @@ export default async function AccountingLedgerPage({
                           </div>
                           {line.partyName || line.description ? (
                             <div className="mt-0.5 text-xs text-slate-400">
-                              {[line.partyName, line.description].filter(Boolean).join(' • ')}
+                              {[line.partyName, line.description].filter(Boolean).join(' | ')}
                             </div>
                           ) : null}
                         </td>

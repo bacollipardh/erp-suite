@@ -1,18 +1,27 @@
 import {
   BadRequestException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   FinanceAccountTransactionType,
   FinanceAccountType,
   FinanceSettlementType,
+  DocumentStatus,
   JournalEntryLineSide,
   LedgerAccountCategory,
   LedgerAccountReportSection,
   Prisma,
 } from '@prisma/client';
+import { randomUUID } from 'crypto';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import {
+  formatFinancialPeriodLabel,
+  getFinancialPeriodKey,
+} from '../common/utils/financial-periods';
 import { round2 } from '../common/utils/money';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
+import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   SYSTEM_LEDGER_ACCOUNT_CODES,
@@ -25,8 +34,11 @@ import {
   isProfitLossSection,
 } from './accounting.utils';
 import { AccountingReportQueryDto } from './dto/accounting-report-query.dto';
+import { ClosingEntryDto } from './dto/closing-entry.dto';
+import { CreateManualJournalEntryDto } from './dto/create-manual-journal-entry.dto';
 import { ListJournalEntriesQueryDto } from './dto/list-journal-entries-query.dto';
 import { ListLedgerAccountsQueryDto } from './dto/list-ledger-accounts-query.dto';
+import { VatLedgerQueryDto } from './dto/vat-ledger-query.dto';
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -101,7 +113,11 @@ function sectionOrder(section: LedgerAccountReportSection) {
 
 @Injectable()
 export class AccountingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly financialPeriodsService: FinancialPeriodsService,
+    private readonly auditLogs: AuditLogsService,
+  ) {}
 
   private getClient(tx?: TransactionClient) {
     return tx ?? this.prisma;
@@ -115,6 +131,8 @@ export class AccountingService {
       reportSection: query.reportSection as LedgerAccountReportSection | undefined,
       isActive:
         typeof query.isActive === 'string' ? query.isActive === 'true' : undefined,
+      allowManual:
+        typeof query.allowManual === 'string' ? query.allowManual === 'true' : undefined,
       OR: search
         ? [
             { code: { contains: search, mode: 'insensitive' } },
@@ -203,21 +221,31 @@ export class AccountingService {
       dateFrom?: Date | null;
       dateTo?: Date | null;
       beforeDate?: Date | null;
+      includeSourceTypes?: string[];
+      excludeSourceTypes?: string[];
     },
   ) {
     const lines = await client.journalEntryLine.findMany({
       where: {
         accountId: params?.accountIds?.length ? { in: params.accountIds } : undefined,
-        journalEntry: params?.beforeDate
-          ? { entryDate: { lt: params.beforeDate } }
-          : params?.dateFrom || params?.dateTo
-            ? {
-                entryDate: {
-                  gte: params.dateFrom ?? undefined,
-                  lte: params.dateTo ?? undefined,
-                },
-              }
-            : undefined,
+        journalEntry: {
+          ...(params?.beforeDate
+            ? { entryDate: { lt: params.beforeDate } }
+            : params?.dateFrom || params?.dateTo
+              ? {
+                  entryDate: {
+                    gte: params.dateFrom ?? undefined,
+                    lte: params.dateTo ?? undefined,
+                  },
+                }
+              : {}),
+          ...(params?.includeSourceTypes?.length
+            ? { sourceType: { in: params.includeSourceTypes } }
+            : {}),
+          ...(params?.excludeSourceTypes?.length
+            ? { sourceType: { notIn: params.excludeSourceTypes } }
+            : {}),
+        },
       },
       select: {
         accountId: true,
@@ -485,7 +513,7 @@ export class AccountingService {
           reportSection: account.reportSection,
           isSystem: true,
           isActive: true,
-          allowManual: false,
+          allowManual: account.allowManual ?? false,
           sortOrder: account.sortOrder,
           description: account.description,
         },
@@ -496,7 +524,7 @@ export class AccountingService {
           reportSection: account.reportSection,
           isSystem: true,
           isActive: true,
-          allowManual: false,
+          allowManual: account.allowManual ?? false,
           sortOrder: account.sortOrder,
           description: account.description,
         },
@@ -705,6 +733,725 @@ export class AccountingService {
     };
   }
 
+  async createManualJournalEntry(dto: CreateManualJournalEntryDto, userId: string) {
+    await this.ensureChartOfAccounts();
+
+    const entryDate = normalizeDateOnly(dto.entryDate);
+    const description = dto.description?.trim();
+    const sourceNo = dto.sourceNo?.trim() || null;
+
+    if (!description) {
+      throw new BadRequestException('Pershkrimi i journal entry eshte i detyrueshem');
+    }
+
+    await this.financialPeriodsService.assertDateOpen(
+      entryDate,
+      userId,
+      'Journal entry manuale',
+    );
+
+    const accountIds = Array.from(new Set(dto.lines.map((line) => line.accountId)));
+    const accounts = await this.prisma.ledgerAccount.findMany({
+      where: {
+        id: { in: accountIds },
+      },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        isActive: true,
+        allowManual: true,
+      },
+    });
+
+    if (accounts.length !== accountIds.length) {
+      throw new BadRequestException('Nje ose me shume konto nuk u gjeten ne ledger');
+    }
+
+    const accountMap = new Map(accounts.map((account) => [account.id, account]));
+    for (const line of dto.lines) {
+      const account = accountMap.get(line.accountId);
+      if (!account) {
+        throw new BadRequestException('Nje ose me shume konto nuk u gjeten ne ledger');
+      }
+      if (!account.isActive) {
+        throw new BadRequestException(
+          `Konto ${account.code} - ${account.name} nuk eshte aktive per journal manual`,
+        );
+      }
+      if (!account.allowManual) {
+        throw new BadRequestException(
+          `Konto ${account.code} - ${account.name} nuk lejon journal entries manuale`,
+        );
+      }
+    }
+
+    const entry = await this.prisma.$transaction((tx) =>
+      this.upsertJournalEntryTx(tx, {
+        entryDate,
+        description,
+        sourceType: 'MANUAL_JOURNAL',
+        sourceId: randomUUID(),
+        sourceNo,
+        createdById: userId,
+        lines: dto.lines.map((line) => ({
+          accountId: line.accountId,
+          side:
+            line.side === 'DEBIT'
+              ? JournalEntryLineSide.DEBIT
+              : JournalEntryLineSide.CREDIT,
+          amount: round2(Number(line.amount ?? 0)),
+          description: line.description?.trim() || null,
+          partyName: line.partyName?.trim() || null,
+        })),
+      }),
+    );
+
+    const debitTotal = round2(
+      entry.lines
+        .filter((line) => line.side === JournalEntryLineSide.DEBIT)
+        .reduce((sum, line) => sum + Number(line.amount ?? 0), 0),
+    );
+    const creditTotal = round2(
+      entry.lines
+        .filter((line) => line.side === JournalEntryLineSide.CREDIT)
+        .reduce((sum, line) => sum + Number(line.amount ?? 0), 0),
+    );
+
+    await this.auditLogs.log({
+      userId,
+      entityType: 'journal_entries',
+      entityId: entry.id,
+      action: 'CREATE_MANUAL_JOURNAL',
+      metadata: {
+        entryNo: entry.entryNo,
+        entryDate,
+        sourceNo,
+        debitTotal,
+        creditTotal,
+        lineCount: entry.lines.length,
+      },
+    });
+
+    return {
+      ...entry,
+      debitTotal,
+      creditTotal,
+    };
+  }
+
+  private async resolveClosingEntryPreview(financialPeriodId: string) {
+    await this.ensureChartOfAccounts();
+
+    const period = await this.prisma.financialPeriod.findUnique({
+      where: { id: financialPeriodId },
+      select: {
+        id: true,
+        year: true,
+        month: true,
+        periodStart: true,
+        periodEnd: true,
+        status: true,
+      },
+    });
+
+    if (!period) {
+      throw new NotFoundException('Financial period not found');
+    }
+
+    const [accounts, retainedEarnings, periodSummary, existingEntry] = await Promise.all([
+      this.prisma.ledgerAccount.findMany({
+        where: {
+          isActive: true,
+          reportSection: {
+            in: Object.values(LedgerAccountReportSection).filter((section) =>
+              isProfitLossSection(section),
+            ),
+          },
+        },
+        orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }],
+      }),
+      this.prisma.ledgerAccount.findUnique({
+        where: { code: SYSTEM_LEDGER_ACCOUNT_CODES.retainedEarnings },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+        },
+      }),
+      this.financialPeriodsService.getSummary(financialPeriodId),
+      this.prisma.journalEntry.findFirst({
+        where: {
+          sourceType: 'PERIOD_CLOSE',
+          sourceId: financialPeriodId,
+        },
+        include: {
+          createdBy: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
+          },
+          lines: {
+            include: {
+              account: true,
+            },
+            orderBy: { lineNo: 'asc' },
+          },
+        },
+      }),
+    ]);
+
+    if (!retainedEarnings) {
+      throw new BadRequestException('Konto e fitimit te mbartur mungon ne chart of accounts');
+    }
+
+    const periodTotals = await this.buildTotalsByAccount(this.prisma, {
+      accountIds: accounts.map((account) => account.id),
+      dateFrom: normalizeDateOnly(period.periodStart),
+      dateTo: normalizeDateOnly(period.periodEnd),
+      excludeSourceTypes: ['PERIOD_CLOSE'],
+    });
+
+    const profitLossItems = accounts
+      .map((account) => {
+        const totals = periodTotals.get(account.id) ?? { debit: 0, credit: 0 };
+        const amount = calculateStatementAmount({
+          reportSection: account.reportSection,
+          debit: totals.debit,
+          credit: totals.credit,
+        });
+        return {
+          accountId: account.id,
+          accountCode: account.code,
+          accountName: account.name,
+          category: account.category,
+          reportSection: account.reportSection,
+          reportSectionLabel: REPORT_SECTION_LABELS[account.reportSection],
+          amount,
+          debit: totals.debit,
+          credit: totals.credit,
+        };
+      })
+      .filter((item) => item.debit > 0 || item.credit > 0 || item.amount !== 0);
+
+    const sections = this.buildStatementSections({ items: profitLossItems });
+    const totalBySection = (section: LedgerAccountReportSection) =>
+      round2(
+        sections
+          .filter((entry) => entry.section === section)
+          .reduce((sum, entry) => sum + entry.total, 0),
+      );
+
+    const revenue = totalBySection(LedgerAccountReportSection.REVENUE);
+    const contraRevenue = totalBySection(LedgerAccountReportSection.CONTRA_REVENUE);
+    const costOfSales = totalBySection(LedgerAccountReportSection.COST_OF_SALES);
+    const operatingExpenses = totalBySection(
+      LedgerAccountReportSection.OPERATING_EXPENSE,
+    );
+    const otherIncome = totalBySection(LedgerAccountReportSection.OTHER_INCOME);
+    const otherExpense = totalBySection(LedgerAccountReportSection.OTHER_EXPENSE);
+    const netRevenue = round2(revenue - contraRevenue);
+    const grossProfit = round2(netRevenue - costOfSales);
+    const operatingResult = round2(grossProfit - operatingExpenses);
+    const netProfit = round2(operatingResult + otherIncome - otherExpense);
+
+    const lines = profitLossItems
+      .map((item) => {
+        const net = calculateNetBySide({
+          debit: item.debit,
+          credit: item.credit,
+        });
+        if (net.debitBalance > 0) {
+          return {
+            accountId: item.accountId,
+            accountCode: item.accountCode,
+            accountName: item.accountName,
+            reportSection: item.reportSection,
+            reportSectionLabel: item.reportSectionLabel,
+            side: JournalEntryLineSide.CREDIT,
+            amount: net.debitBalance,
+          };
+        }
+        if (net.creditBalance > 0) {
+          return {
+            accountId: item.accountId,
+            accountCode: item.accountCode,
+            accountName: item.accountName,
+            reportSection: item.reportSection,
+            reportSectionLabel: item.reportSectionLabel,
+            side: JournalEntryLineSide.DEBIT,
+            amount: net.creditBalance,
+          };
+        }
+        return null;
+      })
+      .filter(
+        (
+          line,
+        ): line is {
+          accountId: string;
+          accountCode: string;
+          accountName: string;
+          reportSection: LedgerAccountReportSection;
+          reportSectionLabel: string;
+          side: JournalEntryLineSide;
+          amount: number;
+        } => Boolean(line && line.amount > 0),
+      );
+
+    const debitTotal = round2(
+      lines
+        .filter((line) => line.side === JournalEntryLineSide.DEBIT)
+        .reduce((sum, line) => sum + line.amount, 0),
+    );
+    const creditTotal = round2(
+      lines
+        .filter((line) => line.side === JournalEntryLineSide.CREDIT)
+        .reduce((sum, line) => sum + line.amount, 0),
+    );
+    const difference = round2(debitTotal - creditTotal);
+
+    const offsetLine =
+      difference === 0
+        ? null
+        : {
+            accountId: retainedEarnings.id,
+            accountCode: retainedEarnings.code,
+            accountName: retainedEarnings.name,
+            reportSection: LedgerAccountReportSection.EQUITY,
+            reportSectionLabel: REPORT_SECTION_LABELS[LedgerAccountReportSection.EQUITY],
+            side:
+              difference > 0
+                ? JournalEntryLineSide.CREDIT
+                : JournalEntryLineSide.DEBIT,
+            amount: Math.abs(difference),
+          };
+
+    const previewLines = offsetLine ? [...lines, offsetLine] : lines;
+
+    const existingEntrySummary = existingEntry
+      ? {
+          id: existingEntry.id,
+          entryNo: existingEntry.entryNo,
+          entryDate: existingEntry.entryDate,
+          description: existingEntry.description,
+          sourceNo: existingEntry.sourceNo,
+          createdAt: existingEntry.createdAt,
+          updatedAt: existingEntry.updatedAt,
+          createdBy: existingEntry.createdBy,
+          lines: existingEntry.lines,
+          debitTotal: round2(
+            existingEntry.lines
+              .filter((line) => line.side === JournalEntryLineSide.DEBIT)
+              .reduce((sum, line) => sum + Number(line.amount ?? 0), 0),
+          ),
+          creditTotal: round2(
+            existingEntry.lines
+              .filter((line) => line.side === JournalEntryLineSide.CREDIT)
+              .reduce((sum, line) => sum + Number(line.amount ?? 0), 0),
+          ),
+        }
+      : null;
+
+    return {
+      period: {
+        id: period.id,
+        key: getFinancialPeriodKey(period.year, period.month),
+        label: formatFinancialPeriodLabel(period.year, period.month),
+        year: period.year,
+        month: period.month,
+        periodStart: period.periodStart,
+        periodEnd: period.periodEnd,
+        status: period.status,
+      },
+      summary: {
+        revenue,
+        contraRevenue,
+        netRevenue,
+        costOfSales,
+        grossProfit,
+        operatingExpenses,
+        operatingResult,
+        otherIncome,
+        otherExpense,
+        netProfit,
+      },
+      checklist: periodSummary.checklist,
+      controlsSummary: periodSummary.summary,
+      lines: previewLines,
+      sourceLines: lines,
+      offsetLine,
+      totals: {
+        debitTotal: round2(
+          previewLines
+            .filter((line) => line.side === JournalEntryLineSide.DEBIT)
+            .reduce((sum, line) => sum + line.amount, 0),
+        ),
+        creditTotal: round2(
+          previewLines
+            .filter((line) => line.side === JournalEntryLineSide.CREDIT)
+            .reduce((sum, line) => sum + line.amount, 0),
+        ),
+        lineCount: previewLines.length,
+      },
+      existingEntry: existingEntrySummary,
+    };
+  }
+
+  async getClosingEntryPreview(financialPeriodId: string) {
+    return this.resolveClosingEntryPreview(financialPeriodId);
+  }
+
+  async createClosingEntry(dto: ClosingEntryDto, userId: string) {
+    const preview = await this.resolveClosingEntryPreview(dto.financialPeriodId);
+    const description =
+      dto.description?.trim() || `Mbyllje kontabel ${preview.period.label}`;
+
+    if (preview.lines.length === 0) {
+      throw new BadRequestException(
+        'Nuk ka levizje profit/loss per kete periudhe qe te gjenerohet closing entry',
+      );
+    }
+
+    await this.financialPeriodsService.assertDateOpen(
+      preview.period.periodEnd,
+      userId,
+      `Mbyllja kontabel per ${preview.period.label}`,
+    );
+
+    const entry = await this.prisma.$transaction((tx) =>
+      this.upsertJournalEntryTx(tx, {
+        entryDate: preview.period.periodEnd,
+        description,
+        sourceType: 'PERIOD_CLOSE',
+        sourceId: preview.period.id,
+        sourceNo: `CLOSE-${preview.period.key}`,
+        createdById: userId,
+        lines: preview.lines.map((line) => ({
+          accountId: line.accountId,
+          side: line.side,
+          amount: line.amount,
+          description,
+        })),
+      }),
+    );
+
+    await this.auditLogs.log({
+      userId,
+      entityType: 'journal_entries',
+      entityId: entry.id,
+      action: 'CREATE_PERIOD_CLOSE',
+      metadata: {
+        entryNo: entry.entryNo,
+        periodId: preview.period.id,
+        periodKey: preview.period.key,
+        blockerCount: preview.checklist.blockerCount,
+        debitTotal: preview.totals.debitTotal,
+        creditTotal: preview.totals.creditTotal,
+        netProfit: preview.summary.netProfit,
+      },
+    });
+
+    return {
+      entry,
+      preview,
+    };
+  }
+
+  async getVatLedger(query: VatLedgerQueryDto = {}) {
+    await this.ensureChartOfAccounts();
+
+    const page = Math.max(query.page ?? 1, 1);
+    const limit = Math.max(query.limit ?? 20, 1);
+    const { skip, take } = toPagination(page, limit);
+    const dateTo = normalizeDateOnly(query.dateTo ?? new Date());
+    const dateFrom = normalizeDateOnly(query.dateFrom ?? startOfYear(dateTo));
+    const side = query.side ?? 'ALL';
+    const sortOrder = query.sortOrder === 'asc' ? 'asc' : 'desc';
+    const search = query.search?.trim().toLocaleLowerCase('sq');
+
+    const postedDocumentStatuses = [
+      DocumentStatus.POSTED,
+      DocumentStatus.PARTIALLY_RETURNED,
+      DocumentStatus.FULLY_RETURNED,
+    ];
+
+    const [salesInvoices, salesReturns, purchaseInvoices, manualVatEntries] =
+      await this.prisma.$transaction([
+        this.prisma.salesInvoice.findMany({
+          where: {
+            status: { in: postedDocumentStatuses },
+            docDate: { gte: dateFrom, lte: dateTo },
+          },
+          select: {
+            id: true,
+            docNo: true,
+            docDate: true,
+            customer: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            lines: {
+              select: {
+                netAmount: true,
+                taxAmount: true,
+              },
+            },
+          },
+        }),
+        this.prisma.salesReturn.findMany({
+          where: {
+            status: DocumentStatus.POSTED,
+            docDate: { gte: dateFrom, lte: dateTo },
+          },
+          select: {
+            id: true,
+            docNo: true,
+            docDate: true,
+            customer: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            lines: {
+              select: {
+                netAmount: true,
+                taxAmount: true,
+              },
+            },
+          },
+        }),
+        this.prisma.purchaseInvoice.findMany({
+          where: {
+            status: { in: postedDocumentStatuses },
+            docDate: { gte: dateFrom, lte: dateTo },
+          },
+          select: {
+            id: true,
+            docNo: true,
+            docDate: true,
+            supplier: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            lines: {
+              select: {
+                netAmount: true,
+                taxAmount: true,
+              },
+            },
+          },
+        }),
+        this.prisma.journalEntry.findMany({
+          where: {
+            entryDate: { gte: dateFrom, lte: dateTo },
+            sourceType: {
+              notIn: ['SALES_INVOICE', 'PURCHASE_INVOICE', 'SALES_RETURN', 'PERIOD_CLOSE'],
+            },
+            lines: {
+              some: {
+                account: {
+                  code: {
+                    in: [
+                      SYSTEM_LEDGER_ACCOUNT_CODES.vatInput,
+                      SYSTEM_LEDGER_ACCOUNT_CODES.vatOutput,
+                    ],
+                  },
+                },
+              },
+            },
+          },
+          include: {
+            lines: {
+              include: {
+                account: {
+                  select: {
+                    id: true,
+                    code: true,
+                    name: true,
+                  },
+                },
+              },
+              orderBy: { lineNo: 'asc' },
+            },
+            createdBy: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+    const items = [
+      ...salesInvoices.map((invoice) => ({
+        id: `sales-${invoice.id}`,
+        side: 'OUTPUT' as const,
+        entryKind: 'SALES_INVOICE',
+        docNo: invoice.docNo,
+        docDate: invoice.docDate,
+        partyName: invoice.customer?.name ?? null,
+        taxableBase: round2(
+          invoice.lines.reduce((sum, line) => sum + Number(line.netAmount ?? 0), 0),
+        ),
+        vatAmount: round2(
+          invoice.lines.reduce((sum, line) => sum + Number(line.taxAmount ?? 0), 0),
+        ),
+        sourceNo: invoice.docNo,
+        description: `Fature shitje ${invoice.docNo}`,
+      })),
+      ...salesReturns.map((salesReturn) => ({
+        id: `sales-return-${salesReturn.id}`,
+        side: 'OUTPUT' as const,
+        entryKind: 'SALES_RETURN',
+        docNo: salesReturn.docNo,
+        docDate: salesReturn.docDate,
+        partyName: salesReturn.customer?.name ?? null,
+        taxableBase: round2(
+          -salesReturn.lines.reduce((sum, line) => sum + Number(line.netAmount ?? 0), 0),
+        ),
+        vatAmount: round2(
+          -salesReturn.lines.reduce((sum, line) => sum + Number(line.taxAmount ?? 0), 0),
+        ),
+        sourceNo: salesReturn.docNo,
+        description: `Kthim shitje ${salesReturn.docNo}`,
+      })),
+      ...purchaseInvoices.map((invoice) => ({
+        id: `purchase-${invoice.id}`,
+        side: 'INPUT' as const,
+        entryKind: 'PURCHASE_INVOICE',
+        docNo: invoice.docNo,
+        docDate: invoice.docDate,
+        partyName: invoice.supplier?.name ?? null,
+        taxableBase: round2(
+          invoice.lines.reduce((sum, line) => sum + Number(line.netAmount ?? 0), 0),
+        ),
+        vatAmount: round2(
+          invoice.lines.reduce((sum, line) => sum + Number(line.taxAmount ?? 0), 0),
+        ),
+        sourceNo: invoice.docNo,
+        description: `Fature blerje ${invoice.docNo}`,
+      })),
+      ...manualVatEntries.flatMap((entry) =>
+        entry.lines
+          .filter(
+            (line) =>
+              line.account.code === SYSTEM_LEDGER_ACCOUNT_CODES.vatInput ||
+              line.account.code === SYSTEM_LEDGER_ACCOUNT_CODES.vatOutput,
+          )
+          .map((line) => {
+            const isInput = line.account.code === SYSTEM_LEDGER_ACCOUNT_CODES.vatInput;
+            const signedVat = isInput
+              ? line.side === JournalEntryLineSide.DEBIT
+                ? Number(line.amount ?? 0)
+                : -Number(line.amount ?? 0)
+              : line.side === JournalEntryLineSide.CREDIT
+                ? Number(line.amount ?? 0)
+                : -Number(line.amount ?? 0);
+
+            return {
+              id: `manual-vat-${entry.id}-${line.id}`,
+              side: isInput ? ('INPUT' as const) : ('OUTPUT' as const),
+              entryKind: entry.sourceType?.trim() || 'MANUAL_JOURNAL',
+              docNo: entry.entryNo,
+              docDate: entry.entryDate,
+              partyName: line.partyName ?? null,
+              taxableBase: 0,
+              vatAmount: round2(signedVat),
+              sourceNo: entry.sourceNo ?? null,
+              description:
+                line.description?.trim() ||
+                entry.description ||
+                `Journal ${entry.entryNo}`,
+            };
+          })
+          .filter((row) => row.vatAmount !== 0),
+      ),
+    ]
+      .filter((item) => side === 'ALL' || item.side === side)
+      .filter((item) => {
+        if (!search) return true;
+        const haystack = [
+          item.docNo,
+          item.partyName,
+          item.sourceNo,
+          item.description,
+          item.entryKind,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLocaleLowerCase('sq');
+        return haystack.includes(search);
+      });
+
+    const sortBy = query.sortBy?.trim() || 'docDate';
+    items.sort((left, right) => {
+      const direction = sortOrder === 'asc' ? 1 : -1;
+      switch (sortBy) {
+        case 'docNo':
+          return direction * left.docNo.localeCompare(right.docNo, 'sq');
+        case 'partyName':
+          return direction * (left.partyName ?? '').localeCompare(right.partyName ?? '', 'sq');
+        case 'vatAmount':
+          return direction * (left.vatAmount - right.vatAmount);
+        case 'taxableBase':
+          return direction * (left.taxableBase - right.taxableBase);
+        default:
+          return direction * (left.docDate.getTime() - right.docDate.getTime());
+      }
+    });
+
+    const pagedItems = items.slice(skip, skip + take);
+    const outputRows = items.filter((item) => item.side === 'OUTPUT');
+    const inputRows = items.filter((item) => item.side === 'INPUT');
+    const manualRows = items.filter(
+      (item) =>
+        item.entryKind !== 'SALES_INVOICE' &&
+        item.entryKind !== 'PURCHASE_INVOICE' &&
+        item.entryKind !== 'SALES_RETURN',
+    );
+
+    return {
+      ...toPaginatedResponse({
+        items: pagedItems,
+        total: items.length,
+        page,
+        limit,
+      }),
+      filters: {
+        dateFrom,
+        dateTo,
+        side,
+        search: query.search ?? null,
+      },
+      summary: {
+        outputTaxableBase: round2(
+          outputRows.reduce((sum, item) => sum + item.taxableBase, 0),
+        ),
+        outputVat: round2(outputRows.reduce((sum, item) => sum + item.vatAmount, 0)),
+        inputTaxableBase: round2(
+          inputRows.reduce((sum, item) => sum + item.taxableBase, 0),
+        ),
+        inputVat: round2(inputRows.reduce((sum, item) => sum + item.vatAmount, 0)),
+        netVatPayable: round2(
+          outputRows.reduce((sum, item) => sum + item.vatAmount, 0) -
+            inputRows.reduce((sum, item) => sum + item.vatAmount, 0),
+        ),
+        documentCount: items.length,
+        manualAdjustmentCount: manualRows.length,
+      },
+    };
+  }
+
   async getTrialBalance(query: AccountingReportQueryDto = {}) {
     await this.ensureChartOfAccounts();
 
@@ -834,6 +1581,7 @@ export class AccountingService {
       accountIds: accounts.map((account) => account.id),
       dateFrom: startDate,
       dateTo: endDate,
+      excludeSourceTypes: ['PERIOD_CLOSE'],
     });
 
     const items = accounts
@@ -946,12 +1694,43 @@ export class AccountingService {
       })
       .filter((item) => includeZero || item.amount !== 0 || item.debit > 0 || item.credit > 0);
 
-    const pnl = await this.getProfitAndLoss({
-      dateFrom: '2000-01-01',
-      dateTo: asOfDate.toISOString().slice(0, 10),
-      includeZero: false,
+    const latestClosingEntry = await this.prisma.journalEntry.findFirst({
+      where: {
+        sourceType: 'PERIOD_CLOSE',
+        entryDate: { lte: asOfDate },
+      },
+      orderBy: [{ entryDate: 'desc' }, { createdAt: 'desc' }],
+      select: {
+        entryDate: true,
+      },
     });
-    const currentEarnings = round2(Number(pnl.summary.netProfit ?? 0));
+
+    let currentEarnings = 0;
+    if (!latestClosingEntry) {
+      const pnl = await this.getProfitAndLoss({
+        dateFrom: '2000-01-01',
+        dateTo: asOfDate.toISOString().slice(0, 10),
+        includeZero: false,
+      });
+      currentEarnings = round2(Number(pnl.summary.netProfit ?? 0));
+    } else {
+      const nextDate = new Date(
+        Date.UTC(
+          latestClosingEntry.entryDate.getUTCFullYear(),
+          latestClosingEntry.entryDate.getUTCMonth(),
+          latestClosingEntry.entryDate.getUTCDate() + 1,
+        ),
+      );
+
+      if (nextDate <= asOfDate) {
+        const pnl = await this.getProfitAndLoss({
+          dateFrom: nextDate.toISOString().slice(0, 10),
+          dateTo: asOfDate.toISOString().slice(0, 10),
+          includeZero: false,
+        });
+        currentEarnings = round2(Number(pnl.summary.netProfit ?? 0));
+      }
+    }
 
     const sections = this.buildStatementSections({ items });
     const equitySection = sections.find(

@@ -98,6 +98,7 @@ async function main() {
   const item = requireEntry(items, () => true, 'item');
   const paymentMethod = requireEntry(paymentMethods, () => true, 'payment method');
   const date = today();
+  const currentYear = new Date().getUTCFullYear();
 
   const purchaseInvoice = await fetchJson(
     `${apiBaseUrl}/purchase-invoices`,
@@ -330,6 +331,79 @@ async function main() {
     'fiscalize sales return',
   );
 
+  const manualAccountsPayload = await fetchJson(
+    `${apiBaseUrl}/accounting/accounts?allowManual=true&limit=50&sortBy=code&sortOrder=asc`,
+    { headers: authHeaders },
+    'manual accounting accounts',
+  );
+  const manualAccounts = unwrapList(manualAccountsPayload);
+  const otherExpenseAccount = requireEntry(
+    manualAccounts,
+    (entry) => entry.code === 'OTHER_EXPENSE',
+    'OTHER_EXPENSE ledger account',
+  );
+  const accruedLiabilityAccount = requireEntry(
+    manualAccounts,
+    (entry) => entry.code === 'ACCRUED_LIABILITIES',
+    'ACCRUED_LIABILITIES ledger account',
+  );
+
+  await fetchJson(
+    `${apiBaseUrl}/accounting/journal-entries`,
+    {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        entryDate: date,
+        description: 'Smoke suite manual journal',
+        sourceNo: `MJ-${Date.now()}`,
+        lines: [
+          {
+            accountId: otherExpenseAccount.id,
+            side: 'DEBIT',
+            amount: 10,
+            description: 'Smoke accrual expense',
+          },
+          {
+            accountId: accruedLiabilityAccount.id,
+            side: 'CREDIT',
+            amount: 10,
+            description: 'Smoke accrual liability',
+          },
+        ],
+      }),
+    },
+    'create manual journal entry',
+  );
+
+  const financialPeriodsPage = await fetchJson(
+    `${apiBaseUrl}/financial-periods?year=${currentYear}`,
+    { headers: authHeaders },
+    'financial periods',
+  );
+  const currentFinancialPeriodId =
+    financialPeriodsPage.currentPeriodId ||
+    requireEntry(financialPeriodsPage.items ?? [], () => true, 'financial period').id;
+
+  await fetchJson(
+    `${apiBaseUrl}/accounting/closing-entry-preview?financialPeriodId=${currentFinancialPeriodId}`,
+    { headers: authHeaders },
+    'closing entry preview',
+  );
+
+  await fetchJson(
+    `${apiBaseUrl}/accounting/closing-entries`,
+    {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        financialPeriodId: currentFinancialPeriodId,
+        description: 'Smoke suite closing entry',
+      }),
+    },
+    'create closing entry',
+  );
+
   await Promise.all([
     fetchJson(`${apiBaseUrl}/dashboard/summary`, { headers: authHeaders }, 'dashboard summary'),
     fetchJson(`${apiBaseUrl}/reports/sales-summary?limitRecent=20`, { headers: authHeaders }, 'sales summary'),
@@ -355,6 +429,11 @@ async function main() {
       `${apiBaseUrl}/accounting/balance-sheet?asOfDate=${date}`,
       { headers: authHeaders },
       'balance sheet',
+    ),
+    fetchJson(
+      `${apiBaseUrl}/accounting/vat-ledger?dateFrom=${date}&dateTo=${date}&limit=20`,
+      { headers: authHeaders },
+      'vat ledger',
     ),
     fetchJson(`${apiBaseUrl}/audit-logs?limit=20`, { headers: authHeaders }, 'audit logs'),
     fetchJson(`${apiBaseUrl}/stock/movements?limit=20`, { headers: authHeaders }, 'stock movements'),
@@ -424,6 +503,20 @@ async function main() {
         redirect: 'manual',
       }),
       'frontend accounting reports page',
+    ),
+    expectOk(
+      await fetch(`${frontendBaseUrl}/financa/libri-kontabel/new`, {
+        headers: { Cookie: cookieHeader },
+        redirect: 'manual',
+      }),
+      'frontend manual journal page',
+    ),
+    expectOk(
+      await fetch(`${frontendBaseUrl}/financa/mbyllja-kontabel`, {
+        headers: { Cookie: cookieHeader },
+        redirect: 'manual',
+      }),
+      'frontend closing entries page',
     ),
   ]);
 

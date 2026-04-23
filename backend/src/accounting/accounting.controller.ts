@@ -1,11 +1,15 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { CurrentUser, JwtPayload } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 import { AccountingService } from './accounting.service';
 import { AccountingReportQueryDto } from './dto/accounting-report-query.dto';
+import { ClosingEntryDto } from './dto/closing-entry.dto';
+import { CreateManualJournalEntryDto } from './dto/create-manual-journal-entry.dto';
 import { ListJournalEntriesQueryDto } from './dto/list-journal-entries-query.dto';
 import { ListLedgerAccountsQueryDto } from './dto/list-ledger-accounts-query.dto';
+import { VatLedgerQueryDto } from './dto/vat-ledger-query.dto';
 
 @ApiTags('accounting')
 @ApiBearerAuth()
@@ -25,6 +29,15 @@ export class AccountingController {
     return this.accountingService.listJournalEntries(query);
   }
 
+  @Post('journal-entries')
+  @RequirePermissions(PERMISSIONS.accountingManage)
+  createManualJournalEntry(
+    @Body() dto: CreateManualJournalEntryDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.accountingService.createManualJournalEntry(dto, user.sub);
+  }
+
   @Get('trial-balance')
   @RequirePermissions(PERMISSIONS.reportsAccounting)
   getTrialBalance(@Query() query: AccountingReportQueryDto) {
@@ -41,5 +54,23 @@ export class AccountingController {
   @RequirePermissions(PERMISSIONS.reportsAccounting)
   getBalanceSheet(@Query() query: AccountingReportQueryDto) {
     return this.accountingService.getBalanceSheet(query);
+  }
+
+  @Get('vat-ledger')
+  @RequirePermissions(PERMISSIONS.reportsAccounting)
+  getVatLedger(@Query() query: VatLedgerQueryDto) {
+    return this.accountingService.getVatLedger(query);
+  }
+
+  @Get('closing-entry-preview')
+  @RequirePermissions(PERMISSIONS.accountingManage)
+  getClosingEntryPreview(@Query() query: ClosingEntryDto) {
+    return this.accountingService.getClosingEntryPreview(query.financialPeriodId);
+  }
+
+  @Post('closing-entries')
+  @RequirePermissions(PERMISSIONS.accountingManage)
+  createClosingEntry(@Body() dto: ClosingEntryDto, @CurrentUser() user: JwtPayload) {
+    return this.accountingService.createClosingEntry(dto, user.sub);
   }
 }

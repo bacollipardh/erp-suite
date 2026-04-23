@@ -24,6 +24,7 @@ export default async function FinanceHubPage() {
     PERMISSIONS.financeAccountsRead,
     PERMISSIONS.financialPeriodsRead,
     PERMISSIONS.accountingRead,
+    PERMISSIONS.accountingManage,
     PERMISSIONS.reportsAccounting,
   ]);
 
@@ -35,6 +36,7 @@ export default async function FinanceHubPage() {
   const canFinanceAccounts = hasPermission(user.permissions, PERMISSIONS.financeAccountsRead);
   const canFinancialPeriods = hasPermission(user.permissions, PERMISSIONS.financialPeriodsRead);
   const canAccountingRead = hasPermission(user.permissions, PERMISSIONS.accountingRead);
+  const canAccountingManage = hasPermission(user.permissions, PERMISSIONS.accountingManage);
   const canAccountingReports = hasPermission(user.permissions, PERMISSIONS.reportsAccounting);
   const canFinanceReports = hasPermission(user.permissions, [
     PERMISSIONS.reportsReceivables,
@@ -169,6 +171,24 @@ export default async function FinanceHubPage() {
             href="/financa/libri-kontabel"
             badge="Accounting"
             tone="indigo"
+          />
+        ) : null}
+        {canAccountingManage ? (
+          <DomainActionCard
+            title="Journal Entry Manuale"
+            description="Regjistro accruals, deferrals, VAT adjustments dhe hyrje te tjera manuale qe nuk vijne nga dokumentet operative."
+            href="/financa/libri-kontabel/new"
+            badge="Accounting"
+            tone="emerald"
+          />
+        ) : null}
+        {canAccountingManage ? (
+          <DomainActionCard
+            title="Mbyllja Kontabel"
+            description="Shiko preview te closing entry mujore dhe kalo net profit / loss te fitimi i mbartur para close-it financiar."
+            href="/financa/mbyllja-kontabel"
+            badge="Month End"
+            tone="amber"
           />
         ) : null}
         {canAccountingReports ? (
