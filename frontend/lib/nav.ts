@@ -101,6 +101,11 @@ export const navSections: NavSection[] = [
         permission: PERMISSIONS.accountingManage,
       },
       {
+        label: 'TVSH & Taksat',
+        href: '/financa/tvsh',
+        permission: PERMISSIONS.accountingRead,
+      },
+      {
         label: 'Pajtimi Bankar',
         href: '/financa/pajtimi-bankar',
         permission: PERMISSIONS.financeAccountsRead,

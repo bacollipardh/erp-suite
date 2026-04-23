@@ -556,6 +556,47 @@ export class FinanceAccountsService {
     return created;
   }
 
+  async recordVatPaymentTransactionTx(
+    tx: TransactionClient,
+    params: {
+      financeAccountId: string;
+      vatSettlementId: string;
+      settlementNo: string;
+      amount: number;
+      transactionDate: Date;
+      createdById: string;
+      referenceNo?: string;
+      notes?: string;
+    },
+  ) {
+    const created = await this.createAccountTransactionTx(tx, {
+      accountId: params.financeAccountId,
+      amount: round2(params.amount),
+      transactionType: FinanceAccountTransactionType.PAYMENT,
+      transactionDate: params.transactionDate,
+      referenceNo: params.referenceNo,
+      notes: params.notes,
+      counterpartyName: 'Administrata Tatimore',
+      sourceDocumentType: 'vat-settlements',
+      sourceDocumentId: params.vatSettlementId,
+      sourceDocumentNo: params.settlementNo,
+      createdById: params.createdById,
+    });
+
+    await this.accountingService.postVatPaymentTx(tx, {
+      financeTransactionId: created.id,
+      financeAccountId: params.financeAccountId,
+      amount: round2(params.amount),
+      transactionDate: params.transactionDate,
+      settlementNo: params.settlementNo,
+      referenceNo: params.referenceNo,
+      notes: params.notes,
+      createdById: params.createdById,
+    });
+
+    return created;
+  }
+
   private async getAccountOrThrowTx(tx: TransactionClient, id: string) {
     const account = await tx.financeAccount.findUnique({ where: { id } });
     if (!account) {

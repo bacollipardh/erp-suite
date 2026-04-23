@@ -1253,7 +1253,13 @@ export class AccountingService {
           where: {
             entryDate: { gte: dateFrom, lte: dateTo },
             sourceType: {
-              notIn: ['SALES_INVOICE', 'PURCHASE_INVOICE', 'SALES_RETURN', 'PERIOD_CLOSE'],
+              notIn: [
+                'SALES_INVOICE',
+                'PURCHASE_INVOICE',
+                'SALES_RETURN',
+                'PERIOD_CLOSE',
+                'VAT_SETTLEMENT',
+              ],
             },
             lines: {
               some: {
@@ -2296,6 +2302,122 @@ export class AccountingService {
           amount: params.enteredAmount,
           partyName: params.partyName,
           description: params.notes ?? null,
+        },
+      ],
+    });
+  }
+
+  async postVatSettlementTx(
+    tx: TransactionClient,
+    params: {
+      settlementId: string;
+      settlementNo: string;
+      settlementDate: Date;
+      outputVat: number;
+      inputVat: number;
+      payableAmount: number;
+      receivableAmount: number;
+      createdById: string;
+      notes?: string | null;
+    },
+  ) {
+    const outputVat = round2(params.outputVat);
+    const inputVat = round2(params.inputVat);
+    const payableAmount = round2(params.payableAmount);
+    const receivableAmount = round2(params.receivableAmount);
+
+    const lines: LedgerLineInput[] = [];
+
+    if (outputVat > 0) {
+      lines.push({
+        accountCode: SYSTEM_LEDGER_ACCOUNT_CODES.vatOutput,
+        side: JournalEntryLineSide.DEBIT,
+        amount: outputVat,
+        description: params.notes ?? null,
+      });
+    }
+
+    if (inputVat > 0) {
+      lines.push({
+        accountCode: SYSTEM_LEDGER_ACCOUNT_CODES.vatInput,
+        side: JournalEntryLineSide.CREDIT,
+        amount: inputVat,
+        description: params.notes ?? null,
+      });
+    }
+
+    if (payableAmount > 0) {
+      lines.push({
+        accountCode: SYSTEM_LEDGER_ACCOUNT_CODES.vatPayable,
+        side: JournalEntryLineSide.CREDIT,
+        amount: payableAmount,
+        description: params.notes ?? null,
+      });
+    }
+
+    if (receivableAmount > 0) {
+      lines.push({
+        accountCode: SYSTEM_LEDGER_ACCOUNT_CODES.vatReceivable,
+        side: JournalEntryLineSide.DEBIT,
+        amount: receivableAmount,
+        description: params.notes ?? null,
+      });
+    }
+
+    if (lines.length === 0) {
+      return null;
+    }
+
+    return this.upsertJournalEntryTx(tx, {
+      entryDate: params.settlementDate,
+      description: `Settlement TVSH ${params.settlementNo}`,
+      sourceType: 'VAT_SETTLEMENT',
+      sourceId: params.settlementId,
+      sourceNo: params.settlementNo,
+      createdById: params.createdById,
+      lines,
+    });
+  }
+
+  async postVatPaymentTx(
+    tx: TransactionClient,
+    params: {
+      financeTransactionId: string;
+      financeAccountId: string;
+      amount: number;
+      transactionDate: Date;
+      settlementNo: string;
+      referenceNo?: string | null;
+      notes?: string | null;
+      createdById: string;
+    },
+  ) {
+    const account = await tx.financeAccount.findUniqueOrThrow({
+      where: { id: params.financeAccountId },
+      select: { ledgerAccountId: true, name: true },
+    });
+
+    return this.upsertJournalEntryTx(tx, {
+      entryDate: params.transactionDate,
+      description: `Pagese TVSH nga ${account.name}`,
+      sourceType: 'VAT_PAYMENT',
+      sourceId: params.financeTransactionId,
+      sourceNo: params.referenceNo ?? params.settlementNo,
+      createdById: params.createdById,
+      lines: [
+        {
+          accountCode: SYSTEM_LEDGER_ACCOUNT_CODES.vatPayable,
+          side: JournalEntryLineSide.DEBIT,
+          amount: round2(params.amount),
+          description: params.notes ?? null,
+          partyName: 'Administrata Tatimore',
+        },
+        {
+          accountId: account.ledgerAccountId ?? undefined,
+          side: JournalEntryLineSide.CREDIT,
+          amount: round2(params.amount),
+          description: params.notes ?? null,
+          partyName: 'Administrata Tatimore',
         },
       ],
     });

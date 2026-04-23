@@ -67,7 +67,15 @@ async function main() {
 
   await fetchJson(`${apiBaseUrl}/auth/me`, { headers: authHeaders }, 'auth/me');
 
-  const [seriesPayload, customersPayload, suppliersPayload, warehousesPayload, itemsPayload, paymentMethodsPayload] =
+  const [
+    seriesPayload,
+    customersPayload,
+    suppliersPayload,
+    warehousesPayload,
+    itemsPayload,
+    paymentMethodsPayload,
+    financeAccountsPayload,
+  ] =
     await Promise.all([
       fetchJson(`${apiBaseUrl}/document-series`, { headers: authHeaders }, 'document series'),
       fetchJson(`${apiBaseUrl}/customers`, { headers: authHeaders }, 'customers'),
@@ -75,6 +83,7 @@ async function main() {
       fetchJson(`${apiBaseUrl}/warehouses`, { headers: authHeaders }, 'warehouses'),
       fetchJson(`${apiBaseUrl}/items`, { headers: authHeaders }, 'items'),
       fetchJson(`${apiBaseUrl}/payment-methods`, { headers: authHeaders }, 'payment methods'),
+      fetchJson(`${apiBaseUrl}/finance-accounts?limit=20`, { headers: authHeaders }, 'finance accounts'),
     ]);
 
   const series = unwrapList(seriesPayload);
@@ -83,6 +92,7 @@ async function main() {
   const warehouses = unwrapList(warehousesPayload);
   const items = unwrapList(itemsPayload);
   const paymentMethods = unwrapList(paymentMethodsPayload);
+  const financeAccounts = unwrapList(financeAccountsPayload);
 
   if (warehouses.length < 2) {
     throw new Error('Smoke suite requires at least two warehouses');
@@ -97,6 +107,7 @@ async function main() {
   const secondaryWarehouse = requireEntry(warehouses, (entry) => entry.id !== mainWarehouse.id, 'secondary warehouse');
   const item = requireEntry(items, () => true, 'item');
   const paymentMethod = requireEntry(paymentMethods, () => true, 'payment method');
+  const financeAccount = requireEntry(financeAccounts, () => true, 'finance account');
   const date = today();
   const currentYear = new Date().getUTCFullYear();
 
@@ -347,6 +358,11 @@ async function main() {
     (entry) => entry.code === 'ACCRUED_LIABILITIES',
     'ACCRUED_LIABILITIES ledger account',
   );
+  const vatOutputAccount = requireEntry(
+    manualAccounts,
+    (entry) => entry.code === 'VAT_OUTPUT',
+    'VAT_OUTPUT ledger account',
+  );
 
   await fetchJson(
     `${apiBaseUrl}/accounting/journal-entries`,
@@ -376,6 +392,34 @@ async function main() {
     'create manual journal entry',
   );
 
+  await fetchJson(
+    `${apiBaseUrl}/accounting/journal-entries`,
+    {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        entryDate: date,
+        description: 'Smoke suite VAT adjustment',
+        sourceNo: `VAT-ADJ-${Date.now()}`,
+        lines: [
+          {
+            accountId: otherExpenseAccount.id,
+            side: 'DEBIT',
+            amount: 70,
+            description: 'Smoke VAT payable adjustment',
+          },
+          {
+            accountId: vatOutputAccount.id,
+            side: 'CREDIT',
+            amount: 70,
+            description: 'Smoke VAT payable adjustment',
+          },
+        ],
+      }),
+    },
+    'create manual vat adjustment',
+  );
+
   const financialPeriodsPage = await fetchJson(
     `${apiBaseUrl}/financial-periods?year=${currentYear}`,
     { headers: authHeaders },
@@ -403,6 +447,65 @@ async function main() {
     },
     'create closing entry',
   );
+
+  const vatPreview = await fetchJson(
+    `${apiBaseUrl}/vat-settlements/preview?financialPeriodId=${currentFinancialPeriodId}`,
+    { headers: authHeaders },
+    'vat settlement preview',
+  );
+
+  let vatSettlement = vatPreview?.existingSettlement ?? null;
+
+  if (!vatSettlement) {
+    vatSettlement = await fetchJson(
+      `${apiBaseUrl}/vat-settlements`,
+      {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          financialPeriodId: currentFinancialPeriodId,
+          settlementDate: date,
+          dueDate: date,
+          referenceNo: `VAT-SET-${Date.now()}`,
+          notes: 'Smoke suite VAT settlement',
+        }),
+      },
+      'create vat settlement',
+    );
+  }
+
+  if (!vatSettlement.filedAt) {
+    vatSettlement = await fetchJson(
+      `${apiBaseUrl}/vat-settlements/${vatSettlement.id}/file`,
+      {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify({
+          filedAt: date,
+          filingReferenceNo: `VAT-FILE-${Date.now()}`,
+        }),
+      },
+      'file vat settlement',
+    );
+  }
+
+  if (Number(vatSettlement?.remainingPayableAmount ?? 0) > 0) {
+    await fetchJson(
+      `${apiBaseUrl}/vat-settlements/${vatSettlement.id}/payments`,
+      {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          financeAccountId: financeAccount.id,
+          amount: Math.min(Number(vatSettlement.remainingPayableAmount), 5),
+          transactionDate: date,
+          referenceNo: `VAT-PAY-${Date.now()}`,
+          notes: 'Smoke suite VAT payment',
+        }),
+      },
+      'record vat payment',
+    );
+  }
 
   await Promise.all([
     fetchJson(`${apiBaseUrl}/dashboard/summary`, { headers: authHeaders }, 'dashboard summary'),
@@ -435,6 +538,7 @@ async function main() {
       { headers: authHeaders },
       'vat ledger',
     ),
+    fetchJson(`${apiBaseUrl}/vat-settlements?year=${currentYear}`, { headers: authHeaders }, 'vat settlements'),
     fetchJson(`${apiBaseUrl}/audit-logs?limit=20`, { headers: authHeaders }, 'audit logs'),
     fetchJson(`${apiBaseUrl}/stock/movements?limit=20`, { headers: authHeaders }, 'stock movements'),
   ]);
@@ -517,6 +621,13 @@ async function main() {
         redirect: 'manual',
       }),
       'frontend closing entries page',
+    ),
+    expectOk(
+      await fetch(`${frontendBaseUrl}/financa/tvsh`, {
+        headers: { Cookie: cookieHeader },
+        redirect: 'manual',
+      }),
+      'frontend vat settlements page',
     ),
   ]);
 

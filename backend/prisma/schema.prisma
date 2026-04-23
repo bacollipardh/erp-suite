@@ -82,6 +82,16 @@ enum FinancialPeriodStatus {
   @@map("financial_period_status")
 }
 
+enum VatSettlementStatus {
+  SETTLED
+  PARTIALLY_PAID
+  PAID
+  REFUND_DUE
+  BALANCED
+
+  @@map("vat_settlement_status")
+}
+
 enum FinanceAccountType {
   CASH
   BANK
@@ -184,6 +194,7 @@ model User {
   createdJournalEntries               JournalEntry[]                @relation("JournalEntryCreatedBy")
   closedFinancialPeriods              FinancialPeriod[]             @relation("FinancialPeriodClosedBy")
   reopenedFinancialPeriods            FinancialPeriod[]             @relation("FinancialPeriodReopenedBy")
+  createdVatSettlements               VatSettlement[]               @relation("VatSettlementCreatedBy")
   auditLogs                           AuditLog[]
   createdAt                           DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                           DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -351,6 +362,7 @@ model FinanceAccount {
   ledgerAccount  LedgerAccount?             @relation(fields: [ledgerAccountId], references: [id])
   transactions   FinanceAccountTransaction[]
   statementLines FinanceStatementLine[]
+  paidVatSettlements VatSettlement[]        @relation("VatSettlementPaidFinanceAccount")
   createdAt      DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -872,6 +884,7 @@ model FinancialPeriod {
   reopenedReason String?               @map("reopened_reason") @db.VarChar(255)
   closedBy       User?                 @relation("FinancialPeriodClosedBy", fields: [closedById], references: [id])
   reopenedBy     User?                 @relation("FinancialPeriodReopenedBy", fields: [reopenedById], references: [id])
+  vatSettlement  VatSettlement?
   createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -881,6 +894,41 @@ model FinancialPeriod {
   @@index([closedById])
   @@index([reopenedById])
   @@map("financial_periods")
+}
+
+model VatSettlement {
+  id                   String              @id @default(uuid()) @db.Uuid
+  financialPeriodId    String              @unique @map("financial_period_id") @db.Uuid
+  settlementNo         String              @unique @map("settlement_no") @db.VarChar(50)
+  settlementDate       DateTime            @map("settlement_date") @db.Date
+  dueDate              DateTime?           @map("due_date") @db.Date
+  status               VatSettlementStatus @default(SETTLED)
+  outputTaxableBase    Decimal             @map("output_taxable_base") @db.Decimal(18, 2)
+  outputVat            Decimal             @map("output_vat") @db.Decimal(18, 2)
+  inputTaxableBase     Decimal             @map("input_taxable_base") @db.Decimal(18, 2)
+  inputVat             Decimal             @map("input_vat") @db.Decimal(18, 2)
+  netVatAmount         Decimal             @map("net_vat_amount") @db.Decimal(18, 2)
+  payableAmount        Decimal             @map("payable_amount") @db.Decimal(18, 2)
+  receivableAmount     Decimal             @map("receivable_amount") @db.Decimal(18, 2)
+  paidAmount           Decimal             @default(0) @map("paid_amount") @db.Decimal(18, 2)
+  filedAt              DateTime?           @map("filed_at") @db.Timestamptz(6)
+  filingReferenceNo    String?             @map("filing_reference_no") @db.VarChar(100)
+  paidAt               DateTime?           @map("paid_at") @db.Timestamptz(6)
+  paidFinanceAccountId String?             @map("paid_finance_account_id") @db.Uuid
+  referenceNo          String?             @map("reference_no") @db.VarChar(100)
+  notes                String?
+  createdById          String              @map("created_by") @db.Uuid
+  financialPeriod      FinancialPeriod     @relation(fields: [financialPeriodId], references: [id])
+  createdBy            User                @relation("VatSettlementCreatedBy", fields: [createdById], references: [id])
+  paidFinanceAccount   FinanceAccount?     @relation("VatSettlementPaidFinanceAccount", fields: [paidFinanceAccountId], references: [id])
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status])
+  @@index([dueDate])
+  @@index([createdById])
+  @@index([paidFinanceAccountId])
+  @@map("vat_settlements")
 }
 
 model AuditLog {

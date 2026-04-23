@@ -248,6 +248,12 @@ export default async function AccountingReportsPage({
           Hap librin kontabel
         </Link>
         <Link
+          href="/financa/tvsh"
+          className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:text-emerald-900"
+        >
+          Hap TVSH & Taksat
+        </Link>
+        <Link
           href="/raportet"
           className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:text-indigo-900"
         >

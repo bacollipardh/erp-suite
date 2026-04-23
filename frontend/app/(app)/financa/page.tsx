@@ -191,6 +191,15 @@ export default async function FinanceHubPage() {
             tone="amber"
           />
         ) : null}
+        {canAccountingRead ? (
+          <DomainActionCard
+            title="TVSH & Taksat"
+            description="Mbyll settlement-in mujor te TVSH-se, sheno filing reference dhe regjistro pagesen reale nga banka ose arka."
+            href="/financa/tvsh"
+            badge="Tax"
+            tone="emerald"
+          />
+        ) : null}
         {canAccountingReports ? (
           <DomainActionCard
             title="Raportet Kontabel"
