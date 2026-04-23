@@ -26,6 +26,7 @@ import { FiscalizationModule } from './fiscalization/fiscalization.module';
 import { FinanceSettlementsModule } from './finance-settlements/finance-settlements.module';
 import { FinanceAccountsModule } from './finance-accounts/finance-accounts.module';
 import { FinanceReconciliationModule } from './finance-reconciliation/finance-reconciliation.module';
+import { FinancialPeriodsModule } from './financial-periods/financial-periods.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { FinanceReconciliationModule } from './finance-reconciliation/finance-re
     FinanceSettlementsModule,
     FinanceAccountsModule,
     FinanceReconciliationModule,
+    FinancialPeriodsModule,
   ],
 })
 export class AppModule {}

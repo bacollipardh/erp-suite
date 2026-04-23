@@ -10,6 +10,7 @@ import { UpdateSalesReturnDto } from './dto/update-sales-return.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
 import { resolvePaymentStatus } from '../common/utils/payments';
+import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
 
 @Injectable()
 export class SalesReturnsService {
@@ -17,6 +18,7 @@ export class SalesReturnsService {
     private readonly prisma: PrismaService,
     private readonly auditLogs: AuditLogsService,
     private readonly stockService: StockService,
+    private readonly financialPeriodsService: FinancialPeriodsService,
   ) {}
 
   async findAll(query: PaginationDto = {}) {
@@ -252,6 +254,11 @@ export class SalesReturnsService {
   }
 
   async create(dto: CreateSalesReturnDto, userId: string) {
+    await this.financialPeriodsService.assertDateOpen(
+      dto.docDate,
+      userId,
+      'Krijimi i kthimit te shitjes',
+    );
     const doc = await this.prisma.$transaction(async (tx) => {
       const validated = await this.validateDraftInput(dto, tx);
       const calc = this.calculateLines(validated.lines);
@@ -308,7 +315,7 @@ export class SalesReturnsService {
     return doc;
   }
 
-  async update(id: string, dto: UpdateSalesReturnDto) {
+  async update(id: string, dto: UpdateSalesReturnDto, userId: string) {
     const existing = await this.findOne(id);
     if (existing.status !== DocumentStatus.DRAFT) {
       throw new BadRequestException('Only DRAFT sales return can be updated');
@@ -326,6 +333,13 @@ export class SalesReturnsService {
         customerId: dto.customerId ?? existing.customerId,
         lines: dto.lines ?? this.toDraftLineInput(existing),
       };
+
+      await this.financialPeriodsService.assertDateOpen(
+        dto.docDate ?? existing.docDate,
+        userId,
+        'Ndryshimi i kthimit te shitjes',
+        tx,
+      );
 
       const validated = await this.validateDraftInput(draftInput, tx, id);
 
@@ -376,6 +390,12 @@ export class SalesReturnsService {
     if (existing.status !== DocumentStatus.DRAFT) {
       throw new BadRequestException('Only DRAFT sales return can be posted');
     }
+
+    await this.financialPeriodsService.assertDateOpen(
+      existing.docDate,
+      postedById,
+      'Postimi i kthimit te shitjes',
+    );
 
     const doc = await this.prisma.$transaction(async (tx) => {
       const validated = await this.validateDraftInput(

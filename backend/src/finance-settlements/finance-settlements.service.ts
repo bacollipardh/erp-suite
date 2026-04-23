@@ -19,6 +19,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ApplyFinanceSettlementDto } from './dto/apply-finance-settlement.dto';
 import { ListFinanceSettlementsQueryDto } from './dto/list-finance-settlements-query.dto';
+import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
 
 const RECEIVABLE_STATUSES = [
   DocumentStatus.POSTED,
@@ -61,7 +62,10 @@ function duePriority(dueState?: string | null) {
 
 @Injectable()
 export class FinanceSettlementsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly financialPeriodsService: FinancialPeriodsService,
+  ) {}
 
   async getReceiptSettlements(query: ListFinanceSettlementsQueryDto = {}) {
     return this.listSettlements(FinanceSettlementType.RECEIPT, query);
@@ -514,6 +518,12 @@ export class FinanceSettlementsService {
 
     const allocationDate = dto.allocatedAt ? new Date(dto.allocatedAt) : new Date();
     const allocationTimestamp = dto.allocatedAt ?? allocationDate.toISOString();
+
+    await this.financialPeriodsService.assertDateOpen(
+      allocationDate,
+      userId,
+      'Rialokimi i bilancit financiar',
+    );
 
     const result = await this.prisma.$transaction(async (tx) => {
       const settlement = await tx.financeSettlement.findUnique({

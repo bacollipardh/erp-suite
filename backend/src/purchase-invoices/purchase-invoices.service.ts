@@ -22,6 +22,7 @@ import {
   resolveFinanceSettlementStatus,
 } from '../common/utils/finance-settlements';
 import { FinanceAccountsService } from '../finance-accounts/finance-accounts.service';
+import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
 
 @Injectable()
 export class PurchaseInvoicesService {
@@ -30,6 +31,7 @@ export class PurchaseInvoicesService {
     private readonly stockService: StockService,
     private readonly auditLogs: AuditLogsService,
     private readonly financeAccountsService: FinanceAccountsService,
+    private readonly financialPeriodsService: FinancialPeriodsService,
   ) {}
 
   async findAll(query: PaginationDto = {}) {
@@ -245,6 +247,11 @@ export class PurchaseInvoicesService {
   }
 
   async create(dto: CreatePurchaseInvoiceDto, userId: string) {
+    await this.financialPeriodsService.assertDateOpen(
+      dto.docDate,
+      userId,
+      'Krijimi i fatures se blerjes',
+    );
     const calc = this.calculateLines(dto.lines);
 
     const doc = await this.prisma.$transaction(async (tx) => {
@@ -297,7 +304,7 @@ export class PurchaseInvoicesService {
     return doc;
   }
 
-  async update(id: string, dto: UpdatePurchaseInvoiceDto) {
+  async update(id: string, dto: UpdatePurchaseInvoiceDto, userId: string) {
     const existing = await this.findOne(id);
     if (existing.status !== DocumentStatus.DRAFT) {
       throw new BadRequestException('Only DRAFT purchase invoice can be updated');
@@ -322,6 +329,13 @@ export class PurchaseInvoicesService {
             : dto.dueDate,
         lines: dto.lines ?? this.toDraftLineInput(existing),
       };
+
+      await this.financialPeriodsService.assertDateOpen(
+        draftInput.docDate,
+        userId,
+        'Ndryshimi i fatures se blerjes',
+        tx,
+      );
 
       await this.validateDraftInput(draftInput, tx);
 
@@ -369,6 +383,12 @@ export class PurchaseInvoicesService {
       throw new BadRequestException('Only DRAFT purchase invoice can be posted');
     }
 
+    await this.financialPeriodsService.assertDateOpen(
+      existing.docDate,
+      postedById,
+      'Postimi i fatures se blerjes',
+    );
+
     const doc = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.purchaseInvoice.update({
         where: { id },
@@ -412,6 +432,12 @@ async recordPayment(id: string, dto: RecordPaymentDto, userId: string) {
   if (existing.status === DocumentStatus.DRAFT) {
     throw new BadRequestException('Only posted purchase invoices can receive payments');
   }
+
+  await this.financialPeriodsService.assertDateOpen(
+    dto.paidAt ?? new Date(),
+    userId,
+    'Regjistrimi i pageses',
+  );
 
   const total = Number(existing.grandTotal);
   const currentPaid = Number(existing.amountPaid ?? 0);

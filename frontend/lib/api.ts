@@ -63,19 +63,31 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 }
 
 export const api = {
-  fetch:   <T>(path: string)                     => apiFetch<T>(path),
-  list:    (endpoint: string, query?: Record<string, string | number | boolean | undefined | null>) =>
-    apiFetch<any[] | { items?: any[] }>(`/${endpoint}${buildQueryString(query)}`).then(unwrapListPayload),
-  listPage:(endpoint: string, query?: Record<string, string | number | boolean | undefined | null>) =>
-    apiFetch<any>(`/${endpoint}${buildQueryString(query)}`),
-  query:   (endpoint: string, query?: Record<string, string | number | boolean | undefined | null>) =>
-    apiFetch<any>(`/${endpoint}${buildQueryString(query)}`),
-  get:     (endpoint: string, id: string)         => apiFetch<any>(`/${endpoint}/${id}`),
-  getOne:  (endpoint: string)                     => apiFetch<any>(`/${endpoint}`),
-  create:  (endpoint: string, body: unknown)      => apiFetch<any>(`/${endpoint}`, { method: 'POST', body: JSON.stringify(body) }),
-  update:  (endpoint: string, id: string, body: unknown) => apiFetch<any>(`/${endpoint}/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  put:     (endpoint: string, body: unknown)      => apiFetch<any>(`/${endpoint}`, { method: 'PUT', body: JSON.stringify(body) }),
-  post:    (endpoint: string, body: unknown)      => apiFetch<any>(`/${endpoint}`, { method: 'POST', body: JSON.stringify(body) }),
-  delete:  (endpoint: string)                     => apiFetch<any>(`/${endpoint}`, { method: 'DELETE' }),
-  postDocument: (endpoint: string, id: string)    => apiFetch<any>(`/${endpoint}/${id}/post`, { method: 'POST', body: JSON.stringify({}) }),
+  fetch: <T = any>(path: string) => apiFetch<T>(path),
+  list: <T = any>(
+    endpoint: string,
+    query?: Record<string, string | number | boolean | undefined | null>,
+  ) =>
+    apiFetch<T[] | { items?: T[] }>(`/${endpoint}${buildQueryString(query)}`).then(unwrapListPayload),
+  listPage: <T = any>(
+    endpoint: string,
+    query?: Record<string, string | number | boolean | undefined | null>,
+  ) => apiFetch<T>(`/${endpoint}${buildQueryString(query)}`),
+  query: <T = any>(
+    endpoint: string,
+    query?: Record<string, string | number | boolean | undefined | null>,
+  ) => apiFetch<T>(`/${endpoint}${buildQueryString(query)}`),
+  get: <T = any>(endpoint: string, id: string) => apiFetch<T>(`/${endpoint}/${id}`),
+  getOne: <T = any>(endpoint: string) => apiFetch<T>(`/${endpoint}`),
+  create: <T = any>(endpoint: string, body: unknown) =>
+    apiFetch<T>(`/${endpoint}`, { method: 'POST', body: JSON.stringify(body) }),
+  update: <T = any>(endpoint: string, id: string, body: unknown) =>
+    apiFetch<T>(`/${endpoint}/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  put: <T = any>(endpoint: string, body: unknown) =>
+    apiFetch<T>(`/${endpoint}`, { method: 'PUT', body: JSON.stringify(body) }),
+  post: <T = any>(endpoint: string, body: unknown) =>
+    apiFetch<T>(`/${endpoint}`, { method: 'POST', body: JSON.stringify(body) }),
+  delete: <T = any>(endpoint: string) => apiFetch<T>(`/${endpoint}`, { method: 'DELETE' }),
+  postDocument: <T = any>(endpoint: string, id: string) =>
+    apiFetch<T>(`/${endpoint}/${id}/post`, { method: 'POST', body: JSON.stringify({}) }),
 };

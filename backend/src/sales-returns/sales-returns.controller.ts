@@ -34,8 +34,12 @@ export class SalesReturnsController {
 
   @Patch(':id')
   @RequirePermissions(PERMISSIONS.salesReturnsManage)
-  update(@Param('id') id: string, @Body() dto: UpdateSalesReturnDto) {
-    return this.salesReturnsService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateSalesReturnDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.salesReturnsService.update(id, dto, user.sub);
   }
 
   @Post(':id/post')

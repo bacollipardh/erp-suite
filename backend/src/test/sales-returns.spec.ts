@@ -4,6 +4,7 @@ import { DocumentStatus } from '@prisma/client';
 import { SalesReturnsService } from '../sales-returns/sales-returns.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
 import { StockService } from '../stock/stock.service';
 
 const mockTx = {
@@ -49,6 +50,10 @@ const mockStockService = {
   applyMovement: jest.fn(),
 };
 
+const mockFinancialPeriodsService = {
+  assertDateOpen: jest.fn().mockResolvedValue(null),
+};
+
 describe('SalesReturnsService', () => {
   let service: SalesReturnsService;
 
@@ -59,6 +64,7 @@ describe('SalesReturnsService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AuditLogsService, useValue: mockAuditLogs },
         { provide: StockService, useValue: mockStockService },
+        { provide: FinancialPeriodsService, useValue: mockFinancialPeriodsService },
       ],
     }).compile();
 
@@ -69,6 +75,7 @@ describe('SalesReturnsService', () => {
     );
 
     jest.clearAllMocks();
+    mockFinancialPeriodsService.assertDateOpen.mockResolvedValue(null);
   });
 
   it('stores return pricing from the source sales invoice line', async () => {

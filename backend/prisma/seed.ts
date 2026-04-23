@@ -28,6 +28,37 @@ function inferNextSeriesNumber(params: {
   return Math.max(params.currentNextNumber ?? 1, highestDocNumber + 1, 1);
 }
 
+function buildPeriodBounds(year: number, month: number) {
+  return {
+    periodStart: new Date(Date.UTC(year, month - 1, 1)),
+    periodEnd: new Date(Date.UTC(year, month, 0)),
+  };
+}
+
+async function ensureFinancialYear(year: number) {
+  for (let month = 1; month <= 12; month += 1) {
+    const { periodStart, periodEnd } = buildPeriodBounds(year, month);
+    await prisma.financialPeriod.upsert({
+      where: {
+        year_month: {
+          year,
+          month,
+        },
+      },
+      update: {
+        periodStart,
+        periodEnd,
+      },
+      create: {
+        year,
+        month,
+        periodStart,
+        periodEnd,
+      },
+    });
+  }
+}
+
 async function upsertUser(params: {
   id: string;
   roleId: string;
@@ -177,6 +208,7 @@ async function upsertFinanceAccount(params: {
 
 async function main() {
   console.log('Seeding database...');
+  const currentYear = new Date().getUTCFullYear();
 
   const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 12);
 
@@ -423,6 +455,10 @@ async function main() {
     documentType: 'SALES_RETURN',
     prefix: 'KS-',
   });
+
+  await ensureFinancialYear(currentYear - 1);
+  await ensureFinancialYear(currentYear);
+  await ensureFinancialYear(currentYear + 1);
 
   await prisma.item.upsert({
     where: { code: 'LAPTOP-001' },

@@ -35,8 +35,12 @@ export class SalesInvoicesController {
 
   @Patch(':id')
   @RequirePermissions(PERMISSIONS.salesInvoicesManage)
-  update(@Param('id') id: string, @Body() dto: UpdateSalesInvoiceDto) {
-    return this.salesInvoicesService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateSalesInvoiceDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.salesInvoicesService.update(id, dto, user.sub);
   }
 
   @Post(':id/post')

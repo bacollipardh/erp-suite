@@ -22,6 +22,7 @@ import {
   resolveFinanceSettlementStatus,
 } from '../common/utils/finance-settlements';
 import { FinanceAccountsService } from '../finance-accounts/finance-accounts.service';
+import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
 
 @Injectable()
 export class SalesInvoicesService {
@@ -30,6 +31,7 @@ export class SalesInvoicesService {
     private readonly stockService: StockService,
     private readonly auditLogs: AuditLogsService,
     private readonly financeAccountsService: FinanceAccountsService,
+    private readonly financialPeriodsService: FinancialPeriodsService,
   ) {}
 
   async findAll(query: PaginationDto = {}) {
@@ -267,6 +269,11 @@ export class SalesInvoicesService {
   }
 
   async create(dto: CreateSalesInvoiceDto, userId: string) {
+    await this.financialPeriodsService.assertDateOpen(
+      dto.docDate,
+      userId,
+      'Krijimi i fatures se shitjes',
+    );
     const calc = this.calculateLines(dto.lines);
 
     const doc = await this.prisma.$transaction(async (tx) => {
@@ -317,7 +324,7 @@ export class SalesInvoicesService {
     return doc;
   }
 
-  async update(id: string, dto: UpdateSalesInvoiceDto) {
+  async update(id: string, dto: UpdateSalesInvoiceDto, userId: string) {
     const existing = await this.findOne(id);
     if (existing.status !== DocumentStatus.DRAFT) {
       throw new BadRequestException('Only DRAFT sales invoice can be updated');
@@ -344,6 +351,13 @@ export class SalesInvoicesService {
             : dto.dueDate,
         lines: dto.lines ?? this.toDraftLineInput(existing),
       };
+
+      await this.financialPeriodsService.assertDateOpen(
+        draftInput.docDate,
+        userId,
+        'Ndryshimi i fatures se shitjes',
+        tx,
+      );
 
       await this.validateDraftInput(draftInput, tx);
 
@@ -386,6 +400,12 @@ export class SalesInvoicesService {
     if (existing.status !== DocumentStatus.DRAFT) {
       throw new BadRequestException('Only DRAFT sales invoice can be posted');
     }
+
+    await this.financialPeriodsService.assertDateOpen(
+      existing.docDate,
+      postedById,
+      'Postimi i fatures se shitjes',
+    );
 
     for (const line of existing.lines) {
       await this.stockService.ensureSufficientStock({
@@ -447,6 +467,12 @@ export class SalesInvoicesService {
     if (existing.status === DocumentStatus.DRAFT) {
       throw new BadRequestException('Only posted sales invoices can receive payments');
     }
+
+    await this.financialPeriodsService.assertDateOpen(
+      dto.paidAt ?? new Date(),
+      userId,
+      'Regjistrimi i arketimit',
+    );
 
     const total = Number(existing.settlementTotal ?? existing.grandTotal);
     const currentPaid = Number(existing.amountPaid ?? 0);

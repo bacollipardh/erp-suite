@@ -22,6 +22,7 @@ import {
   ImportFinanceStatementLinesDto,
 } from './dto/import-finance-statement-lines.dto';
 import { ListFinanceStatementLinesQueryDto } from './dto/list-finance-statement-lines-query.dto';
+import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
 
 function normalizeOptional(value?: string | null) {
   const normalized = value?.trim();
@@ -106,7 +107,10 @@ type TransactionClient = Prisma.TransactionClient;
 
 @Injectable()
 export class FinanceReconciliationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly financialPeriodsService: FinancialPeriodsService,
+  ) {}
 
   async listStatementLines(query: ListFinanceStatementLinesQueryDto = {}) {
     const page = Math.max(query.page ?? 1, 1);
@@ -213,6 +217,12 @@ export class FinanceReconciliationService {
   }
 
   async createStatementLine(dto: CreateFinanceStatementLineDto, userId: string) {
+    await this.financialPeriodsService.assertDateOpen(
+      dto.statementDate,
+      userId,
+      'Regjistrimi i statement line',
+    );
+
     const account = await this.prisma.financeAccount.findUnique({
       where: { id: dto.financeAccountId },
     });
@@ -278,6 +288,15 @@ export class FinanceReconciliationService {
   }
 
   async importStatementLines(dto: ImportFinanceStatementLinesDto, userId: string) {
+    const uniqueDates = [...new Set(dto.lines.map((row) => row.statementDate))];
+    for (const statementDate of uniqueDates) {
+      await this.financialPeriodsService.assertDateOpen(
+        statementDate,
+        userId,
+        'Importi i statement lines',
+      );
+    }
+
     const account = await this.prisma.financeAccount.findUnique({
       where: { id: dto.financeAccountId },
     });
@@ -468,6 +487,13 @@ export class FinanceReconciliationService {
         throw new NotFoundException('Statement line not found');
       }
 
+      await this.financialPeriodsService.assertDateOpen(
+        line.statementDate,
+        userId,
+        'Pajtimi bankar',
+        tx,
+      );
+
       const existingPair = await tx.financeStatementMatch.findUnique({
         where: {
           statementLineId_financeAccountTransactionId: {
@@ -583,6 +609,13 @@ export class FinanceReconciliationService {
       if (!match || match.statementLineId !== id) {
         throw new NotFoundException('Statement match not found');
       }
+
+      await this.financialPeriodsService.assertDateOpen(
+        match.statementLine.statementDate,
+        userId,
+        'Heqja e pajtimit bankar',
+        tx,
+      );
 
       await tx.financeStatementMatch.delete({ where: { id: match.id } });
 

@@ -74,6 +74,14 @@ enum FinanceSettlementStatus {
   @@map("finance_settlement_status")
 }
 
+enum FinancialPeriodStatus {
+  OPEN
+  SOFT_CLOSED
+  CLOSED
+
+  @@map("financial_period_status")
+}
+
 enum FinanceAccountType {
   CASH
   BANK
@@ -139,6 +147,8 @@ model User {
   createdFinanceAccountTransactions   FinanceAccountTransaction[]   @relation("FinanceAccountTransactionCreatedBy")
   createdFinanceStatementLines        FinanceStatementLine[]        @relation("FinanceStatementLineCreatedBy")
   createdFinanceStatementMatches      FinanceStatementMatch[]       @relation("FinanceStatementMatchCreatedBy")
+  closedFinancialPeriods              FinancialPeriod[]             @relation("FinancialPeriodClosedBy")
+  reopenedFinancialPeriods            FinancialPeriod[]             @relation("FinancialPeriodReopenedBy")
   auditLogs                           AuditLog[]
   createdAt                           DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                           DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -740,6 +750,32 @@ model FinanceStatementMatch {
   @@index([financeAccountTransactionId])
   @@index([createdById])
   @@map("finance_statement_matches")
+}
+
+model FinancialPeriod {
+  id             String                @id @default(uuid()) @db.Uuid
+  year           Int
+  month          Int
+  periodStart    DateTime              @map("period_start") @db.Date
+  periodEnd      DateTime              @map("period_end") @db.Date
+  status         FinancialPeriodStatus @default(OPEN)
+  closedAt       DateTime?             @map("closed_at") @db.Timestamptz(6)
+  closedById     String?               @map("closed_by") @db.Uuid
+  closedReason   String?               @map("closed_reason") @db.VarChar(255)
+  reopenedAt     DateTime?             @map("reopened_at") @db.Timestamptz(6)
+  reopenedById   String?               @map("reopened_by") @db.Uuid
+  reopenedReason String?               @map("reopened_reason") @db.VarChar(255)
+  closedBy       User?                 @relation("FinancialPeriodClosedBy", fields: [closedById], references: [id])
+  reopenedBy     User?                 @relation("FinancialPeriodReopenedBy", fields: [reopenedById], references: [id])
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([year, month])
+  @@index([status])
+  @@index([periodStart, periodEnd])
+  @@index([closedById])
+  @@index([reopenedById])
+  @@map("financial_periods")
 }
 
 model AuditLog {

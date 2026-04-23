@@ -19,6 +19,7 @@ import { CreateFinanceAccountTransactionDto } from './dto/create-finance-account
 import { CreateFinanceTransferDto } from './dto/create-finance-transfer.dto';
 import { ListFinanceAccountsQueryDto } from './dto/list-finance-accounts-query.dto';
 import { ListFinanceAccountTransactionsQueryDto } from './dto/list-finance-account-transactions-query.dto';
+import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -62,6 +63,7 @@ export class FinanceAccountsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLogs: AuditLogsService,
+    private readonly financialPeriodsService: FinancialPeriodsService,
   ) {}
 
   async findAll(query: ListFinanceAccountsQueryDto = {}) {
@@ -248,6 +250,12 @@ export class FinanceAccountsService {
 
     const openingBalance = round2(Number(dto.openingBalance ?? 0));
     const openingDate = normalizeDateOnly(dto.openingDate);
+
+    await this.financialPeriodsService.assertDateOpen(
+      openingDate,
+      userId,
+      'Krijimi i llogarise financiare',
+    );
 
     const created = await this.prisma.$transaction(async (tx) => {
       const account = await tx.financeAccount.create({
@@ -502,6 +510,13 @@ export class FinanceAccountsService {
       transferGroupId?: string;
     },
   ) {
+    await this.financialPeriodsService.assertDateOpen(
+      params.transactionDate,
+      params.createdById,
+      'Regjistrimi i levizjes financiare',
+      tx,
+    );
+
     const account = await this.getAccountOrThrowTx(tx, params.accountId);
     const balanceBefore = round2(Number(account.currentBalance ?? 0));
     const signedAmount = isInboundType(params.transactionType) ? params.amount : -params.amount;

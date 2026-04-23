@@ -1,5 +1,9 @@
 import Link from 'next/link';
 import { DomainActionCard } from '@/components/domain/domain-action-card';
+import type {
+  FinancialPeriodSummary,
+  FinancialPeriodsPage,
+} from '@/components/finance/financial-periods-client';
 import { DueStateReminder } from '@/components/finance/due-state-reminder';
 import { StatsCard } from '@/components/stats-card';
 import { StatusBadge } from '@/components/status-badge';
@@ -164,13 +168,26 @@ function ReminderPanel({
 
 export default async function DashboardPage() {
   const user = await requirePagePermission(PERMISSIONS.dashboard);
+  const currentYear = new Date().getUTCFullYear();
+  const canFinancialPeriods = hasPermission(user.permissions, PERMISSIONS.financialPeriodsRead);
 
-  const [summary, warehouses] = await Promise.all([
+  const [summary, warehouses, financialPeriodsPage] = await Promise.all([
     api.getOne('dashboard/summary'),
     hasPermission(user.permissions, PERMISSIONS.warehousesRead)
       ? api.list('warehouses', { limit: 200 })
       : Promise.resolve([]),
+    canFinancialPeriods
+      ? api.listPage<FinancialPeriodsPage>('financial-periods', { year: currentYear })
+      : Promise.resolve(null),
   ]);
+
+  const currentFinancialPeriodId = financialPeriodsPage?.currentPeriodId ?? null;
+  const currentFinancialPeriodSummary =
+    canFinancialPeriods && currentFinancialPeriodId
+      ? await api.fetch<FinancialPeriodSummary>(
+          `/financial-periods/${currentFinancialPeriodId}/summary`,
+        )
+      : null;
 
   const today = new Date();
   const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1))
@@ -396,6 +413,62 @@ export default async function DashboardPage() {
             description="Receivables, payables, cashflow dhe dokumentet kritike te ndara nga shitja dhe blerja."
             href="/financa"
           />
+
+          {canFinancialPeriods && currentFinancialPeriodSummary ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    Month-end: {currentFinancialPeriodSummary.period.label}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {currentFinancialPeriodSummary.checklist.periodReadyToClose
+                      ? 'Periudha aktuale eshte gati per soft-close ose close.'
+                      : 'Ka blockers aktive ne aging, unapplied balances ose pajtim bankar.'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <StatusBadge value={currentFinancialPeriodSummary.period.status} />
+                  <Link
+                    href="/financa/periudhat"
+                    className="inline-flex rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Hap periudhat
+                  </Link>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-4 xl:grid-cols-4">
+                <StatsCard
+                  title="Blockers"
+                  value={currentFinancialPeriodSummary.checklist.blockerCount}
+                  subtitle="Checklist e mbylljes"
+                  href="/financa/periudhat"
+                />
+                <StatsCard
+                  title="Receivables Overdue"
+                  value={currentFinancialPeriodSummary.checklist.overdueReceivablesCount}
+                  subtitle={fmtMoney(
+                    currentFinancialPeriodSummary.summary.overdueReceivablesOutstanding,
+                  )}
+                  href="/arketime"
+                />
+                <StatsCard
+                  title="Payables Overdue"
+                  value={currentFinancialPeriodSummary.checklist.overduePayablesCount}
+                  subtitle={fmtMoney(currentFinancialPeriodSummary.summary.overduePayablesOutstanding)}
+                  href="/pagesat"
+                />
+                <StatsCard
+                  title="Reconciliation Exceptions"
+                  value={currentFinancialPeriodSummary.checklist.reconciliationExceptionCount}
+                  subtitle={fmtMoney(currentFinancialPeriodSummary.summary.reconciliationDifference)}
+                  href="/financa/pajtimi-bankar"
+                />
+              </div>
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
             <StatsCard
               title="Arketime te Hapura"

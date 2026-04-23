@@ -81,6 +81,11 @@ export const navSections: NavSection[] = [
         permission: PERMISSIONS.financeAccountsRead,
       },
       {
+        label: 'Periudhat Financiare',
+        href: '/financa/periudhat',
+        permission: PERMISSIONS.financialPeriodsRead,
+      },
+      {
         label: 'Pajtimi Bankar',
         href: '/financa/pajtimi-bankar',
         permission: PERMISSIONS.financeAccountsRead,
