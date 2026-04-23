@@ -93,6 +93,21 @@ enum FinanceAccountTransactionType {
   @@map("finance_account_transaction_type")
 }
 
+enum FinanceStatementLineDirection {
+  IN
+  OUT
+
+  @@map("finance_statement_line_direction")
+}
+
+enum FinanceStatementLineStatus {
+  UNMATCHED
+  PARTIALLY_MATCHED
+  MATCHED
+
+  @@map("finance_statement_line_status")
+}
+
 model Role {
   id        String   @id @default(uuid()) @db.Uuid
   code      String   @unique @db.VarChar(30)
@@ -106,25 +121,27 @@ model Role {
 }
 
 model User {
-  id               String            @id @default(uuid()) @db.Uuid
-  roleId           String            @map("role_id") @db.Uuid
-  fullName         String            @map("full_name") @db.VarChar(150)
-  email            String            @unique @db.VarChar(150)
-  passwordHash     String            @map("password_hash") @db.VarChar(255)
-  isActive         Boolean           @default(true) @map("is_active")
-  role             Role              @relation(fields: [roleId], references: [id])
-  createdPurchases PurchaseInvoice[] @relation("PurchaseCreatedBy")
-  postedPurchases  PurchaseInvoice[] @relation("PurchasePostedBy")
-  createdSales     SalesInvoice[]    @relation("SalesCreatedBy")
-  postedSales      SalesInvoice[]    @relation("SalesPostedBy")
-  createdReturns   SalesReturn[]     @relation("ReturnCreatedBy")
-  postedReturns    SalesReturn[]     @relation("ReturnPostedBy")
-  createdFinanceSettlements FinanceSettlement[] @relation("FinanceSettlementCreatedBy")
+  id                                  String                        @id @default(uuid()) @db.Uuid
+  roleId                              String                        @map("role_id") @db.Uuid
+  fullName                            String                        @map("full_name") @db.VarChar(150)
+  email                               String                        @unique @db.VarChar(150)
+  passwordHash                        String                        @map("password_hash") @db.VarChar(255)
+  isActive                            Boolean                       @default(true) @map("is_active")
+  role                                Role                          @relation(fields: [roleId], references: [id])
+  createdPurchases                    PurchaseInvoice[]             @relation("PurchaseCreatedBy")
+  postedPurchases                     PurchaseInvoice[]             @relation("PurchasePostedBy")
+  createdSales                        SalesInvoice[]                @relation("SalesCreatedBy")
+  postedSales                         SalesInvoice[]                @relation("SalesPostedBy")
+  createdReturns                      SalesReturn[]                 @relation("ReturnCreatedBy")
+  postedReturns                       SalesReturn[]                 @relation("ReturnPostedBy")
+  createdFinanceSettlements           FinanceSettlement[]           @relation("FinanceSettlementCreatedBy")
   createdFinanceSettlementAllocations FinanceSettlementAllocation[] @relation("FinanceSettlementAllocationCreatedBy")
-  createdFinanceAccountTransactions FinanceAccountTransaction[] @relation("FinanceAccountTransactionCreatedBy")
-  auditLogs        AuditLog[]
-  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdFinanceAccountTransactions   FinanceAccountTransaction[]   @relation("FinanceAccountTransactionCreatedBy")
+  createdFinanceStatementLines        FinanceStatementLine[]        @relation("FinanceStatementLineCreatedBy")
+  createdFinanceStatementMatches      FinanceStatementMatch[]       @relation("FinanceStatementMatchCreatedBy")
+  auditLogs                           AuditLog[]
+  createdAt                           DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                           DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([roleId])
   @@map("users")
@@ -216,45 +233,45 @@ model Item {
 }
 
 model Supplier {
-  id               String            @id @default(uuid()) @db.Uuid
-  code             String            @unique @db.VarChar(30)
-  name             String            @db.VarChar(200)
-  fiscalNo         String?           @map("fiscal_no") @db.VarChar(50)
-  vatNo            String?           @map("vat_no") @db.VarChar(50)
-  address          String?           @db.VarChar(255)
-  city             String?           @db.VarChar(100)
-  phone            String?           @db.VarChar(50)
-  email            String?           @db.VarChar(150)
-  paymentTermsDays Int?              @map("payment_terms_days")
-  isActive         Boolean           @default(true) @map("is_active")
-  notes            String?
-  purchaseInvoices PurchaseInvoice[]
+  id                 String              @id @default(uuid()) @db.Uuid
+  code               String              @unique @db.VarChar(30)
+  name               String              @db.VarChar(200)
+  fiscalNo           String?             @map("fiscal_no") @db.VarChar(50)
+  vatNo              String?             @map("vat_no") @db.VarChar(50)
+  address            String?             @db.VarChar(255)
+  city               String?             @db.VarChar(100)
+  phone              String?             @db.VarChar(50)
+  email              String?             @db.VarChar(150)
+  paymentTermsDays   Int?                @map("payment_terms_days")
+  isActive           Boolean             @default(true) @map("is_active")
+  notes              String?
+  purchaseInvoices   PurchaseInvoice[]
   financeSettlements FinanceSettlement[] @relation("SupplierFinanceSettlements")
-  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("suppliers")
 }
 
 model Customer {
-  id                     String         @id @default(uuid()) @db.Uuid
-  code                   String         @unique @db.VarChar(30)
-  name                   String         @db.VarChar(200)
-  fiscalNo               String?        @map("fiscal_no") @db.VarChar(50)
-  vatNo                  String?        @map("vat_no") @db.VarChar(50)
-  address                String?        @db.VarChar(255)
-  city                   String?        @db.VarChar(100)
-  phone                  String?        @db.VarChar(50)
-  email                  String?        @db.VarChar(150)
-  creditLimit            Decimal?       @map("credit_limit") @db.Decimal(18, 2)
-  defaultDiscountPercent Decimal?       @map("default_discount_percent") @db.Decimal(5, 2)
-  isActive               Boolean        @default(true) @map("is_active")
+  id                     String              @id @default(uuid()) @db.Uuid
+  code                   String              @unique @db.VarChar(30)
+  name                   String              @db.VarChar(200)
+  fiscalNo               String?             @map("fiscal_no") @db.VarChar(50)
+  vatNo                  String?             @map("vat_no") @db.VarChar(50)
+  address                String?             @db.VarChar(255)
+  city                   String?             @db.VarChar(100)
+  phone                  String?             @db.VarChar(50)
+  email                  String?             @db.VarChar(150)
+  creditLimit            Decimal?            @map("credit_limit") @db.Decimal(18, 2)
+  defaultDiscountPercent Decimal?            @map("default_discount_percent") @db.Decimal(5, 2)
+  isActive               Boolean             @default(true) @map("is_active")
   notes                  String?
   salesInvoices          SalesInvoice[]
   salesReturns           SalesReturn[]
   financeSettlements     FinanceSettlement[] @relation("CustomerFinanceSettlements")
-  createdAt              DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt              DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("customers")
 }
@@ -272,22 +289,23 @@ model PaymentMethod {
 }
 
 model FinanceAccount {
-  id             String                     @id @default(uuid()) @db.Uuid
-  code           String                     @unique @db.VarChar(30)
-  name           String                     @db.VarChar(120)
-  accountType    FinanceAccountType         @map("account_type")
-  currencyCode   String                     @default("EUR") @map("currency_code") @db.VarChar(10)
-  bankName       String?                    @map("bank_name") @db.VarChar(120)
-  bankAccountNo  String?                    @map("bank_account_no") @db.VarChar(80)
-  iban           String?                    @db.VarChar(80)
-  swiftCode      String?                    @map("swift_code") @db.VarChar(30)
-  openingBalance Decimal                    @default(0) @map("opening_balance") @db.Decimal(18, 2)
-  currentBalance Decimal                    @default(0) @map("current_balance") @db.Decimal(18, 2)
-  isActive       Boolean                    @default(true) @map("is_active")
+  id             String                      @id @default(uuid()) @db.Uuid
+  code           String                      @unique @db.VarChar(30)
+  name           String                      @db.VarChar(120)
+  accountType    FinanceAccountType          @map("account_type")
+  currencyCode   String                      @default("EUR") @map("currency_code") @db.VarChar(10)
+  bankName       String?                     @map("bank_name") @db.VarChar(120)
+  bankAccountNo  String?                     @map("bank_account_no") @db.VarChar(80)
+  iban           String?                     @db.VarChar(80)
+  swiftCode      String?                     @map("swift_code") @db.VarChar(30)
+  openingBalance Decimal                     @default(0) @map("opening_balance") @db.Decimal(18, 2)
+  currentBalance Decimal                     @default(0) @map("current_balance") @db.Decimal(18, 2)
+  isActive       Boolean                     @default(true) @map("is_active")
   notes          String?
   transactions   FinanceAccountTransaction[]
-  createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  statementLines FinanceStatementLine[]
+  createdAt      DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([accountType, isActive])
   @@map("finance_accounts")
@@ -311,36 +329,36 @@ model DocumentSeries {
 }
 
 model PurchaseInvoice {
-  id                String                @id @default(uuid()) @db.Uuid
-  seriesId          String                @map("series_id") @db.Uuid
-  supplierId        String                @map("supplier_id") @db.Uuid
-  warehouseId       String                @map("warehouse_id") @db.Uuid
-  docNo             String                @unique @map("doc_no") @db.VarChar(50)
-  supplierInvoiceNo String?               @map("supplier_invoice_no") @db.VarChar(100)
-  docDate           DateTime              @map("doc_date") @db.Date
-  dueDate           DateTime?             @map("due_date") @db.Date
-  status            DocumentStatus        @default(DRAFT)
-  paymentStatus     PaymentStatus         @default(UNPAID) @map("payment_status")
-  subtotal          Decimal               @db.Decimal(18, 2)
-  discountTotal     Decimal               @map("discount_total") @db.Decimal(18, 2)
-  taxTotal          Decimal               @map("tax_total") @db.Decimal(18, 2)
-  grandTotal        Decimal               @map("grand_total") @db.Decimal(18, 2)
-  amountPaid        Decimal               @default(0) @map("amount_paid") @db.Decimal(18, 2)
-  notes             String?
-  createdById       String                @map("created_by") @db.Uuid
-  postedById        String?               @map("posted_by") @db.Uuid
-  supplier          Supplier              @relation(fields: [supplierId], references: [id])
-  warehouse         Warehouse             @relation(fields: [warehouseId], references: [id])
-  series            DocumentSeries        @relation(fields: [seriesId], references: [id])
-  createdBy         User                  @relation("PurchaseCreatedBy", fields: [createdById], references: [id])
-  postedBy          User?                 @relation("PurchasePostedBy", fields: [postedById], references: [id])
-  lines             PurchaseInvoiceLine[]
-  stockMovements    StockMovement[]
-  sourceFinanceSettlements FinanceSettlement[] @relation("FinanceSettlementSourcePurchaseInvoice")
+  id                           String                        @id @default(uuid()) @db.Uuid
+  seriesId                     String                        @map("series_id") @db.Uuid
+  supplierId                   String                        @map("supplier_id") @db.Uuid
+  warehouseId                  String                        @map("warehouse_id") @db.Uuid
+  docNo                        String                        @unique @map("doc_no") @db.VarChar(50)
+  supplierInvoiceNo            String?                       @map("supplier_invoice_no") @db.VarChar(100)
+  docDate                      DateTime                      @map("doc_date") @db.Date
+  dueDate                      DateTime?                     @map("due_date") @db.Date
+  status                       DocumentStatus                @default(DRAFT)
+  paymentStatus                PaymentStatus                 @default(UNPAID) @map("payment_status")
+  subtotal                     Decimal                       @db.Decimal(18, 2)
+  discountTotal                Decimal                       @map("discount_total") @db.Decimal(18, 2)
+  taxTotal                     Decimal                       @map("tax_total") @db.Decimal(18, 2)
+  grandTotal                   Decimal                       @map("grand_total") @db.Decimal(18, 2)
+  amountPaid                   Decimal                       @default(0) @map("amount_paid") @db.Decimal(18, 2)
+  notes                        String?
+  createdById                  String                        @map("created_by") @db.Uuid
+  postedById                   String?                       @map("posted_by") @db.Uuid
+  supplier                     Supplier                      @relation(fields: [supplierId], references: [id])
+  warehouse                    Warehouse                     @relation(fields: [warehouseId], references: [id])
+  series                       DocumentSeries                @relation(fields: [seriesId], references: [id])
+  createdBy                    User                          @relation("PurchaseCreatedBy", fields: [createdById], references: [id])
+  postedBy                     User?                         @relation("PurchasePostedBy", fields: [postedById], references: [id])
+  lines                        PurchaseInvoiceLine[]
+  stockMovements               StockMovement[]
+  sourceFinanceSettlements     FinanceSettlement[]           @relation("FinanceSettlementSourcePurchaseInvoice")
   financeSettlementAllocations FinanceSettlementAllocation[] @relation("FinanceSettlementTargetPurchaseInvoice")
-  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
-  postedAt          DateTime?             @map("posted_at") @db.Timestamptz(6)
-  updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt                    DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  postedAt                     DateTime?                     @map("posted_at") @db.Timestamptz(6)
+  updatedAt                    DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([seriesId])
   @@index([supplierId])
@@ -376,42 +394,42 @@ model PurchaseInvoiceLine {
 }
 
 model SalesInvoice {
-  id              String            @id @default(uuid()) @db.Uuid
-  seriesId        String            @map("series_id") @db.Uuid
-  customerId      String            @map("customer_id") @db.Uuid
-  warehouseId     String            @map("warehouse_id") @db.Uuid
-  paymentMethodId String?           @map("payment_method_id") @db.Uuid
-  docNo           String            @unique @map("doc_no") @db.VarChar(50)
-  docDate         DateTime          @map("doc_date") @db.Date
-  dueDate         DateTime?         @map("due_date") @db.Date
-  status          DocumentStatus    @default(DRAFT)
-  paymentStatus   PaymentStatus     @default(UNPAID) @map("payment_status")
-  subtotal        Decimal           @db.Decimal(18, 2)
-  discountTotal   Decimal           @map("discount_total") @db.Decimal(18, 2)
-  taxTotal        Decimal           @map("tax_total") @db.Decimal(18, 2)
-  grandTotal      Decimal           @map("grand_total") @db.Decimal(18, 2)
-  amountPaid      Decimal           @default(0) @map("amount_paid") @db.Decimal(18, 2)
-  fiscalStatus    FiscalStatus      @default(DRAFT) @map("fiscal_status")
-  fiscalReference String?           @map("fiscal_reference") @db.VarChar(150)
-  fiscalizedAt    DateTime?         @map("fiscalized_at") @db.Timestamptz(6)
-  fiscalError     String?           @map("fiscal_error") @db.VarChar(255)
-  notes           String?
-  createdById     String            @map("created_by") @db.Uuid
-  postedById      String?           @map("posted_by") @db.Uuid
-  series          DocumentSeries    @relation(fields: [seriesId], references: [id])
-  customer        Customer          @relation(fields: [customerId], references: [id])
-  warehouse       Warehouse         @relation(fields: [warehouseId], references: [id])
-  paymentMethod   PaymentMethod?    @relation(fields: [paymentMethodId], references: [id])
-  createdBy       User              @relation("SalesCreatedBy", fields: [createdById], references: [id])
-  postedBy        User?             @relation("SalesPostedBy", fields: [postedById], references: [id])
-  lines           SalesInvoiceLine[]
-  returns         SalesReturn[]
-  stockMovements  StockMovement[]
-  sourceFinanceSettlements FinanceSettlement[] @relation("FinanceSettlementSourceSalesInvoice")
+  id                           String                        @id @default(uuid()) @db.Uuid
+  seriesId                     String                        @map("series_id") @db.Uuid
+  customerId                   String                        @map("customer_id") @db.Uuid
+  warehouseId                  String                        @map("warehouse_id") @db.Uuid
+  paymentMethodId              String?                       @map("payment_method_id") @db.Uuid
+  docNo                        String                        @unique @map("doc_no") @db.VarChar(50)
+  docDate                      DateTime                      @map("doc_date") @db.Date
+  dueDate                      DateTime?                     @map("due_date") @db.Date
+  status                       DocumentStatus                @default(DRAFT)
+  paymentStatus                PaymentStatus                 @default(UNPAID) @map("payment_status")
+  subtotal                     Decimal                       @db.Decimal(18, 2)
+  discountTotal                Decimal                       @map("discount_total") @db.Decimal(18, 2)
+  taxTotal                     Decimal                       @map("tax_total") @db.Decimal(18, 2)
+  grandTotal                   Decimal                       @map("grand_total") @db.Decimal(18, 2)
+  amountPaid                   Decimal                       @default(0) @map("amount_paid") @db.Decimal(18, 2)
+  fiscalStatus                 FiscalStatus                  @default(DRAFT) @map("fiscal_status")
+  fiscalReference              String?                       @map("fiscal_reference") @db.VarChar(150)
+  fiscalizedAt                 DateTime?                     @map("fiscalized_at") @db.Timestamptz(6)
+  fiscalError                  String?                       @map("fiscal_error") @db.VarChar(255)
+  notes                        String?
+  createdById                  String                        @map("created_by") @db.Uuid
+  postedById                   String?                       @map("posted_by") @db.Uuid
+  series                       DocumentSeries                @relation(fields: [seriesId], references: [id])
+  customer                     Customer                      @relation(fields: [customerId], references: [id])
+  warehouse                    Warehouse                     @relation(fields: [warehouseId], references: [id])
+  paymentMethod                PaymentMethod?                @relation(fields: [paymentMethodId], references: [id])
+  createdBy                    User                          @relation("SalesCreatedBy", fields: [createdById], references: [id])
+  postedBy                     User?                         @relation("SalesPostedBy", fields: [postedById], references: [id])
+  lines                        SalesInvoiceLine[]
+  returns                      SalesReturn[]
+  stockMovements               StockMovement[]
+  sourceFinanceSettlements     FinanceSettlement[]           @relation("FinanceSettlementSourceSalesInvoice")
   financeSettlementAllocations FinanceSettlementAllocation[] @relation("FinanceSettlementTargetSalesInvoice")
-  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  postedAt        DateTime?         @map("posted_at") @db.Timestamptz(6)
-  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt                    DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  postedAt                     DateTime?                     @map("posted_at") @db.Timestamptz(6)
+  updatedAt                    DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([seriesId])
   @@index([customerId])
@@ -424,23 +442,23 @@ model SalesInvoice {
 }
 
 model SalesInvoiceLine {
-  id              String           @id @default(uuid()) @db.Uuid
-  salesInvoiceId  String           @map("sales_invoice_id") @db.Uuid
-  itemId          String           @map("item_id") @db.Uuid
-  lineNo          Int              @map("line_no")
-  description     String?          @db.VarChar(255)
-  qty             Decimal          @db.Decimal(18, 3)
-  unitPrice       Decimal          @map("unit_price") @db.Decimal(18, 2)
-  discountPercent Decimal          @map("discount_percent") @db.Decimal(5, 2)
-  discountAmount  Decimal          @map("discount_amount") @db.Decimal(18, 2)
-  taxPercent      Decimal          @map("tax_percent") @db.Decimal(5, 2)
-  netAmount       Decimal          @map("net_amount") @db.Decimal(18, 2)
-  taxAmount       Decimal          @map("tax_amount") @db.Decimal(18, 2)
-  grossAmount     Decimal          @map("gross_amount") @db.Decimal(18, 2)
-  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
-  salesInvoice    SalesInvoice     @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
-  item            Item             @relation(fields: [itemId], references: [id])
+  id              String            @id @default(uuid()) @db.Uuid
+  salesInvoiceId  String            @map("sales_invoice_id") @db.Uuid
+  itemId          String            @map("item_id") @db.Uuid
+  lineNo          Int               @map("line_no")
+  description     String?           @db.VarChar(255)
+  qty             Decimal           @db.Decimal(18, 3)
+  unitPrice       Decimal           @map("unit_price") @db.Decimal(18, 2)
+  discountPercent Decimal           @map("discount_percent") @db.Decimal(5, 2)
+  discountAmount  Decimal           @map("discount_amount") @db.Decimal(18, 2)
+  taxPercent      Decimal           @map("tax_percent") @db.Decimal(5, 2)
+  netAmount       Decimal           @map("net_amount") @db.Decimal(18, 2)
+  taxAmount       Decimal           @map("tax_amount") @db.Decimal(18, 2)
+  grossAmount     Decimal           @map("gross_amount") @db.Decimal(18, 2)
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  salesInvoice    SalesInvoice      @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
+  item            Item              @relation(fields: [itemId], references: [id])
   returnLines     SalesReturnLine[]
 
   @@unique([salesInvoiceId, lineNo])
@@ -449,34 +467,34 @@ model SalesInvoiceLine {
 }
 
 model SalesReturn {
-  id             String            @id @default(uuid()) @db.Uuid
-  seriesId       String            @map("series_id") @db.Uuid
-  salesInvoiceId String            @map("sales_invoice_id") @db.Uuid
-  customerId     String            @map("customer_id") @db.Uuid
-  docNo          String            @unique @map("doc_no") @db.VarChar(50)
-  docDate        DateTime          @map("doc_date") @db.Date
-  reason         String?           @db.VarChar(255)
-  status         DocumentStatus    @default(DRAFT)
-  fiscalStatus   FiscalStatus      @default(DRAFT) @map("fiscal_status")
-  fiscalReference String?          @map("fiscal_reference") @db.VarChar(150)
-  fiscalizedAt   DateTime?         @map("fiscalized_at") @db.Timestamptz(6)
-  fiscalError    String?           @map("fiscal_error") @db.VarChar(255)
-  subtotal       Decimal           @db.Decimal(18, 2)
-  taxTotal       Decimal           @map("tax_total") @db.Decimal(18, 2)
-  grandTotal     Decimal           @map("grand_total") @db.Decimal(18, 2)
-  notes          String?
-  createdById    String            @map("created_by") @db.Uuid
-  postedById     String?           @map("posted_by") @db.Uuid
-  series         DocumentSeries    @relation(fields: [seriesId], references: [id])
-  salesInvoice   SalesInvoice      @relation(fields: [salesInvoiceId], references: [id])
-  customer       Customer          @relation(fields: [customerId], references: [id])
-  createdBy      User              @relation("ReturnCreatedBy", fields: [createdById], references: [id])
-  postedBy       User?             @relation("ReturnPostedBy", fields: [postedById], references: [id])
-  lines          SalesReturnLine[]
-  stockMovements StockMovement[]
-  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  postedAt       DateTime?         @map("posted_at") @db.Timestamptz(6)
-  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String            @id @default(uuid()) @db.Uuid
+  seriesId        String            @map("series_id") @db.Uuid
+  salesInvoiceId  String            @map("sales_invoice_id") @db.Uuid
+  customerId      String            @map("customer_id") @db.Uuid
+  docNo           String            @unique @map("doc_no") @db.VarChar(50)
+  docDate         DateTime          @map("doc_date") @db.Date
+  reason          String?           @db.VarChar(255)
+  status          DocumentStatus    @default(DRAFT)
+  fiscalStatus    FiscalStatus      @default(DRAFT) @map("fiscal_status")
+  fiscalReference String?           @map("fiscal_reference") @db.VarChar(150)
+  fiscalizedAt    DateTime?         @map("fiscalized_at") @db.Timestamptz(6)
+  fiscalError     String?           @map("fiscal_error") @db.VarChar(255)
+  subtotal        Decimal           @db.Decimal(18, 2)
+  taxTotal        Decimal           @map("tax_total") @db.Decimal(18, 2)
+  grandTotal      Decimal           @map("grand_total") @db.Decimal(18, 2)
+  notes           String?
+  createdById     String            @map("created_by") @db.Uuid
+  postedById      String?           @map("posted_by") @db.Uuid
+  series          DocumentSeries    @relation(fields: [seriesId], references: [id])
+  salesInvoice    SalesInvoice      @relation(fields: [salesInvoiceId], references: [id])
+  customer        Customer          @relation(fields: [customerId], references: [id])
+  createdBy       User              @relation("ReturnCreatedBy", fields: [createdById], references: [id])
+  postedBy        User?             @relation("ReturnPostedBy", fields: [postedById], references: [id])
+  lines           SalesReturnLine[]
+  stockMovements  StockMovement[]
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  postedAt        DateTime?         @map("posted_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([seriesId])
   @@index([salesInvoiceId])
@@ -556,55 +574,55 @@ model StockBalance {
 }
 
 model CompanyProfile {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String   @db.VarChar(200)
-  fiscalNo    String?  @map("fiscal_no") @db.VarChar(50)
-  vatNo       String?  @map("vat_no") @db.VarChar(50)
-  businessNo  String?  @map("business_no") @db.VarChar(50)
-  address     String?  @db.VarChar(255)
-  city        String?  @db.VarChar(100)
-  phone       String?  @db.VarChar(50)
-  email       String?  @db.VarChar(150)
-  website     String?  @db.VarChar(200)
-  bankName    String?  @map("bank_name") @db.VarChar(100)
-  bankAccount String?  @map("bank_account") @db.VarChar(50)
-  fiscalMode  FiscalMode @default(SANDBOX) @map("fiscal_mode")
-  fiscalBusinessUnit String? @map("fiscal_business_unit") @db.VarChar(50)
-  fiscalOperatorCode String? @map("fiscal_operator_code") @db.VarChar(50)
-  fiscalDeviceId String? @map("fiscal_device_id") @db.VarChar(100)
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                 String     @id @default(uuid()) @db.Uuid
+  name               String     @db.VarChar(200)
+  fiscalNo           String?    @map("fiscal_no") @db.VarChar(50)
+  vatNo              String?    @map("vat_no") @db.VarChar(50)
+  businessNo         String?    @map("business_no") @db.VarChar(50)
+  address            String?    @db.VarChar(255)
+  city               String?    @db.VarChar(100)
+  phone              String?    @db.VarChar(50)
+  email              String?    @db.VarChar(150)
+  website            String?    @db.VarChar(200)
+  bankName           String?    @map("bank_name") @db.VarChar(100)
+  bankAccount        String?    @map("bank_account") @db.VarChar(50)
+  fiscalMode         FiscalMode @default(SANDBOX) @map("fiscal_mode")
+  fiscalBusinessUnit String?    @map("fiscal_business_unit") @db.VarChar(50)
+  fiscalOperatorCode String?    @map("fiscal_operator_code") @db.VarChar(50)
+  fiscalDeviceId     String?    @map("fiscal_device_id") @db.VarChar(100)
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("company_profile")
 }
 
 model FinanceSettlement {
-  id                     String                  @id @default(uuid()) @db.Uuid
-  entryType              FinanceSettlementType   @map("entry_type")
-  status                 FinanceSettlementStatus @default(OPEN)
-  customerId             String?                 @map("customer_id") @db.Uuid
-  supplierId             String?                 @map("supplier_id") @db.Uuid
-  sourceSalesInvoiceId   String?                 @map("source_sales_invoice_id") @db.Uuid
-  sourcePurchaseInvoiceId String?                @map("source_purchase_invoice_id") @db.Uuid
-  sourceAuditLogId       String?                 @map("source_audit_log_id") @db.Uuid
-  enteredAmount          Decimal                 @map("entered_amount") @db.Decimal(18, 2)
-  sourceAppliedAmount    Decimal                 @map("source_applied_amount") @db.Decimal(18, 2)
-  unappliedAmount        Decimal                 @map("unapplied_amount") @db.Decimal(18, 2)
-  allocatedAmount        Decimal                 @default(0) @map("allocated_amount") @db.Decimal(18, 2)
-  remainingAmount        Decimal                 @map("remaining_amount") @db.Decimal(18, 2)
-  paidAt                 DateTime                @map("paid_at") @db.Date
-  referenceNo            String?                 @map("reference_no") @db.VarChar(100)
-  notes                  String?
-  createdById            String                  @map("created_by") @db.Uuid
-  customer               Customer?               @relation("CustomerFinanceSettlements", fields: [customerId], references: [id])
-  supplier               Supplier?               @relation("SupplierFinanceSettlements", fields: [supplierId], references: [id])
-  sourceSalesInvoice     SalesInvoice?           @relation("FinanceSettlementSourceSalesInvoice", fields: [sourceSalesInvoiceId], references: [id])
-  sourcePurchaseInvoice  PurchaseInvoice?        @relation("FinanceSettlementSourcePurchaseInvoice", fields: [sourcePurchaseInvoiceId], references: [id])
-  createdBy              User                    @relation("FinanceSettlementCreatedBy", fields: [createdById], references: [id])
-  accountTransactions    FinanceAccountTransaction[]
-  allocations            FinanceSettlementAllocation[]
-  createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt              DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                      String                        @id @default(uuid()) @db.Uuid
+  entryType               FinanceSettlementType         @map("entry_type")
+  status                  FinanceSettlementStatus       @default(OPEN)
+  customerId              String?                       @map("customer_id") @db.Uuid
+  supplierId              String?                       @map("supplier_id") @db.Uuid
+  sourceSalesInvoiceId    String?                       @map("source_sales_invoice_id") @db.Uuid
+  sourcePurchaseInvoiceId String?                       @map("source_purchase_invoice_id") @db.Uuid
+  sourceAuditLogId        String?                       @map("source_audit_log_id") @db.Uuid
+  enteredAmount           Decimal                       @map("entered_amount") @db.Decimal(18, 2)
+  sourceAppliedAmount     Decimal                       @map("source_applied_amount") @db.Decimal(18, 2)
+  unappliedAmount         Decimal                       @map("unapplied_amount") @db.Decimal(18, 2)
+  allocatedAmount         Decimal                       @default(0) @map("allocated_amount") @db.Decimal(18, 2)
+  remainingAmount         Decimal                       @map("remaining_amount") @db.Decimal(18, 2)
+  paidAt                  DateTime                      @map("paid_at") @db.Date
+  referenceNo             String?                       @map("reference_no") @db.VarChar(100)
+  notes                   String?
+  createdById             String                        @map("created_by") @db.Uuid
+  customer                Customer?                     @relation("CustomerFinanceSettlements", fields: [customerId], references: [id])
+  supplier                Supplier?                     @relation("SupplierFinanceSettlements", fields: [supplierId], references: [id])
+  sourceSalesInvoice      SalesInvoice?                 @relation("FinanceSettlementSourceSalesInvoice", fields: [sourceSalesInvoiceId], references: [id])
+  sourcePurchaseInvoice   PurchaseInvoice?              @relation("FinanceSettlementSourcePurchaseInvoice", fields: [sourcePurchaseInvoiceId], references: [id])
+  createdBy               User                          @relation("FinanceSettlementCreatedBy", fields: [createdById], references: [id])
+  accountTransactions     FinanceAccountTransaction[]
+  allocations             FinanceSettlementAllocation[]
+  createdAt               DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([entryType, status])
   @@index([customerId])
@@ -616,25 +634,25 @@ model FinanceSettlement {
 }
 
 model FinanceSettlementAllocation {
-  id                     String           @id @default(uuid()) @db.Uuid
-  settlementId           String           @map("settlement_id") @db.Uuid
-  targetSalesInvoiceId   String?          @map("target_sales_invoice_id") @db.Uuid
-  targetPurchaseInvoiceId String?         @map("target_purchase_invoice_id") @db.Uuid
-  amount                 Decimal          @db.Decimal(18, 2)
-  allocatedAt            DateTime         @map("allocated_at") @db.Date
-  notes                  String?
-  amountPaidBefore       Decimal          @map("amount_paid_before") @db.Decimal(18, 2)
-  amountPaidAfter        Decimal          @map("amount_paid_after") @db.Decimal(18, 2)
-  outstandingBefore      Decimal          @map("outstanding_before") @db.Decimal(18, 2)
-  outstandingAfter       Decimal          @map("outstanding_after") @db.Decimal(18, 2)
-  paymentStatusBefore    PaymentStatus    @map("payment_status_before")
-  paymentStatusAfter     PaymentStatus    @map("payment_status_after")
-  createdById            String           @map("created_by") @db.Uuid
-  settlement             FinanceSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
-  targetSalesInvoice     SalesInvoice?    @relation("FinanceSettlementTargetSalesInvoice", fields: [targetSalesInvoiceId], references: [id])
-  targetPurchaseInvoice  PurchaseInvoice? @relation("FinanceSettlementTargetPurchaseInvoice", fields: [targetPurchaseInvoiceId], references: [id])
-  createdBy              User             @relation("FinanceSettlementAllocationCreatedBy", fields: [createdById], references: [id])
-  createdAt              DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                      String            @id @default(uuid()) @db.Uuid
+  settlementId            String            @map("settlement_id") @db.Uuid
+  targetSalesInvoiceId    String?           @map("target_sales_invoice_id") @db.Uuid
+  targetPurchaseInvoiceId String?           @map("target_purchase_invoice_id") @db.Uuid
+  amount                  Decimal           @db.Decimal(18, 2)
+  allocatedAt             DateTime          @map("allocated_at") @db.Date
+  notes                   String?
+  amountPaidBefore        Decimal           @map("amount_paid_before") @db.Decimal(18, 2)
+  amountPaidAfter         Decimal           @map("amount_paid_after") @db.Decimal(18, 2)
+  outstandingBefore       Decimal           @map("outstanding_before") @db.Decimal(18, 2)
+  outstandingAfter        Decimal           @map("outstanding_after") @db.Decimal(18, 2)
+  paymentStatusBefore     PaymentStatus     @map("payment_status_before")
+  paymentStatusAfter      PaymentStatus     @map("payment_status_after")
+  createdById             String            @map("created_by") @db.Uuid
+  settlement              FinanceSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  targetSalesInvoice      SalesInvoice?     @relation("FinanceSettlementTargetSalesInvoice", fields: [targetSalesInvoiceId], references: [id])
+  targetPurchaseInvoice   PurchaseInvoice?  @relation("FinanceSettlementTargetPurchaseInvoice", fields: [targetPurchaseInvoiceId], references: [id])
+  createdBy               User              @relation("FinanceSettlementAllocationCreatedBy", fields: [createdById], references: [id])
+  createdAt               DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([settlementId])
   @@index([targetSalesInvoiceId])
@@ -644,27 +662,28 @@ model FinanceSettlementAllocation {
 }
 
 model FinanceAccountTransaction {
-  id                 String                        @id @default(uuid()) @db.Uuid
-  accountId          String                        @map("account_id") @db.Uuid
-  financeSettlementId String?                      @map("finance_settlement_id") @db.Uuid
-  sourceAuditLogId   String?                       @map("source_audit_log_id") @db.Uuid
-  transferGroupId    String?                       @map("transfer_group_id") @db.Uuid
-  transactionType    FinanceAccountTransactionType @map("transaction_type")
-  amount             Decimal                       @db.Decimal(18, 2)
-  balanceBefore      Decimal                       @map("balance_before") @db.Decimal(18, 2)
-  balanceAfter       Decimal                       @map("balance_after") @db.Decimal(18, 2)
-  transactionDate    DateTime                      @map("transaction_date") @db.Date
-  referenceNo        String?                       @map("reference_no") @db.VarChar(100)
-  counterpartyName   String?                       @map("counterparty_name") @db.VarChar(200)
-  sourceDocumentType String?                       @map("source_document_type") @db.VarChar(40)
-  sourceDocumentId   String?                       @map("source_document_id") @db.Uuid
-  sourceDocumentNo   String?                       @map("source_document_no") @db.VarChar(50)
-  notes              String?
-  createdById        String                        @map("created_by") @db.Uuid
-  account            FinanceAccount                @relation(fields: [accountId], references: [id])
-  financeSettlement  FinanceSettlement?            @relation(fields: [financeSettlementId], references: [id])
-  createdBy          User                          @relation("FinanceAccountTransactionCreatedBy", fields: [createdById], references: [id])
-  createdAt          DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                  String                        @id @default(uuid()) @db.Uuid
+  accountId           String                        @map("account_id") @db.Uuid
+  financeSettlementId String?                       @map("finance_settlement_id") @db.Uuid
+  sourceAuditLogId    String?                       @map("source_audit_log_id") @db.Uuid
+  transferGroupId     String?                       @map("transfer_group_id") @db.Uuid
+  transactionType     FinanceAccountTransactionType @map("transaction_type")
+  amount              Decimal                       @db.Decimal(18, 2)
+  balanceBefore       Decimal                       @map("balance_before") @db.Decimal(18, 2)
+  balanceAfter        Decimal                       @map("balance_after") @db.Decimal(18, 2)
+  transactionDate     DateTime                      @map("transaction_date") @db.Date
+  referenceNo         String?                       @map("reference_no") @db.VarChar(100)
+  counterpartyName    String?                       @map("counterparty_name") @db.VarChar(200)
+  sourceDocumentType  String?                       @map("source_document_type") @db.VarChar(40)
+  sourceDocumentId    String?                       @map("source_document_id") @db.Uuid
+  sourceDocumentNo    String?                       @map("source_document_no") @db.VarChar(50)
+  notes               String?
+  createdById         String                        @map("created_by") @db.Uuid
+  account             FinanceAccount                @relation(fields: [accountId], references: [id])
+  financeSettlement   FinanceSettlement?            @relation(fields: [financeSettlementId], references: [id])
+  createdBy           User                          @relation("FinanceAccountTransactionCreatedBy", fields: [createdById], references: [id])
+  statementMatches    FinanceStatementMatch[]
+  createdAt           DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([accountId, transactionDate])
   @@index([financeSettlementId])
@@ -673,6 +692,54 @@ model FinanceAccountTransaction {
   @@index([createdById])
   @@index([sourceDocumentType, sourceDocumentId])
   @@map("finance_account_transactions")
+}
+
+model FinanceStatementLine {
+  id               String                        @id @default(uuid()) @db.Uuid
+  accountId        String                        @map("account_id") @db.Uuid
+  direction        FinanceStatementLineDirection
+  status           FinanceStatementLineStatus    @default(UNMATCHED)
+  statementDate    DateTime                      @map("statement_date") @db.Date
+  valueDate        DateTime?                     @map("value_date") @db.Date
+  amount           Decimal                       @db.Decimal(18, 2)
+  matchedAmount    Decimal                       @default(0) @map("matched_amount") @db.Decimal(18, 2)
+  statementBalance Decimal?                      @map("statement_balance") @db.Decimal(18, 2)
+  referenceNo      String?                       @map("reference_no") @db.VarChar(100)
+  externalId       String?                       @map("external_id") @db.VarChar(100)
+  counterpartyName String?                       @map("counterparty_name") @db.VarChar(200)
+  description      String?                       @db.VarChar(255)
+  notes            String?
+  createdById      String                        @map("created_by") @db.Uuid
+  account          FinanceAccount                @relation(fields: [accountId], references: [id])
+  createdBy        User                          @relation("FinanceStatementLineCreatedBy", fields: [createdById], references: [id])
+  matches          FinanceStatementMatch[]
+  createdAt        DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([accountId, statementDate])
+  @@index([status])
+  @@index([direction])
+  @@index([externalId])
+  @@map("finance_statement_lines")
+}
+
+model FinanceStatementMatch {
+  id                          String                    @id @default(uuid()) @db.Uuid
+  statementLineId             String                    @map("statement_line_id") @db.Uuid
+  financeAccountTransactionId String                    @map("finance_account_transaction_id") @db.Uuid
+  amount                      Decimal                   @db.Decimal(18, 2)
+  notes                       String?
+  createdById                 String                    @map("created_by") @db.Uuid
+  statementLine               FinanceStatementLine      @relation(fields: [statementLineId], references: [id], onDelete: Cascade)
+  financeAccountTransaction   FinanceAccountTransaction @relation(fields: [financeAccountTransactionId], references: [id])
+  createdBy                   User                      @relation("FinanceStatementMatchCreatedBy", fields: [createdById], references: [id])
+  createdAt                   DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([statementLineId, financeAccountTransactionId])
+  @@index([statementLineId])
+  @@index([financeAccountTransactionId])
+  @@index([createdById])
+  @@map("finance_statement_matches")
 }
 
 model AuditLog {

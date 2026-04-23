@@ -20,12 +20,15 @@ export default async function FinanceHubPage() {
     PERMISSIONS.financeAccountsRead,
   ]);
 
-  const [summary, accountSummary] = await Promise.all([
+  const [summary, accountSummary, reconciliationSummary] = await Promise.all([
     hasPermission(user.permissions, PERMISSIONS.dashboard)
       ? api.getOne('dashboard/summary')
       : Promise.resolve(null),
     hasPermission(user.permissions, PERMISSIONS.financeAccountsRead)
       ? api.listPage('finance-accounts', { limit: 1 })
+      : Promise.resolve(null),
+    hasPermission(user.permissions, PERMISSIONS.financeAccountsRead)
+      ? api.listPage('finance-reconciliation/statement-lines', { limit: 1 })
       : Promise.resolve(null),
   ]);
 
@@ -34,6 +37,9 @@ export default async function FinanceHubPage() {
   const canReceiptReallocation = hasPermission(user.permissions, PERMISSIONS.salesInvoicesPay);
   const canPaymentReallocation = hasPermission(user.permissions, PERMISSIONS.purchaseInvoicesPay);
   const canFinanceAccounts = hasPermission(user.permissions, PERMISSIONS.financeAccountsRead);
+  const openReconciliations =
+    Number(reconciliationSummary?.summary?.unmatchedCount ?? 0) +
+    Number(reconciliationSummary?.summary?.partiallyMatchedCount ?? 0);
   const canFinanceReports = hasPermission(user.permissions, [
     PERMISSIONS.reportsReceivables,
     PERMISSIONS.reportsPayables,
@@ -81,6 +87,12 @@ export default async function FinanceHubPage() {
           subtitle={`${accountSummary?.summary?.accountCount ?? 0} gjithsej`}
           href={canFinanceAccounts ? '/financa/llogarite' : undefined}
         />
+        <StatsCard
+          title="Pajtime Bankare"
+          value={openReconciliations}
+          subtitle={`${reconciliationSummary?.summary?.matchedCount ?? 0} te mbyllura`}
+          href={canFinanceAccounts ? '/financa/pajtimi-bankar' : undefined}
+        />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -91,6 +103,15 @@ export default async function FinanceHubPage() {
             href="/financa/llogarite"
             badge="Treasury"
             tone="emerald"
+          />
+        ) : null}
+        {canFinanceAccounts ? (
+          <DomainActionCard
+            title="Pajtimi Bankar"
+            description="Importo ose regjistro levizjet e bankes dhe perputhi me arketimet, pagesat dhe transaksionet e ledger-it."
+            href="/financa/pajtimi-bankar"
+            badge="Reconciliation"
+            tone="amber"
           />
         ) : null}
         {canReceivables ? (

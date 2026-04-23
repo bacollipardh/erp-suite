@@ -76,5 +76,6 @@ export const api = {
   update:  (endpoint: string, id: string, body: unknown) => apiFetch<any>(`/${endpoint}/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   put:     (endpoint: string, body: unknown)      => apiFetch<any>(`/${endpoint}`, { method: 'PUT', body: JSON.stringify(body) }),
   post:    (endpoint: string, body: unknown)      => apiFetch<any>(`/${endpoint}`, { method: 'POST', body: JSON.stringify(body) }),
+  delete:  (endpoint: string)                     => apiFetch<any>(`/${endpoint}`, { method: 'DELETE' }),
   postDocument: (endpoint: string, id: string)    => apiFetch<any>(`/${endpoint}/${id}/post`, { method: 'POST', body: JSON.stringify({}) }),
 };

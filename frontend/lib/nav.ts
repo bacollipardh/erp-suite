@@ -80,6 +80,11 @@ export const navSections: NavSection[] = [
         href: '/financa/llogarite',
         permission: PERMISSIONS.financeAccountsRead,
       },
+      {
+        label: 'Pajtimi Bankar',
+        href: '/financa/pajtimi-bankar',
+        permission: PERMISSIONS.financeAccountsRead,
+      },
       { label: 'Arketimet', href: '/arketime', permission: PERMISSIONS.reportsReceivables },
       {
         label: 'Rialokimi i Arketimeve',
