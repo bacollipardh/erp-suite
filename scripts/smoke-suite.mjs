@@ -335,6 +335,27 @@ async function main() {
     fetchJson(`${apiBaseUrl}/reports/sales-summary?limitRecent=20`, { headers: authHeaders }, 'sales summary'),
     fetchJson(`${apiBaseUrl}/reports/receivables-aging?limit=20`, { headers: authHeaders }, 'receivables aging'),
     fetchJson(`${apiBaseUrl}/reports/payables-aging?limit=20`, { headers: authHeaders }, 'payables aging'),
+    fetchJson(`${apiBaseUrl}/accounting/accounts?limit=20`, { headers: authHeaders }, 'accounting accounts'),
+    fetchJson(
+      `${apiBaseUrl}/accounting/journal-entries?limit=20`,
+      { headers: authHeaders },
+      'accounting journal entries',
+    ),
+    fetchJson(
+      `${apiBaseUrl}/accounting/trial-balance?asOfDate=${date}`,
+      { headers: authHeaders },
+      'trial balance',
+    ),
+    fetchJson(
+      `${apiBaseUrl}/accounting/profit-loss?dateFrom=${date}&dateTo=${date}`,
+      { headers: authHeaders },
+      'profit and loss',
+    ),
+    fetchJson(
+      `${apiBaseUrl}/accounting/balance-sheet?asOfDate=${date}`,
+      { headers: authHeaders },
+      'balance sheet',
+    ),
     fetchJson(`${apiBaseUrl}/audit-logs?limit=20`, { headers: authHeaders }, 'audit logs'),
     fetchJson(`${apiBaseUrl}/stock/movements?limit=20`, { headers: authHeaders }, 'stock movements'),
   ]);
@@ -388,6 +409,23 @@ async function main() {
   if (!documentHtml.includes(salesInvoice.docNo)) {
     throw new Error('frontend sales invoice page did not include the expected document number');
   }
+
+  await Promise.all([
+    expectOk(
+      await fetch(`${frontendBaseUrl}/financa/libri-kontabel`, {
+        headers: { Cookie: cookieHeader },
+        redirect: 'manual',
+      }),
+      'frontend accounting ledger page',
+    ),
+    expectOk(
+      await fetch(`${frontendBaseUrl}/raportet/kontabiliteti`, {
+        headers: { Cookie: cookieHeader },
+        redirect: 'manual',
+      }),
+      'frontend accounting reports page',
+    ),
+  ]);
 
   await expectOk(
     await fetch(`${frontendBaseUrl}/api/auth/logout`, {

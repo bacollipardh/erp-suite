@@ -86,6 +86,11 @@ export const navSections: NavSection[] = [
         permission: PERMISSIONS.financialPeriodsRead,
       },
       {
+        label: 'Libri Kontabel',
+        href: '/financa/libri-kontabel',
+        permission: PERMISSIONS.accountingRead,
+      },
+      {
         label: 'Pajtimi Bankar',
         href: '/financa/pajtimi-bankar',
         permission: PERMISSIONS.financeAccountsRead,
@@ -142,6 +147,7 @@ export const navSections: NavSection[] = [
           PERMISSIONS.reportsSales,
           PERMISSIONS.reportsReceivables,
           PERMISSIONS.reportsPayables,
+          PERMISSIONS.reportsAccounting,
           PERMISSIONS.stockRead,
         ],
       },
@@ -150,6 +156,11 @@ export const navSections: NavSection[] = [
         label: 'Raportet Financiare',
         href: '/raportet/financa',
         permission: [PERMISSIONS.reportsReceivables, PERMISSIONS.reportsPayables],
+      },
+      {
+        label: 'Raportet Kontabel',
+        href: '/raportet/kontabiliteti',
+        permission: PERMISSIONS.reportsAccounting,
       },
       { label: 'Raportet e Stokut', href: '/raportet/stoku', permission: PERMISSIONS.stockRead },
     ],

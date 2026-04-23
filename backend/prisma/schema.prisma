@@ -116,6 +116,40 @@ enum FinanceStatementLineStatus {
   @@map("finance_statement_line_status")
 }
 
+enum LedgerAccountCategory {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  CONTRA_REVENUE
+  EXPENSE
+
+  @@map("ledger_account_category")
+}
+
+enum LedgerAccountReportSection {
+  CURRENT_ASSET
+  NON_CURRENT_ASSET
+  CURRENT_LIABILITY
+  NON_CURRENT_LIABILITY
+  EQUITY
+  REVENUE
+  CONTRA_REVENUE
+  COST_OF_SALES
+  OPERATING_EXPENSE
+  OTHER_INCOME
+  OTHER_EXPENSE
+
+  @@map("ledger_account_report_section")
+}
+
+enum JournalEntryLineSide {
+  DEBIT
+  CREDIT
+
+  @@map("journal_entry_line_side")
+}
+
 model Role {
   id        String   @id @default(uuid()) @db.Uuid
   code      String   @unique @db.VarChar(30)
@@ -147,6 +181,7 @@ model User {
   createdFinanceAccountTransactions   FinanceAccountTransaction[]   @relation("FinanceAccountTransactionCreatedBy")
   createdFinanceStatementLines        FinanceStatementLine[]        @relation("FinanceStatementLineCreatedBy")
   createdFinanceStatementMatches      FinanceStatementMatch[]       @relation("FinanceStatementMatchCreatedBy")
+  createdJournalEntries               JournalEntry[]                @relation("JournalEntryCreatedBy")
   closedFinancialPeriods              FinancialPeriod[]             @relation("FinancialPeriodClosedBy")
   reopenedFinancialPeriods            FinancialPeriod[]             @relation("FinancialPeriodReopenedBy")
   auditLogs                           AuditLog[]
@@ -302,6 +337,7 @@ model FinanceAccount {
   id             String                      @id @default(uuid()) @db.Uuid
   code           String                      @unique @db.VarChar(30)
   name           String                      @db.VarChar(120)
+  ledgerAccountId String?                    @map("ledger_account_id") @db.Uuid
   accountType    FinanceAccountType          @map("account_type")
   currencyCode   String                      @default("EUR") @map("currency_code") @db.VarChar(10)
   bankName       String?                     @map("bank_name") @db.VarChar(120)
@@ -312,13 +348,82 @@ model FinanceAccount {
   currentBalance Decimal                     @default(0) @map("current_balance") @db.Decimal(18, 2)
   isActive       Boolean                     @default(true) @map("is_active")
   notes          String?
+  ledgerAccount  LedgerAccount?             @relation(fields: [ledgerAccountId], references: [id])
   transactions   FinanceAccountTransaction[]
   statementLines FinanceStatementLine[]
   createdAt      DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  @@index([ledgerAccountId])
   @@index([accountType, isActive])
   @@map("finance_accounts")
+}
+
+model LedgerAccount {
+  id             String                     @id @default(uuid()) @db.Uuid
+  code           String                     @unique @db.VarChar(30)
+  name           String                     @db.VarChar(150)
+  category       LedgerAccountCategory
+  reportSection  LedgerAccountReportSection @map("report_section")
+  isSystem       Boolean                    @default(false) @map("is_system")
+  isActive       Boolean                    @default(true) @map("is_active")
+  allowManual    Boolean                    @default(true) @map("allow_manual")
+  sortOrder      Int                        @default(0) @map("sort_order")
+  description    String?                    @db.VarChar(255)
+  parentId       String?                    @map("parent_id") @db.Uuid
+  parent         LedgerAccount?             @relation("LedgerAccountTree", fields: [parentId], references: [id])
+  children       LedgerAccount[]            @relation("LedgerAccountTree")
+  financeAccounts FinanceAccount[]
+  journalLines   JournalEntryLine[]
+  createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([category, isActive])
+  @@index([reportSection])
+  @@index([parentId])
+  @@map("ledger_accounts")
+}
+
+model JournalEntry {
+  id             String             @id @default(uuid()) @db.Uuid
+  entryNo        String             @unique @map("entry_no") @db.VarChar(50)
+  entryDate      DateTime           @map("entry_date") @db.Date
+  year           Int
+  month          Int
+  description    String             @db.VarChar(255)
+  sourceType     String?            @map("source_type") @db.VarChar(50)
+  sourceId       String?            @map("source_id") @db.Uuid
+  sourceNo       String?            @map("source_no") @db.VarChar(100)
+  createdById    String             @map("created_by") @db.Uuid
+  createdBy      User               @relation("JournalEntryCreatedBy", fields: [createdById], references: [id])
+  lines          JournalEntryLine[]
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([entryDate])
+  @@index([year, month])
+  @@index([sourceType, sourceId])
+  @@index([createdById])
+  @@map("journal_entries")
+}
+
+model JournalEntryLine {
+  id             String               @id @default(uuid()) @db.Uuid
+  journalEntryId String               @map("journal_entry_id") @db.Uuid
+  accountId      String               @map("account_id") @db.Uuid
+  lineNo         Int                  @map("line_no")
+  side           JournalEntryLineSide
+  amount         Decimal              @db.Decimal(18, 2)
+  description    String?              @db.VarChar(255)
+  partyName      String?              @map("party_name") @db.VarChar(200)
+  journalEntry   JournalEntry         @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  account        LedgerAccount        @relation(fields: [accountId], references: [id])
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([journalEntryId, lineNo])
+  @@index([accountId])
+  @@index([side])
+  @@map("journal_entry_lines")
 }
 
 model DocumentSeries {

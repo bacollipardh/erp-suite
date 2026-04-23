@@ -23,6 +23,7 @@ import {
 } from '../common/utils/finance-settlements';
 import { FinanceAccountsService } from '../finance-accounts/finance-accounts.service';
 import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
+import { AccountingService } from '../accounting/accounting.service';
 
 @Injectable()
 export class PurchaseInvoicesService {
@@ -32,6 +33,7 @@ export class PurchaseInvoicesService {
     private readonly auditLogs: AuditLogsService,
     private readonly financeAccountsService: FinanceAccountsService,
     private readonly financialPeriodsService: FinancialPeriodsService,
+    private readonly accountingService: AccountingService,
   ) {}
 
   async findAll(query: PaginationDto = {}) {
@@ -413,6 +415,14 @@ export class PurchaseInvoicesService {
         });
       }
 
+      await this.accountingService.postPurchaseInvoiceTx(tx, {
+        invoice: {
+          ...updated,
+          supplier: existing.supplier,
+        },
+        createdById: postedById,
+      });
+
       return updated;
     });
 
@@ -573,6 +583,8 @@ async recordPayment(id: string, dto: RecordPaymentDto, userId: string) {
         const accountTransaction = await this.financeAccountsService.recordPaymentTransactionTx(tx, {
           financeAccountId: dto.financeAccountId,
           amount: allocation.enteredAmount,
+          appliedAmount: allocation.appliedAmount,
+          unappliedAmount: allocation.unappliedAmount,
           transactionDate: paymentDate,
           createdById: userId,
           referenceNo: dto.referenceNo,

@@ -20,6 +20,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ApplyFinanceSettlementDto } from './dto/apply-finance-settlement.dto';
 import { ListFinanceSettlementsQueryDto } from './dto/list-finance-settlements-query.dto';
 import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
+import { AccountingService } from '../accounting/accounting.service';
 
 const RECEIVABLE_STATUSES = [
   DocumentStatus.POSTED,
@@ -65,6 +66,7 @@ export class FinanceSettlementsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly financialPeriodsService: FinancialPeriodsService,
+    private readonly accountingService: AccountingService,
   ) {}
 
   async getReceiptSettlements(query: ListFinanceSettlementsQueryDto = {}) {
@@ -706,6 +708,16 @@ export class FinanceSettlementsService {
           },
         });
 
+        await this.accountingService.postSettlementAllocationTx(tx, {
+          financeSettlementType: FinanceSettlementType.RECEIPT,
+          allocationId: allocation.id,
+          allocationDate,
+          amount: requestedAmount,
+          referenceNo: settlement.referenceNo,
+          notes: dto.notes,
+          createdById: userId,
+        });
+
         const refreshedSettlement = await tx.financeSettlement.findUnique({
           where: { id: settlement.id },
           include: {
@@ -890,6 +902,16 @@ export class FinanceSettlementsService {
             isReallocation: true,
           } as Prisma.InputJsonValue,
         },
+      });
+
+      await this.accountingService.postSettlementAllocationTx(tx, {
+        financeSettlementType: FinanceSettlementType.PAYMENT,
+        allocationId: allocation.id,
+        allocationDate,
+        amount: requestedAmount,
+        referenceNo: settlement.referenceNo,
+        notes: dto.notes,
+        createdById: userId,
       });
 
       const refreshedSettlement = await tx.financeSettlement.findUnique({

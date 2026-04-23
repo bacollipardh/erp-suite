@@ -2,7 +2,10 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { MovementType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { round2 } from '../common/utils/money';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
+import { AccountingService } from '../accounting/accounting.service';
+import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStockAdjustmentDto } from './dto/create-stock-adjustment.dto';
 import { CreateStockCountDto } from './dto/create-stock-count.dto';
@@ -67,6 +70,8 @@ export class StockService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLogs: AuditLogsService,
+    private readonly financialPeriodsService: FinancialPeriodsService,
+    private readonly accountingService: AccountingService,
   ) {}
 
   async findBalances(query: StockBalanceQueryDto = {}) {
@@ -321,6 +326,12 @@ export class StockService {
     const movementAt = dto.movementAt ? new Date(dto.movementAt) : new Date();
     const referenceNo = dto.referenceNo ?? `ADJ-${operationId.slice(0, 8).toUpperCase()}`;
 
+    await this.financialPeriodsService.assertDateOpen(
+      movementAt,
+      userId,
+      'Adjustimi i stokut',
+    );
+
     const result = await this.prisma.$transaction(async (tx) => {
       const balance = await tx.stockBalance.findUnique({
         where: {
@@ -337,6 +348,7 @@ export class StockService {
 
       const currentQty = Number(balance?.qtyOnHand ?? 0);
       const qtyChange = Number(dto.qtyChange);
+      const unitCost = Number(dto.unitCost ?? balance?.avgCost ?? 0);
 
       if (qtyChange < 0 && currentQty < Math.abs(qtyChange)) {
         throw new BadRequestException('Adjustment would reduce stock below zero');
@@ -349,7 +361,7 @@ export class StockService {
           qtyChange > 0 ? MovementType.ADJUSTMENT_PLUS : MovementType.ADJUSTMENT_MINUS,
         qtyIn: qtyChange > 0 ? qtyChange : 0,
         qtyOut: qtyChange < 0 ? Math.abs(qtyChange) : 0,
-        unitCost: dto.unitCost ?? Number(balance?.avgCost ?? 0),
+        unitCost,
         referenceNo,
         movementAt,
       });
@@ -366,6 +378,20 @@ export class StockService {
           item: true,
         },
       });
+
+      const journalAmount = round2(Math.abs(qtyChange) * unitCost);
+      if (journalAmount > 0) {
+        await this.accountingService.postInventoryAdjustmentTx(tx, {
+          sourceType: 'STOCK_ADJUSTMENT',
+          sourceId: operationId,
+          referenceNo,
+          movementDate: movementAt,
+          amount: journalAmount,
+          isPositive: qtyChange > 0,
+          itemName: updatedBalance?.item?.name ?? balance?.item?.name ?? null,
+          createdById: userId,
+        });
+      }
 
       return {
         operationId,
@@ -404,6 +430,12 @@ export class StockService {
     const operationId = randomUUID();
     const movementAt = dto.movementAt ? new Date(dto.movementAt) : new Date();
     const referenceNo = dto.referenceNo ?? `TRF-${operationId.slice(0, 8).toUpperCase()}`;
+
+    await this.financialPeriodsService.assertDateOpen(
+      movementAt,
+      userId,
+      'Transferi i stokut',
+    );
 
     const result = await this.prisma.$transaction(async (tx) => {
       const sourceBalance = await tx.stockBalance.findUnique({
@@ -504,6 +536,12 @@ export class StockService {
     const countedAt = dto.countedAt ? new Date(dto.countedAt) : new Date();
     const referenceNo = dto.referenceNo ?? `CNT-${operationId.slice(0, 8).toUpperCase()}`;
 
+    await this.financialPeriodsService.assertDateOpen(
+      countedAt,
+      userId,
+      'Numerimi i stokut',
+    );
+
     const result = await this.prisma.$transaction(async (tx) => {
       const balance = await tx.stockBalance.findUnique({
         where: {
@@ -521,6 +559,7 @@ export class StockService {
       const currentQty = Number(balance?.qtyOnHand ?? 0);
       const countedQty = Number(dto.countedQty);
       const difference = countedQty - currentQty;
+      const unitCost = Number(dto.unitCost ?? balance?.avgCost ?? 0);
 
       if (difference !== 0) {
         await this.applyMovement(tx, {
@@ -529,7 +568,7 @@ export class StockService {
           movementType: difference > 0 ? MovementType.COUNT_IN : MovementType.COUNT_OUT,
           qtyIn: difference > 0 ? difference : 0,
           qtyOut: difference < 0 ? Math.abs(difference) : 0,
-          unitCost: dto.unitCost ?? Number(balance?.avgCost ?? 0),
+          unitCost,
           referenceNo,
           movementAt: countedAt,
         });
@@ -547,6 +586,20 @@ export class StockService {
           item: true,
         },
       });
+
+      const journalAmount = round2(Math.abs(difference) * unitCost);
+      if (difference !== 0 && journalAmount > 0) {
+        await this.accountingService.postInventoryAdjustmentTx(tx, {
+          sourceType: 'STOCK_COUNT',
+          sourceId: operationId,
+          referenceNo,
+          movementDate: countedAt,
+          amount: journalAmount,
+          isPositive: difference > 0,
+          itemName: updatedBalance?.item?.name ?? balance?.item?.name ?? null,
+          createdById: userId,
+        });
+      }
 
       return {
         operationId,

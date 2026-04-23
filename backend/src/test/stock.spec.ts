@@ -1,7 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MovementType } from '@prisma/client';
+import { AccountingService } from '../accounting/accounting.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../stock/stock.service';
 
@@ -32,6 +34,14 @@ const mockAuditLogs = {
   log: jest.fn(),
 };
 
+const mockFinancialPeriods = {
+  assertDateOpen: jest.fn(),
+};
+
+const mockAccountingService = {
+  postInventoryAdjustmentTx: jest.fn(),
+};
+
 describe('StockService', () => {
   let service: StockService;
 
@@ -41,6 +51,8 @@ describe('StockService', () => {
         StockService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AuditLogsService, useValue: mockAuditLogs },
+        { provide: FinancialPeriodsService, useValue: mockFinancialPeriods },
+        { provide: AccountingService, useValue: mockAccountingService },
       ],
     }).compile();
 

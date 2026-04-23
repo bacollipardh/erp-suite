@@ -50,6 +50,7 @@ export default async function ReportsHubPage() {
     PERMISSIONS.reportsSales,
     PERMISSIONS.reportsReceivables,
     PERMISSIONS.reportsPayables,
+    PERMISSIONS.reportsAccounting,
     PERMISSIONS.stockRead,
   ]);
 
@@ -58,6 +59,7 @@ export default async function ReportsHubPage() {
     PERMISSIONS.reportsReceivables,
     PERMISSIONS.reportsPayables,
   ]);
+  const canAccounting = hasPermission(user.permissions, PERMISSIONS.reportsAccounting);
   const canStock = hasPermission(user.permissions, PERMISSIONS.stockRead);
 
   return (
@@ -69,7 +71,7 @@ export default async function ReportsHubPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
         {canSales ? (
           <ReportHubCard
             title="Raportet e Shitjes"
@@ -87,6 +89,14 @@ export default async function ReportsHubPage() {
             description="Receivables, payables, aging, exposure, arketimet dhe pagesat e fundit me filtra te ndare nga raportet e shitjes."
           />
         ) : null}
+        {canAccounting ? (
+          <ReportHubCard
+            title="Raportet Kontabel"
+            badge="Kontabiliteti"
+            href="/raportet/kontabiliteti"
+            description="Trial balance, profit & loss dhe balance sheet mbi journal entries te gjeneruara nga shitja, blerja, financa dhe stoku."
+          />
+        ) : null}
         {canStock ? (
           <ReportHubCard
             title="Raportet e Stokut"
@@ -99,7 +109,7 @@ export default async function ReportsHubPage() {
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-base font-semibold text-slate-900">Parimi i organizimit</h2>
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600">
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-4 text-sm text-slate-600">
           <div className="rounded-xl bg-slate-50 p-4">
             <p className="font-medium text-slate-900">Shitja</p>
             <p className="mt-1">
@@ -110,6 +120,12 @@ export default async function ReportsHubPage() {
             <p className="font-medium text-slate-900">Financa</p>
             <p className="mt-1">
               Arketimet, pagesat, rialokimet, aging dhe exposure qendrojne te gjitha ne nje domain financiar te vecuar.
+            </p>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-4">
+            <p className="font-medium text-slate-900">Kontabiliteti</p>
+            <p className="mt-1">
+              Libri kontabel, journal entries dhe pasqyrat financiare jane shtresa kontabel e vecuar mbi operacionet.
             </p>
           </div>
           <div className="rounded-xl bg-slate-50 p-4">

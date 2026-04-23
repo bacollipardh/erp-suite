@@ -15,6 +15,8 @@ describe('Permission matrix', () => {
 
     expect(permissions).toContain(PERMISSIONS.stockAdjust);
     expect(permissions).toContain(PERMISSIONS.stockTransfer);
+    expect(permissions).toContain(PERMISSIONS.accountingRead);
+    expect(permissions).toContain(PERMISSIONS.reportsAccounting);
     expect(permissions).not.toContain(PERMISSIONS.rolesManage);
     expect(hasPermissions('MANAGER', [PERMISSIONS.stockAdjust, PERMISSIONS.stockTransfer])).toBe(true);
     expect(hasPermissions('MANAGER', [PERMISSIONS.rolesManage])).toBe(false);
@@ -27,6 +29,8 @@ describe('Permission matrix', () => {
     expect(permissions).toContain(PERMISSIONS.salesReturnsManage);
     expect(permissions).not.toContain(PERMISSIONS.purchaseInvoicesManage);
     expect(permissions).not.toContain(PERMISSIONS.stockAdjust);
+    expect(permissions).not.toContain(PERMISSIONS.accountingRead);
+    expect(permissions).not.toContain(PERMISSIONS.reportsAccounting);
   });
 
   it('returns no permissions for unknown roles', () => {

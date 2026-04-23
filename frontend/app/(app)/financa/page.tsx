@@ -23,6 +23,8 @@ export default async function FinanceHubPage() {
     PERMISSIONS.purchaseInvoicesPay,
     PERMISSIONS.financeAccountsRead,
     PERMISSIONS.financialPeriodsRead,
+    PERMISSIONS.accountingRead,
+    PERMISSIONS.reportsAccounting,
   ]);
 
   const currentYear = new Date().getUTCFullYear();
@@ -32,6 +34,8 @@ export default async function FinanceHubPage() {
   const canPaymentReallocation = hasPermission(user.permissions, PERMISSIONS.purchaseInvoicesPay);
   const canFinanceAccounts = hasPermission(user.permissions, PERMISSIONS.financeAccountsRead);
   const canFinancialPeriods = hasPermission(user.permissions, PERMISSIONS.financialPeriodsRead);
+  const canAccountingRead = hasPermission(user.permissions, PERMISSIONS.accountingRead);
+  const canAccountingReports = hasPermission(user.permissions, PERMISSIONS.reportsAccounting);
   const canFinanceReports = hasPermission(user.permissions, [
     PERMISSIONS.reportsReceivables,
     PERMISSIONS.reportsPayables,
@@ -116,6 +120,18 @@ export default async function FinanceHubPage() {
           subtitle="Kontrolli i mbylljes mujore"
           href={canFinancialPeriods ? '/financa/periudhat' : undefined}
         />
+        <StatsCard
+          title="Libri Kontabel"
+          value={canAccountingRead ? 'Aktiv' : '-'}
+          subtitle="Chart of accounts & journal"
+          href={canAccountingRead ? '/financa/libri-kontabel' : undefined}
+        />
+        <StatsCard
+          title="Raportet Kontabel"
+          value={canAccountingReports ? 'Hap' : '-'}
+          subtitle="Trial balance, P&L, balance sheet"
+          href={canAccountingReports ? '/raportet/kontabiliteti' : undefined}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -143,6 +159,24 @@ export default async function FinanceHubPage() {
             description="Hap, soft-close ose mbyll muajt financiare dhe kontrollo closing pack me blockers, exposure dhe reconciliation."
             href="/financa/periudhat"
             badge="Month End"
+            tone="slate"
+          />
+        ) : null}
+        {canAccountingRead ? (
+          <DomainActionCard
+            title="Libri Kontabel"
+            description="Kontrollo chart of accounts, journal entries dhe balancat e ledger-it te gjeneruara nga i gjithe sistemi."
+            href="/financa/libri-kontabel"
+            badge="Accounting"
+            tone="indigo"
+          />
+        ) : null}
+        {canAccountingReports ? (
+          <DomainActionCard
+            title="Raportet Kontabel"
+            description="Shiko trial balance, fitim-humbjen dhe balance sheet mbi journal entries reale dhe periudha financiare."
+            href="/raportet/kontabiliteti"
+            badge="Accounting"
             tone="slate"
           />
         ) : null}

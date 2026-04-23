@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DocumentStatus } from '@prisma/client';
+import { AccountingService } from '../accounting/accounting.service';
 import { SalesReturnsService } from '../sales-returns/sales-returns.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
@@ -54,6 +55,10 @@ const mockFinancialPeriodsService = {
   assertDateOpen: jest.fn().mockResolvedValue(null),
 };
 
+const mockAccountingService = {
+  postSalesReturnTx: jest.fn(),
+};
+
 describe('SalesReturnsService', () => {
   let service: SalesReturnsService;
 
@@ -65,6 +70,7 @@ describe('SalesReturnsService', () => {
         { provide: AuditLogsService, useValue: mockAuditLogs },
         { provide: StockService, useValue: mockStockService },
         { provide: FinancialPeriodsService, useValue: mockFinancialPeriodsService },
+        { provide: AccountingService, useValue: mockAccountingService },
       ],
     }).compile();
 

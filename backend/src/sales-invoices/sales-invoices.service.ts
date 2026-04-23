@@ -23,6 +23,7 @@ import {
 } from '../common/utils/finance-settlements';
 import { FinanceAccountsService } from '../finance-accounts/finance-accounts.service';
 import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
+import { AccountingService } from '../accounting/accounting.service';
 
 @Injectable()
 export class SalesInvoicesService {
@@ -32,6 +33,7 @@ export class SalesInvoicesService {
     private readonly auditLogs: AuditLogsService,
     private readonly financeAccountsService: FinanceAccountsService,
     private readonly financialPeriodsService: FinancialPeriodsService,
+    private readonly accountingService: AccountingService,
   ) {}
 
   async findAll(query: PaginationDto = {}) {
@@ -426,6 +428,7 @@ export class SalesInvoicesService {
         include: { lines: true },
       });
 
+      let inventoryValue = 0;
       for (const line of updated.lines) {
         const balance = await tx.stockBalance.findUnique({
           where: {
@@ -446,7 +449,20 @@ export class SalesInvoicesService {
           referenceNo: updated.docNo,
           movementAt: new Date(),
         });
+
+        inventoryValue = round2(
+          inventoryValue + Number(line.qty ?? 0) * Number(balance?.avgCost ?? 0),
+        );
       }
+
+      await this.accountingService.postSalesInvoiceTx(tx, {
+        invoice: {
+          ...updated,
+          customer: existing.customer,
+        },
+        createdById: postedById,
+        inventoryValue,
+      });
 
       return updated;
     });
@@ -608,6 +624,8 @@ export class SalesInvoicesService {
         const accountTransaction = await this.financeAccountsService.recordReceiptTransactionTx(tx, {
           financeAccountId: dto.financeAccountId,
           amount: allocation.enteredAmount,
+          appliedAmount: allocation.appliedAmount,
+          unappliedAmount: allocation.unappliedAmount,
           transactionDate: paymentDate,
           createdById: userId,
           referenceNo: dto.referenceNo,

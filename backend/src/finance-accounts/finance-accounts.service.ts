@@ -20,6 +20,7 @@ import { CreateFinanceTransferDto } from './dto/create-finance-transfer.dto';
 import { ListFinanceAccountsQueryDto } from './dto/list-finance-accounts-query.dto';
 import { ListFinanceAccountTransactionsQueryDto } from './dto/list-finance-account-transactions-query.dto';
 import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
+import { AccountingService } from '../accounting/accounting.service';
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -64,6 +65,7 @@ export class FinanceAccountsService {
     private readonly prisma: PrismaService,
     private readonly auditLogs: AuditLogsService,
     private readonly financialPeriodsService: FinancialPeriodsService,
+    private readonly accountingService: AccountingService,
   ) {}
 
   async findAll(query: ListFinanceAccountsQueryDto = {}) {
@@ -269,28 +271,44 @@ export class FinanceAccountsService {
           iban: normalizeOptional(dto.iban),
           swiftCode: normalizeOptional(dto.swiftCode),
           openingBalance,
-          currentBalance: openingBalance,
+          currentBalance: 0,
           isActive: dto.isActive ?? true,
           notes: normalizeOptional(dto.notes),
         },
       });
 
+      await this.accountingService.ensureFinanceAccountLedgerTx(tx, {
+        financeAccountId: account.id,
+        code: account.code,
+        name: account.name,
+        accountType: account.accountType,
+        isActive: account.isActive,
+        notes: account.notes,
+      });
+
       if (openingBalance !== 0) {
-        await tx.financeAccountTransaction.create({
-          data: {
-            accountId: account.id,
-            transactionType: FinanceAccountTransactionType.OPENING,
-            amount: openingBalance,
-            balanceBefore: 0,
-            balanceAfter: openingBalance,
-            transactionDate: openingDate,
-            notes: 'Opening balance',
-            createdById: userId,
-          },
+        const openingTransaction = await this.createAccountTransactionTx(tx, {
+          accountId: account.id,
+          amount: openingBalance,
+          transactionType: FinanceAccountTransactionType.OPENING,
+          transactionDate: openingDate,
+          notes: 'Opening balance',
+          createdById: userId,
+        });
+
+        await this.accountingService.postOpeningBalanceTx(tx, {
+          financeTransactionId: openingTransaction.id,
+          financeAccountId: account.id,
+          amount: openingBalance,
+          transactionDate: openingDate,
+          accountName: account.name,
+          createdById: userId,
         });
       }
 
-      return account;
+      return tx.financeAccount.findUniqueOrThrow({
+        where: { id: account.id },
+      });
     });
 
     await this.auditLogs.log({
@@ -321,6 +339,18 @@ export class FinanceAccountsService {
         accountId: dto.financeAccountId,
         amount,
         transactionType,
+        transactionDate,
+        referenceNo: dto.referenceNo,
+        counterpartyName: dto.counterpartyName,
+        notes: dto.notes,
+        createdById: userId,
+      });
+
+      await this.accountingService.postManualFinanceTransactionTx(tx, {
+        financeTransactionId: created.id,
+        financeAccountId: created.accountId,
+        transactionType,
+        amount,
         transactionDate,
         referenceNo: dto.referenceNo,
         counterpartyName: dto.counterpartyName,
@@ -386,6 +416,18 @@ export class FinanceAccountsService {
         createdById: userId,
       });
 
+      await this.accountingService.postFinanceTransferTx(tx, {
+        transferGroupId,
+        sourceTransactionId: sourceTx.id,
+        destinationTransactionId: destinationTx.id,
+        sourceAccountId: source.id,
+        destinationAccountId: destination.id,
+        amount,
+        transactionDate,
+        referenceNo: dto.referenceNo,
+        createdById: userId,
+      });
+
       await tx.auditLog.create({
         data: {
           userId,
@@ -428,9 +470,11 @@ export class FinanceAccountsService {
       sourceDocumentNo?: string;
       financeSettlementId?: string;
       sourceAuditLogId?: string;
+      appliedAmount?: number;
+      unappliedAmount?: number;
     },
   ) {
-    return this.createAccountTransactionTx(tx, {
+    const created = await this.createAccountTransactionTx(tx, {
       accountId: params.financeAccountId,
       amount: round2(params.amount),
       transactionType: FinanceAccountTransactionType.RECEIPT,
@@ -445,6 +489,21 @@ export class FinanceAccountsService {
       sourceAuditLogId: params.sourceAuditLogId,
       createdById: params.createdById,
     });
+
+    await this.accountingService.postReceiptTx(tx, {
+      financeTransactionId: created.id,
+      financeAccountId: params.financeAccountId,
+      enteredAmount: round2(params.amount),
+      appliedAmount: round2(params.appliedAmount ?? params.amount),
+      unappliedAmount: round2(params.unappliedAmount ?? 0),
+      transactionDate: params.transactionDate,
+      referenceNo: params.referenceNo,
+      partyName: params.counterpartyName,
+      notes: params.notes,
+      createdById: params.createdById,
+    });
+
+    return created;
   }
 
   async recordPaymentTransactionTx(
@@ -461,9 +520,11 @@ export class FinanceAccountsService {
       sourceDocumentNo?: string;
       financeSettlementId?: string;
       sourceAuditLogId?: string;
+      appliedAmount?: number;
+      unappliedAmount?: number;
     },
   ) {
-    return this.createAccountTransactionTx(tx, {
+    const created = await this.createAccountTransactionTx(tx, {
       accountId: params.financeAccountId,
       amount: round2(params.amount),
       transactionType: FinanceAccountTransactionType.PAYMENT,
@@ -478,6 +539,21 @@ export class FinanceAccountsService {
       sourceAuditLogId: params.sourceAuditLogId,
       createdById: params.createdById,
     });
+
+    await this.accountingService.postPaymentTx(tx, {
+      financeTransactionId: created.id,
+      financeAccountId: params.financeAccountId,
+      enteredAmount: round2(params.amount),
+      appliedAmount: round2(params.appliedAmount ?? params.amount),
+      unappliedAmount: round2(params.unappliedAmount ?? 0),
+      transactionDate: params.transactionDate,
+      referenceNo: params.referenceNo,
+      partyName: params.counterpartyName,
+      notes: params.notes,
+      createdById: params.createdById,
+    });
+
+    return created;
   }
 
   private async getAccountOrThrowTx(tx: TransactionClient, id: string) {

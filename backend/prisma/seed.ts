@@ -1,4 +1,12 @@
-import { FinanceAccountType, FiscalMode, PrismaClient } from '@prisma/client';
+import {
+  FinanceAccountTransactionType,
+  FinanceAccountType,
+  FiscalMode,
+  JournalEntryLineSide,
+  LedgerAccountCategory,
+  LedgerAccountReportSection,
+  PrismaClient,
+} from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -6,6 +14,155 @@ const prisma = new PrismaClient();
 const DEFAULT_PASSWORD = 'Admin123!';
 const ADMIN_ID = '11111111-1111-1111-1111-111111111111';
 const COMPANY_PROFILE_ID = '00000000-0000-0000-0000-000000000001';
+const SEED_INVENTORY_OPENING_SOURCE_ID = '00000000-0000-0000-0000-0000000000a1';
+
+const SYSTEM_LEDGER_ACCOUNT_CODES = {
+  accountsReceivable: 'AR_TRADE',
+  accountsPayable: 'AP_TRADE',
+  inventory: 'INVENTORY',
+  vatInput: 'VAT_INPUT',
+  vatOutput: 'VAT_OUTPUT',
+  salesRevenue: 'SALES_REVENUE',
+  salesReturns: 'SALES_RETURNS',
+  costOfSales: 'COST_OF_SALES',
+  customerAdvances: 'CUSTOMER_ADVANCES',
+  supplierAdvances: 'SUPPLIER_ADVANCES',
+  openingEquity: 'OPENING_EQUITY',
+  otherIncome: 'OTHER_INCOME',
+  otherExpense: 'OTHER_EXPENSE',
+  inventoryGain: 'INVENTORY_GAIN',
+  inventoryLoss: 'INVENTORY_LOSS',
+} as const;
+
+const SYSTEM_LEDGER_ACCOUNTS: Array<{
+  code: string;
+  name: string;
+  category: LedgerAccountCategory;
+  reportSection: LedgerAccountReportSection;
+  sortOrder: number;
+  description: string;
+}> = [
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.accountsReceivable,
+    name: 'Llogari te Arketueshme',
+    category: LedgerAccountCategory.ASSET,
+    reportSection: LedgerAccountReportSection.CURRENT_ASSET,
+    sortOrder: 1100,
+    description: 'Konto kontrolli per klientet dhe faturat e shitjes.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.supplierAdvances,
+    name: 'Parapagime ndaj Furnitoreve',
+    category: LedgerAccountCategory.ASSET,
+    reportSection: LedgerAccountReportSection.CURRENT_ASSET,
+    sortOrder: 1150,
+    description: 'Parapagimet dhe tepricat ndaj furnitoreve.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.inventory,
+    name: 'Inventari',
+    category: LedgerAccountCategory.ASSET,
+    reportSection: LedgerAccountReportSection.CURRENT_ASSET,
+    sortOrder: 1200,
+    description: 'Vlera kontabel e inventarit.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.vatInput,
+    name: 'TVSH e Zbritshme',
+    category: LedgerAccountCategory.ASSET,
+    reportSection: LedgerAccountReportSection.CURRENT_ASSET,
+    sortOrder: 1300,
+    description: 'TVSH hyrse e zbritshme nga blerjet.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.accountsPayable,
+    name: 'Llogari te Pagueshme',
+    category: LedgerAccountCategory.LIABILITY,
+    reportSection: LedgerAccountReportSection.CURRENT_LIABILITY,
+    sortOrder: 2100,
+    description: 'Konto kontrolli per furnitoret dhe faturat e blerjes.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.customerAdvances,
+    name: 'Avanse nga Klientet',
+    category: LedgerAccountCategory.LIABILITY,
+    reportSection: LedgerAccountReportSection.CURRENT_LIABILITY,
+    sortOrder: 2150,
+    description: 'Parapagime dhe teprica te marra nga klientet.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.vatOutput,
+    name: 'TVSH e Daljes',
+    category: LedgerAccountCategory.LIABILITY,
+    reportSection: LedgerAccountReportSection.CURRENT_LIABILITY,
+    sortOrder: 2200,
+    description: 'TVSH dalese nga shitjet.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.openingEquity,
+    name: 'Kapitali Fillestar',
+    category: LedgerAccountCategory.EQUITY,
+    reportSection: LedgerAccountReportSection.EQUITY,
+    sortOrder: 3000,
+    description: 'Konto e balancave hapese dhe kapitalit fillestar.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.salesRevenue,
+    name: 'Te Ardhura nga Shitja',
+    category: LedgerAccountCategory.REVENUE,
+    reportSection: LedgerAccountReportSection.REVENUE,
+    sortOrder: 4000,
+    description: 'Te ardhurat neto nga faturat e shitjes.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.salesReturns,
+    name: 'Kthime nga Shitja',
+    category: LedgerAccountCategory.CONTRA_REVENUE,
+    reportSection: LedgerAccountReportSection.CONTRA_REVENUE,
+    sortOrder: 4100,
+    description: 'Konto kunder te ardhurave per credit notes dhe kthime.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.costOfSales,
+    name: 'Kosto e Mallit te Shitur',
+    category: LedgerAccountCategory.EXPENSE,
+    reportSection: LedgerAccountReportSection.COST_OF_SALES,
+    sortOrder: 5000,
+    description: 'COGS per shitjet e postuara.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.inventoryLoss,
+    name: 'Humbje nga Inventari',
+    category: LedgerAccountCategory.EXPENSE,
+    reportSection: LedgerAccountReportSection.OPERATING_EXPENSE,
+    sortOrder: 6100,
+    description: 'Humbje nga inventari, adjustime negative dhe count-out.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.otherExpense,
+    name: 'Shpenzime te Tjera Operative',
+    category: LedgerAccountCategory.EXPENSE,
+    reportSection: LedgerAccountReportSection.OTHER_EXPENSE,
+    sortOrder: 6900,
+    description: 'Konto default per pagesa manuale dalese.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.inventoryGain,
+    name: 'Fitime nga Inventari',
+    category: LedgerAccountCategory.REVENUE,
+    reportSection: LedgerAccountReportSection.OTHER_INCOME,
+    sortOrder: 7100,
+    description: 'Fitime nga inventari, adjustime pozitive dhe count-in.',
+  },
+  {
+    code: SYSTEM_LEDGER_ACCOUNT_CODES.otherIncome,
+    name: 'Te Ardhura te Tjera Operative',
+    category: LedgerAccountCategory.REVENUE,
+    reportSection: LedgerAccountReportSection.OTHER_INCOME,
+    sortOrder: 7900,
+    description: 'Konto default per hyrje manuale financiare.',
+  },
+];
 
 function inferNextSeriesNumber(params: {
   prefix: string;
@@ -206,6 +363,312 @@ async function upsertFinanceAccount(params: {
   });
 }
 
+async function ensureChartOfAccountsSeed() {
+  for (const account of SYSTEM_LEDGER_ACCOUNTS) {
+    await prisma.ledgerAccount.upsert({
+      where: { code: account.code },
+      update: {
+        name: account.name,
+        category: account.category,
+        reportSection: account.reportSection,
+        isSystem: true,
+        isActive: true,
+        allowManual: false,
+        sortOrder: account.sortOrder,
+        description: account.description,
+      },
+      create: {
+        code: account.code,
+        name: account.name,
+        category: account.category,
+        reportSection: account.reportSection,
+        isSystem: true,
+        isActive: true,
+        allowManual: false,
+        sortOrder: account.sortOrder,
+        description: account.description,
+      },
+    });
+  }
+
+  const financeAccounts = await prisma.financeAccount.findMany({
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      accountType: true,
+      isActive: true,
+      notes: true,
+      ledgerAccountId: true,
+    },
+  });
+
+  for (const account of financeAccounts) {
+    const ledgerAccount = await prisma.ledgerAccount.upsert({
+      where: { code: account.code },
+      update: {
+        name: account.name,
+        category: LedgerAccountCategory.ASSET,
+        reportSection: LedgerAccountReportSection.CURRENT_ASSET,
+        isSystem: true,
+        isActive: account.isActive,
+        allowManual: false,
+        sortOrder: account.accountType === FinanceAccountType.CASH ? 1010 : 1020,
+        description: account.notes?.trim() || null,
+      },
+      create: {
+        code: account.code,
+        name: account.name,
+        category: LedgerAccountCategory.ASSET,
+        reportSection: LedgerAccountReportSection.CURRENT_ASSET,
+        isSystem: true,
+        isActive: account.isActive,
+        allowManual: false,
+        sortOrder: account.accountType === FinanceAccountType.CASH ? 1010 : 1020,
+        description: account.notes?.trim() || null,
+      },
+    });
+
+    if (account.ledgerAccountId !== ledgerAccount.id) {
+      await prisma.financeAccount.update({
+        where: { id: account.id },
+        data: { ledgerAccountId: ledgerAccount.id },
+      });
+    }
+  }
+}
+
+async function nextJournalEntryNo(entryDate: Date) {
+  const year = entryDate.getUTCFullYear();
+  const month = entryDate.getUTCMonth() + 1;
+  const prefix = `JE-${year}${String(month).padStart(2, '0')}-`;
+  const count = await prisma.journalEntry.count({
+    where: { year, month },
+  });
+
+  return `${prefix}${String(count + 1).padStart(6, '0')}`;
+}
+
+async function upsertJournalEntryBySource(params: {
+  entryDate: Date;
+  description: string;
+  sourceType: string;
+  sourceId: string;
+  sourceNo?: string | null;
+  createdById: string;
+  lines: Array<{
+    accountId: string;
+    lineNo: number;
+    side: JournalEntryLineSide;
+    amount: number;
+    description?: string | null;
+    partyName?: string | null;
+  }>;
+}) {
+  const entryDate = new Date(
+    Date.UTC(
+      params.entryDate.getUTCFullYear(),
+      params.entryDate.getUTCMonth(),
+      params.entryDate.getUTCDate(),
+    ),
+  );
+  const year = entryDate.getUTCFullYear();
+  const month = entryDate.getUTCMonth() + 1;
+  const existing = await prisma.journalEntry.findFirst({
+    where: {
+      sourceType: params.sourceType,
+      sourceId: params.sourceId,
+    },
+    select: { id: true },
+  });
+
+  const normalizedLines = params.lines
+    .map((line) => ({
+      ...line,
+      amount: Number(line.amount ?? 0),
+    }))
+    .filter((line) => line.amount > 0);
+
+  if (!normalizedLines.length) {
+    return null;
+  }
+
+  if (existing) {
+    await prisma.journalEntryLine.deleteMany({
+      where: { journalEntryId: existing.id },
+    });
+
+    return prisma.journalEntry.update({
+      where: { id: existing.id },
+      data: {
+        entryDate,
+        year,
+        month,
+        description: params.description,
+        sourceType: params.sourceType,
+        sourceId: params.sourceId,
+        sourceNo: params.sourceNo ?? null,
+        createdById: params.createdById,
+        lines: {
+          createMany: {
+            data: normalizedLines,
+          },
+        },
+      },
+    });
+  }
+
+  return prisma.journalEntry.create({
+    data: {
+      entryNo: await nextJournalEntryNo(entryDate),
+      entryDate,
+      year,
+      month,
+      description: params.description,
+      sourceType: params.sourceType,
+      sourceId: params.sourceId,
+      sourceNo: params.sourceNo ?? null,
+      createdById: params.createdById,
+      lines: {
+        createMany: {
+          data: normalizedLines,
+        },
+      },
+    },
+  });
+}
+
+async function seedOpeningLedgerBalances(createdById: string, entryDate: Date) {
+  await ensureChartOfAccountsSeed();
+
+  const openingEquity = await prisma.ledgerAccount.findUniqueOrThrow({
+    where: { code: SYSTEM_LEDGER_ACCOUNT_CODES.openingEquity },
+    select: { id: true },
+  });
+  const inventoryAccount = await prisma.ledgerAccount.findUniqueOrThrow({
+    where: { code: SYSTEM_LEDGER_ACCOUNT_CODES.inventory },
+    select: { id: true },
+  });
+
+  const financeAccounts = await prisma.financeAccount.findMany({
+    where: {
+      openingBalance: { not: 0 },
+    },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      openingBalance: true,
+      ledgerAccountId: true,
+    },
+  });
+
+  for (const account of financeAccounts) {
+    if (!account.ledgerAccountId) {
+      continue;
+    }
+
+    const referenceNo = `SEED-OPEN-${account.code}`;
+    const existingOpening = await prisma.financeAccountTransaction.findFirst({
+      where: {
+        accountId: account.id,
+        transactionType: FinanceAccountTransactionType.OPENING,
+        referenceNo,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const amount = Number(account.openingBalance ?? 0);
+    let transactionId = existingOpening?.id ?? null;
+
+    if (!transactionId) {
+      const openingTransaction = await prisma.financeAccountTransaction.create({
+        data: {
+          accountId: account.id,
+          transactionType: FinanceAccountTransactionType.OPENING,
+          amount,
+          balanceBefore: 0,
+          balanceAfter: amount,
+          transactionDate: entryDate,
+          referenceNo,
+          notes: 'Seed opening balance',
+          createdById,
+        },
+        select: { id: true },
+      });
+
+      transactionId = openingTransaction.id;
+    }
+
+    await upsertJournalEntryBySource({
+      entryDate,
+      description: `Balanca hapese per ${account.name}`,
+      sourceType: 'FINANCE_OPENING',
+      sourceId: transactionId,
+      sourceNo: referenceNo,
+      createdById,
+      lines: [
+        {
+          accountId: account.ledgerAccountId,
+          lineNo: 1,
+          side: JournalEntryLineSide.DEBIT,
+          amount,
+        },
+        {
+          accountId: openingEquity.id,
+          lineNo: 2,
+          side: JournalEntryLineSide.CREDIT,
+          amount,
+        },
+      ],
+    });
+  }
+
+  const stockBalances = await prisma.stockBalance.findMany({
+    where: {
+      qtyOnHand: { gt: 0 },
+    },
+    select: {
+      qtyOnHand: true,
+      avgCost: true,
+    },
+  });
+
+  const inventoryOpeningValue = Number(
+    stockBalances.reduce(
+      (sum, row) => sum + Number(row.qtyOnHand ?? 0) * Number(row.avgCost ?? 0),
+      0,
+    ),
+  );
+
+  if (inventoryOpeningValue > 0) {
+    await upsertJournalEntryBySource({
+      entryDate,
+      description: 'Balanca hapese e inventarit nga seed',
+      sourceType: 'INVENTORY_OPENING',
+      sourceId: SEED_INVENTORY_OPENING_SOURCE_ID,
+      sourceNo: 'SEED-OPEN-INVENTORY',
+      createdById,
+      lines: [
+        {
+          accountId: inventoryAccount.id,
+          lineNo: 1,
+          side: JournalEntryLineSide.DEBIT,
+          amount: inventoryOpeningValue,
+        },
+        {
+          accountId: openingEquity.id,
+          lineNo: 2,
+          side: JournalEntryLineSide.CREDIT,
+          amount: inventoryOpeningValue,
+        },
+      ],
+    });
+  }
+}
+
 async function main() {
   console.log('Seeding database...');
   const currentYear = new Date().getUTCFullYear();
@@ -236,7 +699,7 @@ async function main() {
     create: { code: 'PURCHASE', name: 'Purchase Operator', isActive: true },
   });
 
-  await upsertUser({
+  const adminUser = await upsertUser({
     id: ADMIN_ID,
     roleId: adminRole.id,
     fullName: 'System Admin',
@@ -625,6 +1088,11 @@ async function main() {
       avgCost: 800,
     },
   });
+
+  await seedOpeningLedgerBalances(
+    adminUser.id,
+    new Date(Date.UTC(currentYear, 0, 1)),
+  );
 
   console.log('Seed completed successfully.');
   console.log('');

@@ -11,6 +11,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
 import { resolvePaymentStatus } from '../common/utils/payments';
 import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
+import { AccountingService } from '../accounting/accounting.service';
 
 @Injectable()
 export class SalesReturnsService {
@@ -19,6 +20,7 @@ export class SalesReturnsService {
     private readonly auditLogs: AuditLogsService,
     private readonly stockService: StockService,
     private readonly financialPeriodsService: FinancialPeriodsService,
+    private readonly accountingService: AccountingService,
   ) {}
 
   async findAll(query: PaginationDto = {}) {
@@ -430,6 +432,7 @@ export class SalesReturnsService {
         },
       });
 
+      let inventoryValue = 0;
       for (const line of updated.lines) {
         const balance = await tx.stockBalance.findUnique({
           where: {
@@ -450,6 +453,10 @@ export class SalesReturnsService {
           referenceNo: updated.docNo,
           movementAt: new Date(),
         });
+
+        inventoryValue = round2(
+          inventoryValue + Number(line.qty ?? 0) * Number(balance?.avgCost ?? 0),
+        );
       }
 
       const invoiceLines = await tx.salesInvoiceLine.findMany({
@@ -494,6 +501,12 @@ export class SalesReturnsService {
           },
         });
       }
+
+      await this.accountingService.postSalesReturnTx(tx, {
+        salesReturn: updated,
+        createdById: postedById,
+        inventoryValue,
+      });
 
       return updated;
     });
