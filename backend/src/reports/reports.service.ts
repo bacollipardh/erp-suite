@@ -1,9 +1,18 @@
 import { Injectable } from '@nestjs/common';
-import { DocumentStatus, PaymentStatus } from '@prisma/client';
+import {
+  DocumentStatus,
+  FinanceAccountType,
+  FinanceAccountTransactionType,
+  FinanceStatementLineDirection,
+  FinanceStatementLineStatus,
+  PaymentStatus,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SalesReportQueryDto } from './dto/sales-report-query.dto';
 import { AgingReportQueryDto } from './dto/aging-report-query.dto';
 import { PaymentActivityQueryDto } from './dto/payment-activity-query.dto';
+import { BankReconciliationReportQueryDto } from './dto/bank-reconciliation-report-query.dto';
 import { round2 } from '../common/utils/money';
 import {
   calculateOutstandingAmount,
@@ -117,6 +126,21 @@ function compareStrings(left?: string | null, right?: string | null) {
   return String(left ?? '').localeCompare(String(right ?? ''), 'sq', {
     sensitivity: 'base',
   });
+}
+
+function isBankLedgerInbound(type: FinanceAccountTransactionType) {
+  return (
+    type === FinanceAccountTransactionType.OPENING ||
+    type === FinanceAccountTransactionType.MANUAL_IN ||
+    type === FinanceAccountTransactionType.TRANSFER_IN ||
+    type === FinanceAccountTransactionType.RECEIPT
+  );
+}
+
+function bankLedgerDirection(type: FinanceAccountTransactionType) {
+  return isBankLedgerInbound(type)
+    ? FinanceStatementLineDirection.IN
+    : FinanceStatementLineDirection.OUT;
 }
 
 function parsePaymentMetadata(entry: { metadata?: unknown; createdAt: Date }) {
@@ -461,6 +485,263 @@ export class ReportsService {
       partyKey: 'supplier',
       query,
     });
+  }
+
+  async getBankReconciliationReport(query: BankReconciliationReportQueryDto = {}) {
+    const page = Math.max(query.page ?? 1, 1);
+    const limit = Math.max(query.limit ?? 20, 1);
+    const search = query.search?.trim();
+    const dateFilter =
+      query.dateFrom || query.dateTo
+        ? {
+            gte: query.dateFrom ? new Date(query.dateFrom) : undefined,
+            lte: query.dateTo ? new Date(query.dateTo) : undefined,
+          }
+        : undefined;
+
+    const statementBaseWhere: Prisma.FinanceStatementLineWhereInput = {
+      accountId: query.financeAccountId,
+      direction: query.direction,
+      statementDate: dateFilter,
+      account: { accountType: FinanceAccountType.BANK },
+      OR: search
+        ? [
+            { referenceNo: { contains: search, mode: 'insensitive' } },
+            { externalId: { contains: search, mode: 'insensitive' } },
+            { counterpartyName: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
+            { account: { code: { contains: search, mode: 'insensitive' } } },
+            { account: { name: { contains: search, mode: 'insensitive' } } },
+          ]
+        : undefined,
+    };
+    const statementListWhere: Prisma.FinanceStatementLineWhereInput = {
+      ...statementBaseWhere,
+      status: query.status ?? {
+        in: [
+          FinanceStatementLineStatus.UNMATCHED,
+          FinanceStatementLineStatus.PARTIALLY_MATCHED,
+        ],
+      },
+    };
+    const transactionWhere: Prisma.FinanceAccountTransactionWhereInput = {
+      accountId: query.financeAccountId,
+      transactionDate: dateFilter,
+      account: { accountType: FinanceAccountType.BANK },
+      OR: search
+        ? [
+            { referenceNo: { contains: search, mode: 'insensitive' } },
+            { counterpartyName: { contains: search, mode: 'insensitive' } },
+            { sourceDocumentNo: { contains: search, mode: 'insensitive' } },
+            { notes: { contains: search, mode: 'insensitive' } },
+            { account: { code: { contains: search, mode: 'insensitive' } } },
+            { account: { name: { contains: search, mode: 'insensitive' } } },
+          ]
+        : undefined,
+    };
+    const statementOrderBy: Prisma.FinanceStatementLineOrderByWithRelationInput =
+      query.sortBy === 'amount'
+        ? { amount: query.sortOrder === 'asc' ? 'asc' : 'desc' }
+        : query.sortBy === 'account'
+          ? { account: { name: query.sortOrder === 'asc' ? 'asc' : 'desc' } }
+          : query.sortBy === 'status'
+            ? { status: query.sortOrder === 'asc' ? 'asc' : 'desc' }
+            : { statementDate: query.sortOrder === 'asc' ? 'asc' : 'desc' };
+
+    const [statementItems, statementTotal, statementTotals, ledgerCandidates] =
+      await this.prisma.$transaction([
+        this.prisma.financeStatementLine.findMany({
+          where: statementListWhere,
+          include: {
+            account: true,
+            matches: {
+              select: { id: true, amount: true },
+            },
+          },
+          orderBy: statementOrderBy,
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        this.prisma.financeStatementLine.count({ where: statementListWhere }),
+        this.prisma.financeStatementLine.findMany({
+          where: statementBaseWhere,
+          include: {
+            account: true,
+          },
+        }),
+        this.prisma.financeAccountTransaction.findMany({
+          where: transactionWhere,
+          include: {
+            account: true,
+            statementMatches: {
+              select: { id: true, amount: true },
+            },
+          },
+          orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
+          take: Math.min(1000, Math.max(200, limit * 10)),
+        }),
+      ]);
+
+    const ledgerUnmatched = ledgerCandidates
+      .map((transaction) => {
+        const matchedAmount = round2(
+          transaction.statementMatches.reduce((sum, match) => sum + Number(match.amount ?? 0), 0),
+        );
+        const availableAmount = round2(Math.max(0, Number(transaction.amount ?? 0) - matchedAmount));
+        return {
+          id: transaction.id,
+          transactionType: transaction.transactionType,
+          direction: bankLedgerDirection(transaction.transactionType),
+          transactionDate: transaction.transactionDate,
+          amount: Number(transaction.amount ?? 0),
+          matchedAmount,
+          availableAmount,
+          referenceNo: transaction.referenceNo ?? null,
+          counterpartyName: transaction.counterpartyName ?? null,
+          sourceDocumentType: transaction.sourceDocumentType ?? null,
+          sourceDocumentId: transaction.sourceDocumentId ?? null,
+          sourceDocumentNo: transaction.sourceDocumentNo ?? null,
+          notes: transaction.notes ?? null,
+          account: {
+            id: transaction.account.id,
+            code: transaction.account.code,
+            name: transaction.account.name,
+          },
+        };
+      })
+      .filter((transaction) => {
+        if (transaction.availableAmount <= 0) return false;
+        if (query.direction && transaction.direction !== query.direction) return false;
+        return true;
+      });
+
+    const accountSummaryMap = new Map<
+      string,
+      {
+        account: { id: string; code: string; name: string };
+        statementCount: number;
+        unmatchedCount: number;
+        partiallyMatchedCount: number;
+        matchedCount: number;
+        statementAmount: number;
+        matchedAmount: number;
+        statementRemaining: number;
+        ledgerUnmatchedCount: number;
+        ledgerUnmatchedAmount: number;
+      }
+    >();
+
+    const ensureAccountSummary = (account: { id: string; code: string; name: string }) => {
+      const existing = accountSummaryMap.get(account.id);
+      if (existing) return existing;
+      const created = {
+        account,
+        statementCount: 0,
+        unmatchedCount: 0,
+        partiallyMatchedCount: 0,
+        matchedCount: 0,
+        statementAmount: 0,
+        matchedAmount: 0,
+        statementRemaining: 0,
+        ledgerUnmatchedCount: 0,
+        ledgerUnmatchedAmount: 0,
+      };
+      accountSummaryMap.set(account.id, created);
+      return created;
+    };
+
+    for (const row of statementTotals) {
+      const summary = ensureAccountSummary({
+        id: row.account.id,
+        code: row.account.code,
+        name: row.account.name,
+      });
+      const amount = Number(row.amount ?? 0);
+      const matchedAmount = Number(row.matchedAmount ?? 0);
+      const remaining = round2(Math.max(0, amount - matchedAmount));
+      summary.statementCount += 1;
+      summary.statementAmount += amount;
+      summary.matchedAmount += matchedAmount;
+      summary.statementRemaining += remaining;
+      if (row.status === FinanceStatementLineStatus.UNMATCHED) summary.unmatchedCount += 1;
+      if (row.status === FinanceStatementLineStatus.PARTIALLY_MATCHED) summary.partiallyMatchedCount += 1;
+      if (row.status === FinanceStatementLineStatus.MATCHED) summary.matchedCount += 1;
+    }
+
+    for (const row of ledgerUnmatched) {
+      const summary = ensureAccountSummary(row.account);
+      summary.ledgerUnmatchedCount += 1;
+      summary.ledgerUnmatchedAmount += row.availableAmount;
+    }
+
+    const statementLines = statementItems.map((row) => {
+      const amount = Number(row.amount ?? 0);
+      const matchedAmount = Number(row.matchedAmount ?? 0);
+      return {
+        id: row.id,
+        statementDate: row.statementDate,
+        valueDate: row.valueDate,
+        direction: row.direction,
+        status: row.status,
+        amount,
+        matchedAmount,
+        remainingAmount: round2(Math.max(0, amount - matchedAmount)),
+        referenceNo: row.referenceNo,
+        externalId: row.externalId,
+        counterpartyName: row.counterpartyName,
+        description: row.description,
+        account: {
+          id: row.account.id,
+          code: row.account.code,
+          name: row.account.name,
+        },
+      };
+    });
+
+    const statementPageCount = Math.max(1, Math.ceil(statementTotal / limit));
+    const statementTotalAmount = round2(
+      statementTotals.reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
+    );
+    const statementMatchedAmount = round2(
+      statementTotals.reduce((sum, row) => sum + Number(row.matchedAmount ?? 0), 0),
+    );
+    const statementRemainingAmount = round2(statementTotalAmount - statementMatchedAmount);
+    const ledgerUnmatchedAmount = round2(
+      ledgerUnmatched.reduce((sum, row) => sum + row.availableAmount, 0),
+    );
+
+    return {
+      summary: {
+        statementCount: statementTotals.length,
+        statementVisibleCount: statementLines.length,
+        statementTotal,
+        unmatchedCount: statementTotals.filter((row) => row.status === FinanceStatementLineStatus.UNMATCHED).length,
+        partiallyMatchedCount: statementTotals.filter((row) => row.status === FinanceStatementLineStatus.PARTIALLY_MATCHED).length,
+        matchedCount: statementTotals.filter((row) => row.status === FinanceStatementLineStatus.MATCHED).length,
+        statementTotalAmount,
+        statementMatchedAmount,
+        statementRemainingAmount,
+        ledgerUnmatchedCount: ledgerUnmatched.length,
+        ledgerUnmatchedAmount,
+        differenceAmount: round2(statementRemainingAmount - ledgerUnmatchedAmount),
+      },
+      byAccount: Array.from(accountSummaryMap.values())
+        .map((row) => ({
+          ...row,
+          statementAmount: round2(row.statementAmount),
+          matchedAmount: round2(row.matchedAmount),
+          statementRemaining: round2(row.statementRemaining),
+          ledgerUnmatchedAmount: round2(row.ledgerUnmatchedAmount),
+        }))
+        .sort((left, right) => right.statementRemaining - left.statementRemaining),
+      statementLines,
+      unmatchedLedgerTransactions: ledgerUnmatched.slice(0, limit),
+      page,
+      limit,
+      total: statementTotal,
+      pageCount: statementPageCount,
+      appliedFilters: query,
+    };
   }
 
   private async getPaymentActivity(params: {

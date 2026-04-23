@@ -4,6 +4,7 @@ import { ReportsService } from './reports.service';
 import { SalesReportQueryDto } from './dto/sales-report-query.dto';
 import { AgingReportQueryDto } from './dto/aging-report-query.dto';
 import { PaymentActivityQueryDto } from './dto/payment-activity-query.dto';
+import { BankReconciliationReportQueryDto } from './dto/bank-reconciliation-report-query.dto';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 
@@ -53,5 +54,11 @@ export class ReportsController {
   @RequirePermissions(PERMISSIONS.reportsPayables)
   getSupplierPaymentsActivity(@Query() query: PaymentActivityQueryDto) {
     return this.reportsService.getSupplierPaymentsActivity(query);
+  }
+
+  @Get('bank-reconciliation')
+  @RequirePermissions(PERMISSIONS.financeAccountsRead)
+  getBankReconciliationReport(@Query() query: BankReconciliationReportQueryDto) {
+    return this.reportsService.getBankReconciliationReport(query);
   }
 }
