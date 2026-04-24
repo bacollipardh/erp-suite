@@ -490,8 +490,8 @@ async function main() {
   }
 
   if (Number(vatSettlement?.remainingPayableAmount ?? 0) > 0) {
-    await fetchJson(
-      `${apiBaseUrl}/vat-settlements/${vatSettlement.id}/payments`,
+      await fetchJson(
+        `${apiBaseUrl}/vat-settlements/${vatSettlement.id}/payments`,
       {
         method: 'POST',
         headers: authHeaders,
@@ -504,11 +504,76 @@ async function main() {
         }),
       },
       'record vat payment',
-    );
-  }
+      );
+    }
 
-  await Promise.all([
-    fetchJson(`${apiBaseUrl}/dashboard/summary`, { headers: authHeaders }, 'dashboard summary'),
+    const vatReturnPreview = await fetchJson(
+      `${apiBaseUrl}/vat-returns/preview?financialPeriodId=${currentFinancialPeriodId}`,
+      { headers: authHeaders },
+      'vat return preview',
+    );
+
+    let vatReturn = vatReturnPreview?.existingReturn ?? null;
+
+    if (!vatReturn && vatReturnPreview?.canGenerate) {
+      vatReturn = await fetchJson(
+        `${apiBaseUrl}/vat-returns`,
+        {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({
+            financialPeriodId: currentFinancialPeriodId,
+            declarationDate: date,
+            notes: 'Smoke suite VAT return',
+          }),
+        },
+        'create vat return',
+      );
+    }
+
+    if (!vatReturn) {
+      throw new Error('VAT return was not generated during smoke suite');
+    }
+
+    if (!vatReturn.filedAt) {
+      vatReturn = await fetchJson(
+        `${apiBaseUrl}/vat-returns/${vatReturn.id}/file`,
+        {
+          method: 'PATCH',
+          headers: authHeaders,
+          body: JSON.stringify({
+            filedAt: date,
+            filingReferenceNo: `VAT-RETURN-${Date.now()}`,
+            notes: 'Smoke suite VAT filing',
+          }),
+        },
+        'file vat return',
+      );
+    }
+
+    await expectOk(
+      await fetch(`${apiBaseUrl}/vat-returns/${vatReturn.id}/export/csv`, {
+        headers: authHeaders,
+      }),
+      'vat return csv export',
+    );
+
+    await expectOk(
+      await fetch(`${apiBaseUrl}/vat-returns/${vatReturn.id}/export/json`, {
+        headers: authHeaders,
+      }),
+      'vat return json export',
+    );
+
+    await expectOk(
+      await fetch(`${apiBaseUrl}/vat-returns/${vatReturn.id}/export/pdf`, {
+        headers: authHeaders,
+      }),
+      'vat return pdf export',
+    );
+
+    await Promise.all([
+      fetchJson(`${apiBaseUrl}/dashboard/summary`, { headers: authHeaders }, 'dashboard summary'),
     fetchJson(`${apiBaseUrl}/reports/sales-summary?limitRecent=20`, { headers: authHeaders }, 'sales summary'),
     fetchJson(`${apiBaseUrl}/reports/receivables-aging?limit=20`, { headers: authHeaders }, 'receivables aging'),
     fetchJson(`${apiBaseUrl}/reports/payables-aging?limit=20`, { headers: authHeaders }, 'payables aging'),
@@ -533,15 +598,16 @@ async function main() {
       { headers: authHeaders },
       'balance sheet',
     ),
-    fetchJson(
-      `${apiBaseUrl}/accounting/vat-ledger?dateFrom=${date}&dateTo=${date}&limit=20`,
-      { headers: authHeaders },
-      'vat ledger',
-    ),
-    fetchJson(`${apiBaseUrl}/vat-settlements?year=${currentYear}`, { headers: authHeaders }, 'vat settlements'),
-    fetchJson(`${apiBaseUrl}/audit-logs?limit=20`, { headers: authHeaders }, 'audit logs'),
-    fetchJson(`${apiBaseUrl}/stock/movements?limit=20`, { headers: authHeaders }, 'stock movements'),
-  ]);
+      fetchJson(
+        `${apiBaseUrl}/accounting/vat-ledger?dateFrom=${date}&dateTo=${date}&limit=20`,
+        { headers: authHeaders },
+        'vat ledger',
+      ),
+      fetchJson(`${apiBaseUrl}/vat-settlements?year=${currentYear}`, { headers: authHeaders }, 'vat settlements'),
+      fetchJson(`${apiBaseUrl}/vat-returns?year=${currentYear}`, { headers: authHeaders }, 'vat returns'),
+      fetchJson(`${apiBaseUrl}/audit-logs?limit=20`, { headers: authHeaders }, 'audit logs'),
+      fetchJson(`${apiBaseUrl}/stock/movements?limit=20`, { headers: authHeaders }, 'stock movements'),
+    ]);
 
   const frontendLoginResponse = await expectOk(
     await fetch(`${frontendBaseUrl}/api/auth/login`, {
@@ -622,14 +688,21 @@ async function main() {
       }),
       'frontend closing entries page',
     ),
-    expectOk(
-      await fetch(`${frontendBaseUrl}/financa/tvsh`, {
-        headers: { Cookie: cookieHeader },
-        redirect: 'manual',
-      }),
-      'frontend vat settlements page',
-    ),
-  ]);
+      expectOk(
+        await fetch(`${frontendBaseUrl}/financa/tvsh`, {
+          headers: { Cookie: cookieHeader },
+          redirect: 'manual',
+        }),
+        'frontend vat settlements page',
+      ),
+      expectOk(
+        await fetch(`${frontendBaseUrl}/financa/deklarata-tvsh`, {
+          headers: { Cookie: cookieHeader },
+          redirect: 'manual',
+        }),
+        'frontend vat return page',
+      ),
+    ]);
 
   await expectOk(
     await fetch(`${frontendBaseUrl}/api/auth/logout`, {

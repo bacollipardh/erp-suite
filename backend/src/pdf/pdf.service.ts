@@ -483,4 +483,119 @@ export class PdfService {
     this.drawFooter(doc);
     return this.collect(doc);
   }
+
+  async generateVatReturnPdf(vatReturn: any): Promise<Buffer> {
+    const company = vatReturn?.company?.name ? vatReturn.company : await this.getCompany();
+    const doc = this.buildDoc();
+
+    let y = this.drawHeader(
+      doc,
+      'DEKLARATA MUJORE E TVSH-SE',
+      vatReturn.returnNo,
+      vatReturn.declarationDate,
+      vatReturn.status,
+      company.name,
+    );
+
+    y = this.drawParty(
+      doc,
+      y,
+      {
+        label: 'Kompania',
+        entity: {
+          name: company.name,
+          fiscalNo: company.fiscalNo,
+          vatNo: company.vatNo,
+          address: company.address,
+          city: company.city,
+          phone: company.phone,
+          extraLine: company.businessNo
+            ? `Nr. Biznesit: ${company.businessNo}`
+            : undefined,
+        },
+      },
+      {
+        label: 'Deklarata',
+        lines: [
+          `Periudha: ${vatReturn.period?.label ?? '-'}`,
+          `Settlement: ${vatReturn.settlement?.settlementNo ?? '-'}`,
+          `Data e deklarates: ${new Date(vatReturn.declarationDate).toLocaleDateString('sq-AL')}`,
+          vatReturn.dueDate
+            ? `Afati: ${new Date(vatReturn.dueDate).toLocaleDateString('sq-AL')}`
+            : 'Afati: -',
+          vatReturn.filingReferenceNo
+            ? `Ref. filing: ${vatReturn.filingReferenceNo}`
+            : 'Ref. filing: -',
+        ],
+      },
+    );
+
+    const cols = [
+      { label: 'Kodi', w: 55, align: 'left' },
+      { label: 'Pershkrimi', w: 320, align: 'left' },
+      { label: 'Vlera', w: 140 },
+    ];
+
+    y = this.drawTableHeader(doc, y, cols);
+
+    const boxes = Array.isArray(vatReturn?.declaration?.boxes)
+      ? vatReturn.declaration.boxes
+      : [];
+
+    for (let i = 0; i < boxes.length; i++) {
+      const box = boxes[i];
+      y = this.drawTableRow(doc, y, i, [
+        { value: String(box.code ?? '-'), w: 55, align: 'left', bold: true },
+        { value: String(box.label ?? '-'), w: 320, align: 'left' },
+        {
+          value: Number(box.value ?? 0).toFixed(2),
+          w: 140,
+          bold: box.code === 'N1' || box.code === 'N2' || box.code === 'N4',
+        },
+      ]);
+    }
+
+    y += 12;
+
+    const metrics = vatReturn?.declaration?.metrics ?? {};
+    doc.fillColor(SLATE500).fontSize(7.5).font('Helvetica-Bold')
+      .text('Kontrollet dhe audit trail', MARGIN, y);
+    y += 14;
+    doc.fillColor(BLACK).fontSize(8).font('Helvetica')
+      .text(
+        `Dokumente ne VAT ledger: ${Number(metrics.documentCount ?? 0)} | Rregullime manuale: ${Number(metrics.manualAdjustmentCount ?? 0)} | Pagesa te regjistruara: ${Number(vatReturn?.settlement?.paidAmount ?? 0).toFixed(2)} EUR`,
+        MARGIN,
+        y,
+        { width: CW },
+      );
+    y += 22;
+
+    y = this.drawTotals(doc, y, [
+      {
+        label: 'TVSH per pagese',
+        value: Number(vatReturn?.payableAmount ?? 0).toFixed(2),
+      },
+      {
+        label: 'TVSH per rimbursim',
+        value: Number(vatReturn?.receivableAmount ?? 0).toFixed(2),
+      },
+      {
+        label: 'Paguar deri tani',
+        value: Number(vatReturn?.settlement?.paidAmount ?? 0).toFixed(2),
+      },
+      {
+        label: 'Mbetja',
+        value: Number(vatReturn?.settlement?.remainingPayableAmount ?? 0).toFixed(2),
+        highlight: true,
+      },
+    ]);
+
+    if (vatReturn?.notes) {
+      doc.fillColor(SLATE500).fontSize(7.5).font('Helvetica')
+        .text(`Shenime: ${vatReturn.notes}`, MARGIN, y, { width: CW });
+    }
+
+    this.drawFooter(doc);
+    return this.collect(doc);
+  }
 }

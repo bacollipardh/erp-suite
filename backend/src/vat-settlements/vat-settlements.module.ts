@@ -15,5 +15,6 @@ import { VatSettlementsService } from './vat-settlements.service';
   ],
   controllers: [VatSettlementsController],
   providers: [VatSettlementsService],
+  exports: [VatSettlementsService],
 })
 export class VatSettlementsModule {}

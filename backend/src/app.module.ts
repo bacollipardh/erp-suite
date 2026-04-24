@@ -29,6 +29,7 @@ import { FinanceReconciliationModule } from './finance-reconciliation/finance-re
 import { FinancialPeriodsModule } from './financial-periods/financial-periods.module';
 import { AccountingModule } from './accounting/accounting.module';
 import { VatSettlementsModule } from './vat-settlements/vat-settlements.module';
+import { VatReturnsModule } from './vat-returns/vat-returns.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { VatSettlementsModule } from './vat-settlements/vat-settlements.module';
     FinancialPeriodsModule,
     AccountingModule,
     VatSettlementsModule,
+    VatReturnsModule,
   ],
 })
 export class AppModule {}

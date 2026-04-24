@@ -200,6 +200,15 @@ export default async function FinanceHubPage() {
             tone="emerald"
           />
         ) : null}
+        {canAccountingRead ? (
+          <DomainActionCard
+            title="Deklarata Mujore e TVSH-se"
+            description="Gjenero deklaraten mujore nga settlement-i, ruaj snapshot auditues dhe eksporto dokumentin ne CSV, JSON ose PDF."
+            href="/financa/deklarata-tvsh"
+            badge="Tax Return"
+            tone="indigo"
+          />
+        ) : null}
         {canAccountingReports ? (
           <DomainActionCard
             title="Raportet Kontabel"

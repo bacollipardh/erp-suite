@@ -106,6 +106,11 @@ export const navSections: NavSection[] = [
         permission: PERMISSIONS.accountingRead,
       },
       {
+        label: 'Deklarata Mujore e TVSH-se',
+        href: '/financa/deklarata-tvsh',
+        permission: PERMISSIONS.accountingRead,
+      },
+      {
         label: 'Pajtimi Bankar',
         href: '/financa/pajtimi-bankar',
         permission: PERMISSIONS.financeAccountsRead,

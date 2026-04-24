@@ -10,5 +10,6 @@ import { CompanyProfileModule } from '../company-profile/company-profile.module'
   imports: [PurchaseInvoicesModule, SalesInvoicesModule, SalesReturnsModule, CompanyProfileModule],
   controllers: [PdfController],
   providers: [PdfService],
+  exports: [PdfService],
 })
 export class PdfModule {}
