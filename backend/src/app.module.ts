@@ -33,6 +33,7 @@ import { VatReturnsModule } from './vat-returns/vat-returns.module';
 import { FinanceDocumentsModule } from './finance-documents/finance-documents.module';
 import { StatementsModule } from './statements/statements.module';
 import { ControlTowerModule } from './control-tower/control-tower.module';
+import { CompanyPulseModule } from './company-pulse/company-pulse.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { ControlTowerModule } from './control-tower/control-tower.module';
     FinanceDocumentsModule,
     StatementsModule,
     ControlTowerModule,
+    CompanyPulseModule,
   ],
 })
 export class AppModule {}
