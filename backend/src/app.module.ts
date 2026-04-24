@@ -34,6 +34,7 @@ import { FinanceDocumentsModule } from './finance-documents/finance-documents.mo
 import { StatementsModule } from './statements/statements.module';
 import { ControlTowerModule } from './control-tower/control-tower.module';
 import { CompanyPulseModule } from './company-pulse/company-pulse.module';
+import { CustomerRiskModule } from './customer-risk/customer-risk.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { CompanyPulseModule } from './company-pulse/company-pulse.module';
     StatementsModule,
     ControlTowerModule,
     CompanyPulseModule,
+    CustomerRiskModule,
   ],
 })
 export class AppModule {}
