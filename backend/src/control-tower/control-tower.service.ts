@@ -1,13 +1,35 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { round2 } from '../common/utils/money';
 
 type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 type ExceptionCategory = 'FINANCE' | 'COLLECTIONS' | 'PAYABLES' | 'STOCK' | 'CONTROL';
+type WorkflowStatus = 'OPEN' | 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'SNOOZED' | 'RESOLVED';
+type WorkflowAction = 'ACKNOWLEDGE' | 'START' | 'ASSIGN' | 'SNOOZE' | 'RESOLVE' | 'REOPEN' | 'NOTE';
 
 type ExceptionQuery = {
   category?: string;
   severity?: string;
+  workflowStatus?: string;
+};
+
+type WorkflowActionBody = {
+  action: WorkflowAction;
+  note?: string;
+  assignedToId?: string;
+  snoozedUntil?: string;
+};
+
+type ExceptionWorkflow = {
+  status: WorkflowStatus;
+  assignedToId: string | null;
+  assignedToName: string | null;
+  snoozedUntil: string | null;
+  lastNote: string | null;
+  resolvedAt: string | null;
+  resolvedById: string | null;
+  resolvedByName: string | null;
+  updatedAt: string | null;
 };
 
 type ExceptionItem = {
@@ -25,10 +47,13 @@ type ExceptionItem = {
   daysOverdue: number | null;
   sourceUrl: string | null;
   createdAt: Date | string | null;
+  workflow?: ExceptionWorkflow;
 };
 
 const CATEGORIES: ExceptionCategory[] = ['FINANCE', 'COLLECTIONS', 'PAYABLES', 'STOCK', 'CONTROL'];
 const SEVERITIES: Severity[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
+const WORKFLOW_STATUSES: WorkflowStatus[] = ['OPEN', 'ACKNOWLEDGED', 'IN_PROGRESS', 'SNOOZED', 'RESOLVED'];
+const WORKFLOW_ACTIONS: WorkflowAction[] = ['ACKNOWLEDGE', 'START', 'ASSIGN', 'SNOOZE', 'RESOLVE', 'REOPEN', 'NOTE'];
 
 function normalizeCategory(value?: string): ExceptionCategory | null {
   const normalized = value?.trim().toUpperCase();
@@ -40,6 +65,31 @@ function normalizeSeverity(value?: string): Severity | null {
   return SEVERITIES.includes(normalized as Severity) ? (normalized as Severity) : null;
 }
 
+function normalizeWorkflowStatus(value?: string): WorkflowStatus | null {
+  const normalized = value?.trim().toUpperCase();
+  return WORKFLOW_STATUSES.includes(normalized as WorkflowStatus) ? (normalized as WorkflowStatus) : null;
+}
+
+function normalizeAction(value?: string): WorkflowAction {
+  const normalized = value?.trim().toUpperCase();
+  if (!WORKFLOW_ACTIONS.includes(normalized as WorkflowAction)) {
+    throw new BadRequestException('Invalid workflow action');
+  }
+  return normalized as WorkflowAction;
+}
+
+function normalizeOptional(value?: string | null) {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
+}
+
+function parseDate(value?: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) throw new BadRequestException('Invalid snooze date');
+  return parsed;
+}
+
 function severityRank(severity: Severity) {
   if (severity === 'CRITICAL') return 4;
   if (severity === 'HIGH') return 3;
@@ -49,6 +99,20 @@ function severityRank(severity: Severity) {
 
 function toNumber(value: unknown) {
   return round2(Number(value ?? 0));
+}
+
+function defaultWorkflow(): ExceptionWorkflow {
+  return {
+    status: 'OPEN',
+    assignedToId: null,
+    assignedToName: null,
+    snoozedUntil: null,
+    lastNote: null,
+    resolvedAt: null,
+    resolvedById: null,
+    resolvedByName: null,
+    updatedAt: null,
+  };
 }
 
 function mapRow(row: any): ExceptionItem {
@@ -70,6 +134,20 @@ function mapRow(row: any): ExceptionItem {
   };
 }
 
+function mapWorkflow(row: any): ExceptionWorkflow {
+  return {
+    status: row.status ?? 'OPEN',
+    assignedToId: row.assigned_to_id ?? null,
+    assignedToName: row.assigned_to_name ?? null,
+    snoozedUntil: row.snoozed_until ? new Date(row.snoozed_until).toISOString() : null,
+    lastNote: row.last_note ?? null,
+    resolvedAt: row.resolved_at ? new Date(row.resolved_at).toISOString() : null,
+    resolvedById: row.resolved_by_id ?? null,
+    resolvedByName: row.resolved_by_name ?? null,
+    updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null,
+  };
+}
+
 @Injectable()
 export class ControlTowerService {
   constructor(private readonly prisma: PrismaService) {}
@@ -77,6 +155,7 @@ export class ControlTowerService {
   async getExceptions(query: ExceptionQuery = {}) {
     const category = normalizeCategory(query.category);
     const severity = normalizeSeverity(query.severity);
+    const workflowStatus = normalizeWorkflowStatus(query.workflowStatus);
 
     const [salesOverdue, purchaseOverdue, unappliedReceipts, unappliedPayments, negativeAccounts, stockAlerts] =
       await Promise.all([
@@ -88,22 +167,30 @@ export class ControlTowerService {
         this.getStockAlerts(),
       ]);
 
-    const allItems = [
+    const rawItems = [
       ...salesOverdue,
       ...purchaseOverdue,
       ...unappliedReceipts,
       ...unappliedPayments,
       ...negativeAccounts,
       ...stockAlerts,
-    ].sort((left, right) => {
-      const severityDiff = severityRank(right.severity) - severityRank(left.severity);
-      if (severityDiff !== 0) return severityDiff;
-      return Number(right.amount ?? 0) - Number(left.amount ?? 0);
-    });
+    ];
+
+    const workflowByKey = await this.getWorkflowStates(rawItems.map((item) => item.id));
+
+    const allItems = rawItems
+      .map((item) => ({ ...item, workflow: workflowByKey.get(item.id) ?? defaultWorkflow() }))
+      .sort((left, right) => {
+        const severityDiff = severityRank(right.severity) - severityRank(left.severity);
+        if (severityDiff !== 0) return severityDiff;
+        return Number(right.amount ?? 0) - Number(left.amount ?? 0);
+      });
 
     const filteredItems = allItems.filter((item) => {
+      if (!workflowStatus && item.workflow?.status === 'RESOLVED') return false;
       if (category && item.category !== category) return false;
       if (severity && item.severity !== severity) return false;
+      if (workflowStatus && item.workflow?.status !== workflowStatus) return false;
       return true;
     });
 
@@ -111,6 +198,11 @@ export class ControlTowerService {
     const fullByCategory = this.groupCount(allItems, 'category');
     const filteredBySeverity = this.groupCount(filteredItems, 'severity');
     const filteredByCategory = this.groupCount(filteredItems, 'category');
+    const byWorkflowStatus = filteredItems.reduce<Record<string, number>>((acc, item) => {
+      const status = item.workflow?.status ?? 'OPEN';
+      acc[status] = (acc[status] ?? 0) + 1;
+      return acc;
+    }, {});
 
     const financialCategories = new Set<ExceptionCategory>(['FINANCE', 'COLLECTIONS', 'PAYABLES', 'CONTROL']);
     const financialExposureAmount = round2(
@@ -139,17 +231,136 @@ export class ControlTowerService {
         payablesCount: filteredByCategory.PAYABLES ?? 0,
         stockCount: filteredByCategory.STOCK ?? 0,
         controlCount: filteredByCategory.CONTROL ?? 0,
+        openCount: byWorkflowStatus.OPEN ?? 0,
+        acknowledgedCount: byWorkflowStatus.ACKNOWLEDGED ?? 0,
+        inProgressCount: byWorkflowStatus.IN_PROGRESS ?? 0,
+        snoozedCount: byWorkflowStatus.SNOOZED ?? 0,
+        resolvedCount: byWorkflowStatus.RESOLVED ?? 0,
       },
       bySeverity: filteredBySeverity,
       byCategory: filteredByCategory,
+      byWorkflowStatus,
       availableFilters: {
         bySeverity: fullBySeverity,
         byCategory: fullByCategory,
       },
       items: filteredItems,
-      appliedFilters: { category, severity },
+      appliedFilters: { category, severity, workflowStatus },
       generatedAt: new Date().toISOString(),
     };
+  }
+
+  async applyAction(exceptionKey: string, body: WorkflowActionBody, userId: string) {
+    const action = normalizeAction(body.action);
+    const key = decodeURIComponent(exceptionKey);
+    const note = normalizeOptional(body.note);
+    const assignedToId = normalizeOptional(body.assignedToId);
+    const snoozedUntil = parseDate(body.snoozedUntil);
+
+    if (action === 'ASSIGN' && !assignedToId) throw new BadRequestException('assignedToId is required');
+    if (action === 'SNOOZE' && !snoozedUntil) throw new BadRequestException('snoozedUntil is required');
+
+    return this.prisma.$transaction(async (tx) => {
+      const state = await this.ensureWorkflowStateTx(tx, key);
+      let nextStatus: WorkflowStatus = state.status;
+      let nextAssignedToId: string | null = state.assigned_to_id ?? null;
+      let nextSnoozedUntil: Date | null = state.snoozed_until ?? null;
+      let nextResolvedAt: Date | null = state.resolved_at ?? null;
+      let nextResolvedById: string | null = state.resolved_by_id ?? null;
+
+      if (action === 'ACKNOWLEDGE') nextStatus = 'ACKNOWLEDGED';
+      if (action === 'START') nextStatus = 'IN_PROGRESS';
+      if (action === 'ASSIGN') {
+        nextStatus = state.status === 'OPEN' ? 'ACKNOWLEDGED' : state.status;
+        nextAssignedToId = assignedToId;
+      }
+      if (action === 'SNOOZE') {
+        nextStatus = 'SNOOZED';
+        nextSnoozedUntil = snoozedUntil;
+      }
+      if (action === 'RESOLVE') {
+        nextStatus = 'RESOLVED';
+        nextResolvedAt = new Date();
+        nextResolvedById = userId;
+      }
+      if (action === 'REOPEN') {
+        nextStatus = 'OPEN';
+        nextSnoozedUntil = null;
+        nextResolvedAt = null;
+        nextResolvedById = null;
+      }
+
+      const rows = await tx.$queryRawUnsafe<any[]>(
+        `
+        UPDATE control_tower_exception_states
+        SET status = $2,
+            assigned_to_id = $3::uuid,
+            snoozed_until = $4::timestamptz,
+            last_note = COALESCE($5, last_note),
+            resolved_at = $6::timestamptz,
+            resolved_by_id = $7::uuid,
+            updated_at = now()
+        WHERE id = $1::uuid
+        RETURNING *
+        `,
+        state.id,
+        nextStatus,
+        nextAssignedToId,
+        nextSnoozedUntil,
+        note,
+        nextResolvedAt,
+        nextResolvedById,
+      );
+
+      await tx.$executeRawUnsafe(
+        `
+        INSERT INTO control_tower_exception_events (
+          exception_state_id, action, note, assigned_to_id, snoozed_until, created_by_id
+        ) VALUES ($1::uuid, $2, $3, $4::uuid, $5::timestamptz, $6::uuid)
+        `,
+        state.id,
+        action,
+        note,
+        assignedToId,
+        snoozedUntil,
+        userId,
+      );
+
+      return rows[0];
+    });
+  }
+
+  private async getWorkflowStates(keys: string[]) {
+    const result = new Map<string, ExceptionWorkflow>();
+    if (!keys.length) return result;
+
+    const rows = await this.prisma.$queryRawUnsafe<any[]>(
+      `
+      SELECT s.*, au.full_name AS assigned_to_name, ru.full_name AS resolved_by_name
+      FROM control_tower_exception_states s
+      LEFT JOIN users au ON au.id = s.assigned_to_id
+      LEFT JOIN users ru ON ru.id = s.resolved_by_id
+      WHERE s.exception_key = ANY($1::text[])
+      `,
+      keys,
+    );
+
+    for (const row of rows) result.set(row.exception_key, mapWorkflow(row));
+    return result;
+  }
+
+  private async ensureWorkflowStateTx(tx: any, exceptionKey: string) {
+    const rows = await tx.$queryRawUnsafe<any[]>(
+      `
+      INSERT INTO control_tower_exception_states (exception_key)
+      VALUES ($1)
+      ON CONFLICT (exception_key)
+      DO UPDATE SET updated_at = control_tower_exception_states.updated_at
+      RETURNING *
+      `,
+      exceptionKey,
+    );
+    return rows[0];
   }
 
   private groupCount(items: ExceptionItem[], key: 'severity' | 'category') {
