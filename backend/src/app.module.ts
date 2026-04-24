@@ -31,6 +31,7 @@ import { AccountingModule } from './accounting/accounting.module';
 import { VatSettlementsModule } from './vat-settlements/vat-settlements.module';
 import { VatReturnsModule } from './vat-returns/vat-returns.module';
 import { FinanceDocumentsModule } from './finance-documents/finance-documents.module';
+import { StatementsModule } from './statements/statements.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { FinanceDocumentsModule } from './finance-documents/finance-documents.mo
     VatSettlementsModule,
     VatReturnsModule,
     FinanceDocumentsModule,
+    StatementsModule,
   ],
 })
 export class AppModule {}
