@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { api } from '@/lib/api';
 
 type WorkflowEvent = {
   id: string;
@@ -10,6 +11,12 @@ type WorkflowEvent = {
   snoozedUntil?: string | null;
   createdByName?: string | null;
   createdAt?: string | null;
+};
+
+type UserOption = {
+  id: string;
+  fullName?: string | null;
+  email?: string | null;
 };
 
 function formatDate(value?: string | null) {
@@ -78,6 +85,10 @@ export function ExceptionWorkflowModal({
   busy: string | null;
   error: string;
 }) {
+  const [users, setUsers] = useState<UserOption[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState('');
+
   useEffect(() => {
     if (!open) return;
 
@@ -88,6 +99,17 @@ export function ExceptionWorkflowModal({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open || users.length > 0 || usersLoading) return;
+
+    setUsersLoading(true);
+    setUsersError('');
+    api.list<UserOption>('users', { limit: 200, sortBy: 'fullName', sortOrder: 'asc' })
+      .then((items) => setUsers(items))
+      .catch(() => setUsersError('Users could not be loaded.'))
+      .finally(() => setUsersLoading(false));
+  }, [open, users.length, usersLoading]);
 
   if (!open) return null;
 
@@ -144,16 +166,25 @@ export function ExceptionWorkflowModal({
               <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-4">
                   <h3 className="text-sm font-semibold text-slate-900">Assign</h3>
-                  <p className="mt-1 text-xs text-slate-500">Caktoje exception-in te nje perdorues.</p>
+                  <p className="mt-1 text-xs text-slate-500">Zgjedh perdoruesin qe do ta ndjeke kete exception.</p>
                 </div>
 
                 <div className="space-y-3">
-                  <input
+                  <select
                     value={assignedToId}
                     onChange={(event) => setAssignedToId(event.target.value)}
                     className={fieldClass}
-                    placeholder="User UUID"
-                  />
+                    disabled={usersLoading}
+                  >
+                    <option value="">{usersLoading ? 'Loading users...' : 'Select user'}</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.fullName || user.email || user.id}{user.email ? ` — ${user.email}` : ''}
+                      </option>
+                    ))}
+                  </select>
+
+                  {usersError ? <div className="text-xs text-red-600">{usersError}</div> : null}
 
                   <div className="flex justify-end">
                     <button
