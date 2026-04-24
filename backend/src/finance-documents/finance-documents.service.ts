@@ -15,7 +15,6 @@ import { CreateSupplierPaymentDto } from './dto/create-supplier-payment.dto';
 
 type Tx = Prisma.TransactionClient;
 type FinanceDocumentKind = 'CUSTOMER_RECEIPT' | 'SUPPLIER_PAYMENT';
-
 type AllocationInput = { amount: number };
 type SalesAllocationInput = { salesInvoiceId: string; amount: number };
 type PurchaseAllocationInput = { purchaseInvoiceId: string; amount: number };
@@ -33,6 +32,10 @@ function toDate(value: string | Date) {
 
 function sumAmounts(rows?: AllocationInput[]) {
   return round2((rows ?? []).reduce((sum, row) => sum + Number(row.amount ?? 0), 0));
+}
+
+function isIneligibleForFinanceAllocation(status: DocumentStatus) {
+  return status === DocumentStatus.DRAFT || status === DocumentStatus.CANCELLED || status === DocumentStatus.STORNO;
 }
 
 @Injectable()
@@ -136,9 +139,7 @@ export class FinanceDocumentsService {
         });
         if (!invoice) throw new NotFoundException('Sales invoice not found');
         if (invoice.customerId !== receipt.customer_id) throw new BadRequestException('Receipt allocation must belong to the same customer');
-        if ([DocumentStatus.DRAFT, DocumentStatus.CANCELLED, DocumentStatus.STORNO].includes(invoice.status)) {
-          throw new BadRequestException('Sales invoice is not eligible for receipt allocation');
-        }
+        if (isIneligibleForFinanceAllocation(invoice.status)) throw new BadRequestException('Sales invoice is not eligible for receipt allocation');
 
         const creditedAmount = round2(invoice.returns.reduce((sum, row) => sum + Number(row.grandTotal ?? 0), 0));
         const settlementTotal = round2(Math.max(0, Number(invoice.grandTotal ?? 0) - creditedAmount));
@@ -296,9 +297,7 @@ export class FinanceDocumentsService {
         const invoice = await tx.purchaseInvoice.findUnique({ where: { id: allocation.purchase_invoice_id } });
         if (!invoice) throw new NotFoundException('Purchase invoice not found');
         if (invoice.supplierId !== payment.supplier_id) throw new BadRequestException('Payment allocation must belong to the same supplier');
-        if ([DocumentStatus.DRAFT, DocumentStatus.CANCELLED, DocumentStatus.STORNO].includes(invoice.status)) {
-          throw new BadRequestException('Purchase invoice is not eligible for payment allocation');
-        }
+        if (isIneligibleForFinanceAllocation(invoice.status)) throw new BadRequestException('Purchase invoice is not eligible for payment allocation');
 
         const total = round2(Number(invoice.grandTotal ?? 0));
         const beforePaid = round2(Number(invoice.amountPaid ?? 0));
@@ -446,7 +445,7 @@ export class FinanceDocumentsService {
       ids.add(allocation.salesInvoiceId);
       const invoice = await tx.salesInvoice.findUnique({ where: { id: allocation.salesInvoiceId } });
       if (!invoice || invoice.customerId !== customerId) throw new BadRequestException('Invalid sales invoice allocation');
-      if ([DocumentStatus.DRAFT, DocumentStatus.CANCELLED, DocumentStatus.STORNO].includes(invoice.status)) throw new BadRequestException('Sales invoice is not eligible for allocation');
+      if (isIneligibleForFinanceAllocation(invoice.status)) throw new BadRequestException('Sales invoice is not eligible for allocation');
     }
   }
 
@@ -457,7 +456,7 @@ export class FinanceDocumentsService {
       ids.add(allocation.purchaseInvoiceId);
       const invoice = await tx.purchaseInvoice.findUnique({ where: { id: allocation.purchaseInvoiceId } });
       if (!invoice || invoice.supplierId !== supplierId) throw new BadRequestException('Invalid purchase invoice allocation');
-      if ([DocumentStatus.DRAFT, DocumentStatus.CANCELLED, DocumentStatus.STORNO].includes(invoice.status)) throw new BadRequestException('Purchase invoice is not eligible for allocation');
+      if (isIneligibleForFinanceAllocation(invoice.status)) throw new BadRequestException('Purchase invoice is not eligible for allocation');
     }
   }
 
