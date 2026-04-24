@@ -331,6 +331,39 @@ export class ControlTowerService {
     });
   }
 
+  async getWorkflowEvents(exceptionKey: string) {
+    const key = decodeURIComponent(exceptionKey);
+    const rows = await this.prisma.$queryRawUnsafe<any[]>(
+      `
+      SELECT e.id, e.action, e.note, e.assigned_to_id, au.full_name AS assigned_to_name,
+             e.snoozed_until, e.created_by_id, cu.full_name AS created_by_name, e.created_at
+      FROM control_tower_exception_states s
+      JOIN control_tower_exception_events e ON e.exception_state_id = s.id
+      LEFT JOIN users au ON au.id = e.assigned_to_id
+      LEFT JOIN users cu ON cu.id = e.created_by_id
+      WHERE s.exception_key = $1
+      ORDER BY e.created_at DESC
+      LIMIT 100
+      `,
+      key,
+    );
+
+    return {
+      exceptionKey: key,
+      items: rows.map((row) => ({
+        id: row.id,
+        action: row.action,
+        note: row.note ?? null,
+        assignedToId: row.assigned_to_id ?? null,
+        assignedToName: row.assigned_to_name ?? null,
+        snoozedUntil: row.snoozed_until ? new Date(row.snoozed_until).toISOString() : null,
+        createdById: row.created_by_id,
+        createdByName: row.created_by_name ?? null,
+        createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+      })),
+    };
+  }
+
   private async getWorkflowStates(keys: string[]) {
     const result = new Map<string, ExceptionWorkflow>();
     if (!keys.length) return result;
