@@ -6,16 +6,17 @@ import { requirePagePermission } from '@/lib/server-page-auth';
 
 export default async function Page() {
   await requirePagePermission(PERMISSIONS.purchaseInvoicesPay);
-  const [suppliers, financeAccounts] = await Promise.all([
+  const [suppliers, financeAccounts, invoices] = await Promise.all([
     api.list('suppliers', { limit: 200, sortBy: 'name', sortOrder: 'asc' }),
     api.list('finance-accounts', { isActive: true, limit: 100, sortBy: 'name', sortOrder: 'asc' }),
+    api.list('purchase-invoices', { limit: 100, sortBy: 'createdAt', sortOrder: 'desc' }),
   ]);
 
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Krijo Dokument Pagese"
-        description="Regjistro dokument formal te pageses ndaj furnitorit. Ne fazen 1 ruhet si draft dhe postohet si advance/unapplied."
+        title="Krijo Supplier Payment"
+        description="Regjistro supplier payment dhe aloko pagesen direkt ne faturat e hapura te furnitorit."
       />
       <FinanceDocumentForm
         type="supplier-payment"
@@ -23,6 +24,7 @@ export default async function Page() {
         backHref="/financa/dokumente-pagesash"
         parties={suppliers}
         financeAccounts={financeAccounts}
+        invoices={invoices}
       />
     </div>
   );
