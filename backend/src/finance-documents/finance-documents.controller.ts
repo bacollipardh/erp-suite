@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, JwtPayload } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
@@ -17,12 +17,6 @@ export class FinanceDocumentsController {
   @RequirePermissions(PERMISSIONS.salesInvoicesPay)
   findCustomerReceipts() {
     return this.financeDocumentsService.findCustomerReceipts();
-  }
-
-  @Get('customer-receipts/open-invoices')
-  @RequirePermissions(PERMISSIONS.salesInvoicesPay)
-  findOpenCustomerInvoices(@Query('customerId') customerId: string) {
-    return this.financeDocumentsService.findOpenCustomerInvoices(customerId);
   }
 
   @Get('customer-receipts/:id')
@@ -47,12 +41,6 @@ export class FinanceDocumentsController {
   @RequirePermissions(PERMISSIONS.purchaseInvoicesPay)
   findSupplierPayments() {
     return this.financeDocumentsService.findSupplierPayments();
-  }
-
-  @Get('supplier-payments/open-invoices')
-  @RequirePermissions(PERMISSIONS.purchaseInvoicesPay)
-  findOpenSupplierInvoices(@Query('supplierId') supplierId: string) {
-    return this.financeDocumentsService.findOpenSupplierInvoices(supplierId);
   }
 
   @Get('supplier-payments/:id')
