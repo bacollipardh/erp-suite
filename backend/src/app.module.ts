@@ -24,6 +24,13 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportsModule } from './reports/reports.module';
 import { FiscalizationModule } from './fiscalization/fiscalization.module';
 import { FinanceSettlementsModule } from './finance-settlements/finance-settlements.module';
+import { FinanceAccountsModule } from './finance-accounts/finance-accounts.module';
+import { FinanceReconciliationModule } from './finance-reconciliation/finance-reconciliation.module';
+import { FinancialPeriodsModule } from './financial-periods/financial-periods.module';
+import { AccountingModule } from './accounting/accounting.module';
+import { VatSettlementsModule } from './vat-settlements/vat-settlements.module';
+import { VatReturnsModule } from './vat-returns/vat-returns.module';
+import { FinanceDocumentsModule } from './finance-documents/finance-documents.module';
 
 @Module({
   imports: [
@@ -52,6 +59,13 @@ import { FinanceSettlementsModule } from './finance-settlements/finance-settleme
     ReportsModule,
     FiscalizationModule,
     FinanceSettlementsModule,
+    FinanceAccountsModule,
+    FinanceReconciliationModule,
+    FinancialPeriodsModule,
+    AccountingModule,
+    VatSettlementsModule,
+    VatReturnsModule,
+    FinanceDocumentsModule,
   ],
 })
 export class AppModule {}
