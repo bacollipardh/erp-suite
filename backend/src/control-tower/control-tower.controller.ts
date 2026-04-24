@@ -28,6 +28,12 @@ export class ControlTowerController {
     return this.controlTowerService.getExceptions({ category, severity, workflowStatus });
   }
 
+  @Get('exceptions/:exceptionKey/events')
+  @RequirePermissions(PERMISSIONS.dashboard)
+  getWorkflowEvents(@Param('exceptionKey') exceptionKey: string) {
+    return this.controlTowerService.getWorkflowEvents(exceptionKey);
+  }
+
   @Post('exceptions/:exceptionKey/actions')
   @RequirePermissions(PERMISSIONS.dashboard)
   applyAction(
