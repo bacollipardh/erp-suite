@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
@@ -12,7 +12,10 @@ export class ControlTowerController {
 
   @Get('exceptions')
   @RequirePermissions(PERMISSIONS.dashboard)
-  getExceptions() {
-    return this.controlTowerService.getExceptions();
+  getExceptions(
+    @Query('category') category?: string,
+    @Query('severity') severity?: string,
+  ) {
+    return this.controlTowerService.getExceptions({ category, severity });
   }
 }
