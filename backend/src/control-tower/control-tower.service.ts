@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { round2 } from '../common/utils/money';
 
@@ -349,7 +350,7 @@ export class ControlTowerService {
     return result;
   }
 
-  private async ensureWorkflowStateTx(tx: any, exceptionKey: string) {
+  private async ensureWorkflowStateTx(tx: Prisma.TransactionClient, exceptionKey: string) {
     const rows = await tx.$queryRawUnsafe<any[]>(
       `
       INSERT INTO control_tower_exception_states (exception_key)
