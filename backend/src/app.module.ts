@@ -32,6 +32,7 @@ import { VatSettlementsModule } from './vat-settlements/vat-settlements.module';
 import { VatReturnsModule } from './vat-returns/vat-returns.module';
 import { FinanceDocumentsModule } from './finance-documents/finance-documents.module';
 import { StatementsModule } from './statements/statements.module';
+import { ControlTowerModule } from './control-tower/control-tower.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { StatementsModule } from './statements/statements.module';
     VatReturnsModule,
     FinanceDocumentsModule,
     StatementsModule,
+    ControlTowerModule,
   ],
 })
 export class AppModule {}
