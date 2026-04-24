@@ -81,6 +81,16 @@ export const navSections: NavSection[] = [
         permission: PERMISSIONS.financeAccountsRead,
       },
       {
+        label: 'Dokumente Arketimi',
+        href: '/financa/dokumente-arketimi',
+        permission: PERMISSIONS.salesInvoicesPay,
+      },
+      {
+        label: 'Dokumente Pagesash',
+        href: '/financa/dokumente-pagesash',
+        permission: PERMISSIONS.purchaseInvoicesPay,
+      },
+      {
         label: 'Periudhat Financiare',
         href: '/financa/periudhat',
         permission: PERMISSIONS.financialPeriodsRead,
