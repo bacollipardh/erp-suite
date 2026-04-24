@@ -4,7 +4,21 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
-type Action = 'ACKNOWLEDGE' | 'START' | 'RESOLVE' | 'REOPEN';
+type QuickAction = 'ACKNOWLEDGE' | 'START' | 'RESOLVE' | 'REOPEN';
+type AdvancedAction = 'ASSIGN' | 'SNOOZE' | 'NOTE';
+type WorkflowEvent = {
+  id: string;
+  action: string;
+  note?: string | null;
+  assignedToName?: string | null;
+  snoozedUntil?: string | null;
+  createdByName?: string | null;
+  createdAt?: string | null;
+};
+
+function formatDate(value?: string | null) {
+  return value ? new Date(value).toLocaleString('sq-XK') : '-';
+}
 
 export function ExceptionActions({
   exceptionKey,
@@ -14,14 +28,20 @@ export function ExceptionActions({
   status?: string | null;
 }) {
   const router = useRouter();
-  const [busy, setBusy] = useState<Action | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [openAdvanced, setOpenAdvanced] = useState(false);
+  const [note, setNote] = useState('');
+  const [assignedToId, setAssignedToId] = useState('');
+  const [snoozedUntil, setSnoozedUntil] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<WorkflowEvent[]>([]);
 
-  async function run(action: Action) {
+  async function run(action: QuickAction | AdvancedAction, extra?: Record<string, unknown>) {
     setBusy(action);
     setError('');
     try {
-      await api.post(`control-tower/exceptions/${encodeURIComponent(exceptionKey)}/actions`, { action });
+      await api.post(`control-tower/exceptions/${encodeURIComponent(exceptionKey)}/actions`, { action, ...extra });
       router.refresh();
     } catch (err: any) {
       setError(typeof err?.message === 'string' ? err.message : 'Action failed');
@@ -30,8 +50,22 @@ export function ExceptionActions({
     }
   }
 
+  async function loadHistory() {
+    setBusy('HISTORY');
+    setError('');
+    try {
+      const result = await api.getOne<{ items: WorkflowEvent[] }>(`control-tower/exceptions/${encodeURIComponent(exceptionKey)}/events`);
+      setHistory(result.items ?? []);
+      setHistoryOpen((value) => !value);
+    } catch (err: any) {
+      setError(typeof err?.message === 'string' ? err.message : 'History failed');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const current = status ?? 'OPEN';
-  const actions: { label: string; action: Action; show: boolean }[] = [
+  const quickActions: { label: string; action: QuickAction; show: boolean }[] = [
     { label: 'Ack', action: 'ACKNOWLEDGE', show: current === 'OPEN' },
     { label: 'Start', action: 'START', show: current === 'OPEN' || current === 'ACKNOWLEDGED' },
     { label: 'Resolve', action: 'RESOLVE', show: current !== 'RESOLVED' },
@@ -39,9 +73,9 @@ export function ExceptionActions({
   ];
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-64 flex-col gap-2">
       <div className="flex flex-wrap gap-1">
-        {actions.filter((entry) => entry.show).map((entry) => (
+        {quickActions.filter((entry) => entry.show).map((entry) => (
           <button
             key={entry.action}
             type="button"
@@ -52,8 +86,50 @@ export function ExceptionActions({
             {busy === entry.action ? '...' : entry.label}
           </button>
         ))}
+        <button type="button" onClick={() => setOpenAdvanced((value) => !value)} className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">
+          More
+        </button>
+        <button type="button" onClick={loadHistory} disabled={busy !== null} className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          {busy === 'HISTORY' ? '...' : 'History'}
+        </button>
       </div>
-      {error ? <span className="max-w-56 whitespace-normal text-[11px] text-red-600">{error}</span> : null}
+
+      {openAdvanced ? (
+        <div className="rounded-lg border bg-white p-2 shadow-sm space-y-2">
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium text-slate-500">Add note</label>
+            <textarea value={note} onChange={(event) => setNote(event.target.value)} className="min-h-14 w-full rounded-md border px-2 py-1 text-xs" placeholder="Internal note" />
+            <button type="button" disabled={busy !== null || !note.trim()} onClick={() => run('NOTE', { note })} className="rounded-md border px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50">Save Note</button>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium text-slate-500">Assign to user ID</label>
+            <input value={assignedToId} onChange={(event) => setAssignedToId(event.target.value)} className="w-full rounded-md border px-2 py-1 text-xs" placeholder="User UUID" />
+            <button type="button" disabled={busy !== null || !assignedToId.trim()} onClick={() => run('ASSIGN', { assignedToId, note: note || undefined })} className="rounded-md border px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50">Assign</button>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium text-slate-500">Snooze until</label>
+            <input type="datetime-local" value={snoozedUntil} onChange={(event) => setSnoozedUntil(event.target.value)} className="w-full rounded-md border px-2 py-1 text-xs" />
+            <button type="button" disabled={busy !== null || !snoozedUntil} onClick={() => run('SNOOZE', { snoozedUntil: new Date(snoozedUntil).toISOString(), note: note || undefined })} className="rounded-md border px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50">Snooze</button>
+          </div>
+        </div>
+      ) : null}
+
+      {historyOpen ? (
+        <div className="max-h-48 overflow-auto rounded-lg border bg-white p-2 shadow-sm">
+          {history.length === 0 ? <div className="text-xs text-slate-400">No history yet.</div> : null}
+          {history.map((event) => (
+            <div key={event.id} className="border-b py-1 last:border-b-0">
+              <div className="text-xs font-semibold text-slate-700">{event.action}</div>
+              <div className="text-[11px] text-slate-500">{formatDate(event.createdAt)} · {event.createdByName ?? 'System'}</div>
+              {event.assignedToName ? <div className="text-[11px] text-slate-500">Assigned: {event.assignedToName}</div> : null}
+              {event.snoozedUntil ? <div className="text-[11px] text-slate-500">Snoozed: {formatDate(event.snoozedUntil)}</div> : null}
+              {event.note ? <div className="text-[11px] text-slate-600">{event.note}</div> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {error ? <span className="max-w-64 whitespace-normal text-[11px] text-red-600">{error}</span> : null}
     </div>
   );
 }
