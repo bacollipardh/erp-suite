@@ -6,12 +6,16 @@ import { PERMISSIONS } from '../auth/permissions';
 import { CreateCustomerReceiptDto } from './dto/create-customer-receipt.dto';
 import { CreateSupplierPaymentDto } from './dto/create-supplier-payment.dto';
 import { FinanceDocumentsService } from './finance-documents.service';
+import { SupplierPaymentApprovalGateService } from './supplier-payment-approval-gate.service';
 
 @ApiTags('finance-documents')
 @ApiBearerAuth()
 @Controller()
 export class FinanceDocumentsController {
-  constructor(private readonly financeDocumentsService: FinanceDocumentsService) {}
+  constructor(
+    private readonly financeDocumentsService: FinanceDocumentsService,
+    private readonly supplierPaymentApprovalGateService: SupplierPaymentApprovalGateService,
+  ) {}
 
   @Get('customer-receipts')
   @RequirePermissions(PERMISSIONS.salesInvoicesPay)
@@ -57,7 +61,8 @@ export class FinanceDocumentsController {
 
   @Post('supplier-payments/:id/post')
   @RequirePermissions(PERMISSIONS.purchaseInvoicesPay)
-  postSupplierPayment(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+  async postSupplierPayment(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    await this.supplierPaymentApprovalGateService.assertPostAllowed(id, user.sub);
     return this.financeDocumentsService.postSupplierPayment(id, user.sub);
   }
 }
