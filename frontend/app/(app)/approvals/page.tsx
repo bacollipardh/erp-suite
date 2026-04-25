@@ -1,5 +1,7 @@
+import Link from 'next/link';
 import { PageHeader } from '@/components/page-header';
 import { ApprovalActions } from '@/components/approvals/approval-actions';
+import { CreateApprovalRequestForm } from '@/components/approvals/create-approval-request-form';
 import { api } from '@/lib/api';
 import { PERMISSIONS } from '@/lib/permissions';
 import { requirePagePermission } from '@/lib/server-page-auth';
@@ -52,7 +54,10 @@ export default async function Page({ searchParams }: { searchParams?: Promise<Se
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Approval Inbox" description="Qendra e aprovimeve për pagesa, journal entries, credit overrides dhe veprime financiare me kontroll." />
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <PageHeader title="Approval Inbox" description="Qendra e aprovimeve për pagesa, journal entries, credit overrides dhe veprime financiare me kontroll." />
+        <CreateApprovalRequestForm />
+      </div>
 
       <form className="grid gap-3 rounded-2xl border bg-white p-4 shadow-sm md:grid-cols-[220px_1fr_auto]">
         <label className="space-y-1 text-sm">
@@ -71,7 +76,7 @@ export default async function Page({ searchParams }: { searchParams?: Promise<Se
         </label>
         <div className="flex items-end gap-2">
           <button className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Filtro</button>
-          <a href="/approvals" className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Clear</a>
+          <Link href="/approvals" className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Clear</Link>
         </div>
       </form>
 
@@ -100,7 +105,7 @@ export default async function Page({ searchParams }: { searchParams?: Promise<Se
               ) : data.items.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50/70">
                   <td className="px-3 py-3 whitespace-nowrap"><span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${statusClass(item.status)}`}>{item.status}</span></td>
-                  <td className="px-3 py-3 min-w-72"><div className="font-semibold text-slate-900">{item.title}</div><div className="text-xs text-slate-500">{item.description ?? item.policyName ?? '-'}</div></td>
+                  <td className="px-3 py-3 min-w-72"><Link href={`/approvals/${item.id}`} className="font-semibold text-indigo-600 hover:text-indigo-800">{item.title}</Link><div className="text-xs text-slate-500">{item.description ?? item.policyName ?? '-'}</div></td>
                   <td className="px-3 py-3 whitespace-nowrap"><div>{item.entityType}</div><div className="text-xs text-slate-400">{item.entityNo ?? '-'}</div></td>
                   <td className="px-3 py-3 whitespace-nowrap font-semibold">{money(item.amount, item.currencyCode)}</td>
                   <td className="px-3 py-3 whitespace-nowrap">{item.currentStep} / {item.requiredSteps}</td>
