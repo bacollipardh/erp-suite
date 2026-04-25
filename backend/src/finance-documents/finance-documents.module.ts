@@ -4,10 +4,11 @@ import { FinancialPeriodsModule } from '../financial-periods/financial-periods.m
 import { PrismaModule } from '../prisma/prisma.module';
 import { FinanceDocumentsController } from './finance-documents.controller';
 import { FinanceDocumentsService } from './finance-documents.service';
+import { SupplierPaymentApprovalGateService } from './supplier-payment-approval-gate.service';
 
 @Module({
   imports: [PrismaModule, FinanceAccountsModule, FinancialPeriodsModule],
   controllers: [FinanceDocumentsController],
-  providers: [FinanceDocumentsService],
+  providers: [FinanceDocumentsService, SupplierPaymentApprovalGateService],
 })
 export class FinanceDocumentsModule {}
