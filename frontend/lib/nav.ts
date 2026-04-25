@@ -18,6 +18,7 @@ export const navSections: NavSection[] = [
       { label: 'Company Pulse', href: '/control-tower/pulse', permission: PERMISSIONS.dashboard },
       { label: 'Customer Risk', href: '/control-tower/customer-risk', permission: PERMISSIONS.dashboard },
       { label: 'Supplier Risk', href: '/control-tower/supplier-risk', permission: PERMISSIONS.dashboard },
+      { label: 'Approval Inbox', href: '/approvals', permission: PERMISSIONS.dashboard },
       { label: 'Control Tower', href: '/control-tower/exceptions', permission: PERMISSIONS.dashboard },
     ],
   },
