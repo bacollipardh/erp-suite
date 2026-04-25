@@ -1,6 +1,5 @@
 import { Type } from 'class-transformer';
 import {
-  ArrayMinSize,
   IsArray,
   IsDateString,
   IsNumber,
@@ -52,7 +51,6 @@ export class CreateCustomerReceiptDto {
 
   @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => CustomerReceiptAllocationDto)
   allocations?: CustomerReceiptAllocationDto[];
