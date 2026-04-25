@@ -36,6 +36,7 @@ import { ControlTowerModule } from './control-tower/control-tower.module';
 import { CompanyPulseModule } from './company-pulse/company-pulse.module';
 import { CustomerRiskModule } from './customer-risk/customer-risk.module';
 import { SupplierRiskModule } from './supplier-risk/supplier-risk.module';
+import { ApprovalsModule } from './approvals/approvals.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { SupplierRiskModule } from './supplier-risk/supplier-risk.module';
     CompanyPulseModule,
     CustomerRiskModule,
     SupplierRiskModule,
+    ApprovalsModule,
   ],
 })
 export class AppModule {}
