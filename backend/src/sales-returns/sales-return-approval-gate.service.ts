@@ -124,18 +124,29 @@ export class SalesReturnApprovalGateService {
       const requestId = rows[0].id;
       const requiredSteps = Number(policy.required_steps ?? 1);
       for (let stepNo = 1; stepNo <= requiredSteps; stepNo += 1) {
-        await this.createStepTx(tx, requestId, stepNo);
+        await this.createStepTx(tx, requestId, stepNo, policy.id);
       }
       await this.createEventTx(tx, requestId, userId, `Approval gate created request for sales return ${salesReturn.doc_no}`);
       return requestId;
     });
   }
 
-  private async createStepTx(tx: Tx, requestId: string, stepNo: number) {
+  private async createStepTx(tx: Tx, requestId: string, stepNo: number, policyId: string) {
     await tx.$executeRawUnsafe(
-      `INSERT INTO approval_request_steps (approval_request_id, step_no, status) VALUES ($1::uuid, $2, 'PENDING')`,
+      `
+      INSERT INTO approval_request_steps (approval_request_id, step_no, status, approver_role_code, approver_user_id)
+      SELECT $1::uuid, $2, 'PENDING', ps.approver_role_code, ps.approver_user_id
+      FROM approval_policy_steps ps
+      WHERE ps.policy_id = $3::uuid AND ps.step_no = $2
+      UNION ALL
+      SELECT $1::uuid, $2, 'PENDING', NULL, NULL
+      WHERE NOT EXISTS (
+        SELECT 1 FROM approval_policy_steps ps WHERE ps.policy_id = $3::uuid AND ps.step_no = $2
+      )
+      `,
       requestId,
       stepNo,
+      policyId,
     );
   }
 
