@@ -202,14 +202,7 @@ export class ApprovalsService {
 
       const request = rows[0];
       for (let stepNo = 1; stepNo <= requiredSteps; stepNo += 1) {
-        await tx.$executeRawUnsafe(
-          `
-          INSERT INTO approval_request_steps (approval_request_id, step_no, status)
-          VALUES ($1::uuid, $2, 'PENDING')
-          `,
-          request.id,
-          stepNo,
-        );
+        await this.addStepTx(tx, request.id, stepNo, policy?.id ?? null);
       }
 
       await this.addEventTx(tx, request.id, 'REQUESTED', description, requestedById);
@@ -366,6 +359,25 @@ export class ApprovalsService {
   private async ensureRequestExists(id: string) {
     const rows = await this.prisma.$queryRawUnsafe<any[]>(`SELECT id FROM approval_requests WHERE id = $1::uuid`, id);
     if (!rows[0]) throw new NotFoundException('Approval request not found');
+  }
+
+  private async addStepTx(tx: Prisma.TransactionClient, requestId: string, stepNo: number, policyId: string | null) {
+    await tx.$executeRawUnsafe(
+      `
+      INSERT INTO approval_request_steps (approval_request_id, step_no, status, approver_role_code, approver_user_id)
+      SELECT $1::uuid, $2, 'PENDING', ps.approver_role_code, ps.approver_user_id
+      FROM approval_policy_steps ps
+      WHERE ps.policy_id = $3::uuid AND ps.step_no = $2
+      UNION ALL
+      SELECT $1::uuid, $2, 'PENDING', NULL, NULL
+      WHERE $3::uuid IS NULL OR NOT EXISTS (
+        SELECT 1 FROM approval_policy_steps ps WHERE ps.policy_id = $3::uuid AND ps.step_no = $2
+      )
+      `,
+      requestId,
+      stepNo,
+      policyId,
+    );
   }
 
   private async addEventTx(tx: Prisma.TransactionClient, requestId: string, action: string, note: string | null, userId: string) {
