@@ -1,7 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { round2 } from '../common/utils/money';
 import { CreateManualJournalEntryDto } from './dto/create-manual-journal-entry.dto';
+
+type Tx = Prisma.TransactionClient;
 
 function normalized(value?: string | null) {
   const trimmed = value?.trim();
@@ -26,21 +29,15 @@ export class ManualJournalApprovalGateService {
     if (existing?.status === 'APPROVED' && !existing.entity_id) return;
 
     if (existing?.status === 'PENDING') {
-      throw new BadRequestException(
-        `Manual journal requires approval before posting. Approval request already pending: ${existing.id}`,
-      );
+      throw new BadRequestException(`Manual journal requires approval before posting. Approval request already pending: ${existing.id}`);
     }
 
     if (existing?.status === 'APPROVED' && existing.entity_id) {
-      throw new BadRequestException(
-        `Manual journal approval for sourceNo ${sourceNo} is already consumed by journal entry ${existing.entity_id}`,
-      );
+      throw new BadRequestException(`Manual journal approval for sourceNo ${sourceNo} is already consumed by journal entry ${existing.entity_id}`);
     }
 
     const requestId = await this.createApprovalRequest(dto, policy, amount, userId, sourceNo);
-    throw new BadRequestException(
-      `Manual journal requires approval before posting. Approval request created: ${requestId}`,
-    );
+    throw new BadRequestException(`Manual journal requires approval before posting. Approval request created: ${requestId}`);
   }
 
   async markConsumed(sourceNo: string | null | undefined, journalEntryId: string) {
@@ -65,16 +62,8 @@ export class ManualJournalApprovalGateService {
   }
 
   private calculateAmount(dto: CreateManualJournalEntryDto) {
-    const debitTotal = round2(
-      dto.lines
-        .filter((line) => line.side === 'DEBIT')
-        .reduce((sum, line) => sum + Number(line.amount ?? 0), 0),
-    );
-    const creditTotal = round2(
-      dto.lines
-        .filter((line) => line.side === 'CREDIT')
-        .reduce((sum, line) => sum + Number(line.amount ?? 0), 0),
-    );
+    const debitTotal = round2(dto.lines.filter((line) => line.side === 'DEBIT').reduce((sum, line) => sum + Number(line.amount ?? 0), 0));
+    const creditTotal = round2(dto.lines.filter((line) => line.side === 'CREDIT').reduce((sum, line) => sum + Number(line.amount ?? 0), 0));
     return Math.max(debitTotal, creditTotal);
   }
 
@@ -115,13 +104,7 @@ export class ManualJournalApprovalGateService {
     return rows[0] ?? null;
   }
 
-  private async createApprovalRequest(
-    dto: CreateManualJournalEntryDto,
-    policy: any,
-    amount: number,
-    userId: string,
-    sourceNo: string,
-  ) {
+  private async createApprovalRequest(dto: CreateManualJournalEntryDto, policy: any, amount: number, userId: string, sourceNo: string) {
     return this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRawUnsafe<any[]>(
         `
@@ -141,23 +124,13 @@ export class ManualJournalApprovalGateService {
         amount,
         userId,
         Number(policy.required_steps ?? 1),
-        JSON.stringify({
-          gate: 'manual-journal-post',
-          sourceNo,
-          entryDate: dto.entryDate,
-          amount,
-          lineCount: dto.lines.length,
-        }),
+        JSON.stringify({ gate: 'manual-journal-post', sourceNo, entryDate: dto.entryDate, amount, lineCount: dto.lines.length }),
       );
 
       const requestId = rows[0].id;
       const requiredSteps = Number(policy.required_steps ?? 1);
       for (let stepNo = 1; stepNo <= requiredSteps; stepNo += 1) {
-        await tx.$executeRawUnsafe(
-          `INSERT INTO approval_request_steps (approval_request_id, step_no, status) VALUES ($1::uuid, $2, 'PENDING')`,
-          requestId,
-          stepNo,
-        );
+        await this.createStepTx(tx, requestId, stepNo, policy.id);
       }
       await tx.$executeRawUnsafe(
         `INSERT INTO approval_request_events (approval_request_id, action, note, created_by_id) VALUES ($1::uuid, 'REQUESTED', $2, $3::uuid)`,
@@ -167,5 +140,22 @@ export class ManualJournalApprovalGateService {
       );
       return requestId;
     });
+  }
+
+  private async createStepTx(tx: Tx, requestId: string, stepNo: number, policyId: string) {
+    await tx.$executeRawUnsafe(
+      `
+      INSERT INTO approval_request_steps (approval_request_id, step_no, status, approver_role_code, approver_user_id)
+      SELECT $1::uuid, $2, 'PENDING', ps.approver_role_code, ps.approver_user_id
+      FROM approval_policy_steps ps
+      WHERE ps.policy_id = $3::uuid AND ps.step_no = $2
+      UNION ALL
+      SELECT $1::uuid, $2, 'PENDING', NULL, NULL
+      WHERE NOT EXISTS (SELECT 1 FROM approval_policy_steps ps WHERE ps.policy_id = $3::uuid AND ps.step_no = $2)
+      `,
+      requestId,
+      stepNo,
+      policyId,
+    );
   }
 }
