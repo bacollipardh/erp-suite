@@ -10,12 +10,16 @@ import { CreateManualJournalEntryDto } from './dto/create-manual-journal-entry.d
 import { ListJournalEntriesQueryDto } from './dto/list-journal-entries-query.dto';
 import { ListLedgerAccountsQueryDto } from './dto/list-ledger-accounts-query.dto';
 import { VatLedgerQueryDto } from './dto/vat-ledger-query.dto';
+import { ManualJournalApprovalGateService } from './manual-journal-approval-gate.service';
 
 @ApiTags('accounting')
 @ApiBearerAuth()
 @Controller('accounting')
 export class AccountingController {
-  constructor(private readonly accountingService: AccountingService) {}
+  constructor(
+    private readonly accountingService: AccountingService,
+    private readonly manualJournalApprovalGateService: ManualJournalApprovalGateService,
+  ) {}
 
   @Get('accounts')
   @RequirePermissions(PERMISSIONS.accountingRead)
@@ -31,11 +35,14 @@ export class AccountingController {
 
   @Post('journal-entries')
   @RequirePermissions(PERMISSIONS.accountingManage)
-  createManualJournalEntry(
+  async createManualJournalEntry(
     @Body() dto: CreateManualJournalEntryDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.accountingService.createManualJournalEntry(dto, user.sub);
+    await this.manualJournalApprovalGateService.assertCreateAllowed(dto, user.sub);
+    const entry = await this.accountingService.createManualJournalEntry(dto, user.sub);
+    await this.manualJournalApprovalGateService.markConsumed(dto.sourceNo, entry.id);
+    return entry;
   }
 
   @Get('trial-balance')
