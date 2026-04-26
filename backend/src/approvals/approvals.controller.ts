@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, JwtPayload } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 import { ApprovalsService } from './approvals.service';
 import { ApprovalsDashboardService } from './approvals-dashboard.service';
+import { ApprovalsPolicyAdminService } from './approvals-policy-admin.service';
 
 type CreateApprovalRequestBody = {
   entityType: string;
@@ -18,6 +19,17 @@ type CreateApprovalRequestBody = {
   metadata?: Record<string, unknown>;
 };
 
+type PolicyBody = {
+  code?: string;
+  name?: string;
+  entityType?: string;
+  action?: string;
+  minAmount?: number | null;
+  maxAmount?: number | null;
+  requiredSteps?: number;
+  isActive?: boolean;
+};
+
 type DecisionBody = {
   note?: string;
 };
@@ -29,6 +41,7 @@ export class ApprovalsController {
   constructor(
     private readonly approvalsService: ApprovalsService,
     private readonly approvalsDashboardService: ApprovalsDashboardService,
+    private readonly approvalsPolicyAdminService: ApprovalsPolicyAdminService,
   ) {}
 
   @Get('dashboard')
@@ -41,6 +54,18 @@ export class ApprovalsController {
   @RequirePermissions(PERMISSIONS.dashboard)
   findPolicies() {
     return this.approvalsService.findPolicies();
+  }
+
+  @Post('policies')
+  @RequirePermissions(PERMISSIONS.dashboard)
+  createPolicy(@Body() body: PolicyBody) {
+    return this.approvalsPolicyAdminService.createPolicy(body);
+  }
+
+  @Patch('policies/:id')
+  @RequirePermissions(PERMISSIONS.dashboard)
+  updatePolicy(@Param('id') id: string, @Body() body: PolicyBody) {
+    return this.approvalsPolicyAdminService.updatePolicy(id, body);
   }
 
   @Get('requests')
