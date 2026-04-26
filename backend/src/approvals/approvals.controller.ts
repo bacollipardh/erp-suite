@@ -4,6 +4,7 @@ import { CurrentUser, JwtPayload } from '../auth/decorators/current-user.decorat
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 import { ApprovalsService } from './approvals.service';
+import { ApprovalsDashboardService } from './approvals-dashboard.service';
 
 type CreateApprovalRequestBody = {
   entityType: string;
@@ -25,7 +26,16 @@ type DecisionBody = {
 @ApiBearerAuth()
 @Controller('approvals')
 export class ApprovalsController {
-  constructor(private readonly approvalsService: ApprovalsService) {}
+  constructor(
+    private readonly approvalsService: ApprovalsService,
+    private readonly approvalsDashboardService: ApprovalsDashboardService,
+  ) {}
+
+  @Get('dashboard')
+  @RequirePermissions(PERMISSIONS.dashboard)
+  getDashboard() {
+    return this.approvalsDashboardService.getDashboard();
+  }
 
   @Get('policies')
   @RequirePermissions(PERMISSIONS.dashboard)
