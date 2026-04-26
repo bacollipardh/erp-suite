@@ -30,6 +30,16 @@ type PolicyBody = {
   isActive?: boolean;
 };
 
+type PolicyStepsBody = {
+  steps?: {
+    stepNo?: number;
+    approverRoleCode?: string | null;
+    approverUserId?: string | null;
+    label?: string | null;
+    isRequired?: boolean;
+  }[];
+};
+
 type DecisionBody = {
   note?: string;
 };
@@ -66,6 +76,18 @@ export class ApprovalsController {
   @RequirePermissions(PERMISSIONS.dashboard)
   updatePolicy(@Param('id') id: string, @Body() body: PolicyBody) {
     return this.approvalsPolicyAdminService.updatePolicy(id, body);
+  }
+
+  @Get('policies/:id/steps')
+  @RequirePermissions(PERMISSIONS.dashboard)
+  getPolicySteps(@Param('id') id: string) {
+    return this.approvalsPolicyAdminService.getPolicySteps(id);
+  }
+
+  @Patch('policies/:id/steps')
+  @RequirePermissions(PERMISSIONS.dashboard)
+  updatePolicySteps(@Param('id') id: string, @Body() body: PolicyStepsBody) {
+    return this.approvalsPolicyAdminService.updatePolicySteps(id, body);
   }
 
   @Get('requests')
