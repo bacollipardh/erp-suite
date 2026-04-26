@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { round2 } from '../common/utils/money';
@@ -226,6 +226,7 @@ export class ApprovalsService {
       );
       const step = stepRows[0];
       if (!step || step.status !== 'PENDING') throw new BadRequestException('Current approval step is not pending');
+      await this.assertStepApproverAllowedTx(tx, step, userId);
 
       await tx.$executeRawUnsafe(
         `
@@ -272,6 +273,19 @@ export class ApprovalsService {
     return this.prisma.$transaction(async (tx) => {
       const request = await this.lockRequestTx(tx, id);
       if (request.status !== 'PENDING') throw new BadRequestException('Approval request is not pending');
+
+      const stepRows = await tx.$queryRawUnsafe<any[]>(
+        `
+        SELECT * FROM approval_request_steps
+        WHERE approval_request_id = $1::uuid AND step_no = $2
+        FOR UPDATE
+        `,
+        id,
+        request.current_step,
+      );
+      const step = stepRows[0];
+      if (!step || step.status !== 'PENDING') throw new BadRequestException('Current approval step is not pending');
+      await this.assertStepApproverAllowedTx(tx, step, userId);
 
       await tx.$executeRawUnsafe(
         `
@@ -359,6 +373,35 @@ export class ApprovalsService {
   private async ensureRequestExists(id: string) {
     const rows = await this.prisma.$queryRawUnsafe<any[]>(`SELECT id FROM approval_requests WHERE id = $1::uuid`, id);
     if (!rows[0]) throw new NotFoundException('Approval request not found');
+  }
+
+  private async assertStepApproverAllowedTx(tx: Prisma.TransactionClient, step: any, userId: string) {
+    const approverUserId = normalize(step.approver_user_id);
+    const approverRoleCode = normalize(step.approver_role_code)?.toUpperCase() ?? null;
+
+    if (!approverUserId && !approverRoleCode) return;
+
+    const rows = await tx.$queryRawUnsafe<any[]>(
+      `
+      SELECT u.id, u.full_name, u.email, r.code AS role_code
+      FROM users u
+      JOIN roles r ON r.id = u.role_id
+      WHERE u.id = $1::uuid
+        AND u.is_active = true
+      LIMIT 1
+      `,
+      userId,
+    );
+    const user = rows[0];
+    if (!user) throw new ForbiddenException('Active approver user not found');
+
+    if (approverUserId && String(approverUserId).toLowerCase() !== String(userId).toLowerCase()) {
+      throw new ForbiddenException('This approval step is assigned to a specific approver user');
+    }
+
+    if (!approverUserId && approverRoleCode && String(user.role_code ?? '').toUpperCase() !== approverRoleCode) {
+      throw new ForbiddenException(`This approval step requires role ${approverRoleCode}`);
+    }
   }
 
   private async addStepTx(tx: Prisma.TransactionClient, requestId: string, stepNo: number, policyId: string | null) {
