@@ -82,6 +82,8 @@ export const navSections: NavSection[] = [
       { label: 'Rialokimi i Arketimeve', href: '/arketime/rialokime', permission: PERMISSIONS.salesInvoicesPay },
       { label: 'Pagesat', href: '/pagesat', permission: PERMISSIONS.reportsPayables },
       { label: 'Rialokimi i Pagesave', href: '/pagesat/rialokime', permission: PERMISSIONS.purchaseInvoicesPay },
+      { label: 'Libri i Madh — Klientët', href: '/financa/libri-madh-klienteve', permission: PERMISSIONS.reportsReceivables },
+      { label: 'Libri i Madh — Furnitorët', href: '/financa/libri-madh-furnitoreve', permission: PERMISSIONS.reportsPayables },
     ],
   },
   {

@@ -31,4 +31,26 @@ export class StatementsController {
   ) {
     return this.statementsService.getSupplierStatement({ supplierId, dateFrom, dateTo, limit });
   }
+
+  @Get('customers/ledger')
+  @RequirePermissions(PERMISSIONS.reportsReceivables)
+  getCustomerLedger(
+    @Query('customerId') customerId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.statementsService.getCustomerLedger({ customerId, dateFrom, dateTo, limit });
+  }
+
+  @Get('suppliers/ledger')
+  @RequirePermissions(PERMISSIONS.reportsPayables)
+  getSupplierLedger(
+    @Query('supplierId') supplierId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.statementsService.getSupplierLedger({ supplierId, dateFrom, dateTo, limit });
+  }
 }
