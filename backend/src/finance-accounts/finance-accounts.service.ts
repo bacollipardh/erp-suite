@@ -104,21 +104,11 @@ export class FinanceAccountsService {
             : { name: sortOrder };
 
     const [items, total, totals] = await this.prisma.$transaction([
-      this.prisma.financeAccount.findMany({
-        where,
-        orderBy,
-        skip,
-        take,
-      }),
+      this.prisma.financeAccount.findMany({ where, orderBy, skip, take }),
       this.prisma.financeAccount.count({ where }),
       this.prisma.financeAccount.findMany({
         where,
-        select: {
-          id: true,
-          accountType: true,
-          currentBalance: true,
-          isActive: true,
-        },
+        select: { id: true, accountType: true, currentBalance: true, isActive: true },
       }),
     ]);
 
@@ -126,26 +116,13 @@ export class FinanceAccountsService {
       accountCount: totals.length,
       activeCount: totals.filter((row) => row.isActive).length,
       inactiveCount: totals.filter((row) => !row.isActive).length,
-      cashBalance: round2(
-        totals
-          .filter((row) => row.accountType === FinanceAccountType.CASH)
-          .reduce((sum, row) => sum + Number(row.currentBalance ?? 0), 0),
-      ),
-      bankBalance: round2(
-        totals
-          .filter((row) => row.accountType === FinanceAccountType.BANK)
-          .reduce((sum, row) => sum + Number(row.currentBalance ?? 0), 0),
-      ),
-      totalBalance: round2(
-        totals.reduce((sum, row) => sum + Number(row.currentBalance ?? 0), 0),
-      ),
+      cashBalance: round2(totals.filter((row) => row.accountType === FinanceAccountType.CASH).reduce((sum, row) => sum + Number(row.currentBalance ?? 0), 0)),
+      bankBalance: round2(totals.filter((row) => row.accountType === FinanceAccountType.BANK).reduce((sum, row) => sum + Number(row.currentBalance ?? 0), 0)),
+      totalBalance: round2(totals.reduce((sum, row) => sum + Number(row.currentBalance ?? 0), 0)),
       negativeBalanceCount: totals.filter((row) => Number(row.currentBalance ?? 0) < 0).length,
     };
 
-    return {
-      ...toPaginatedResponse({ items, total, page, limit }),
-      summary,
-    };
+    return { ...toPaginatedResponse({ items, total, page, limit }), summary };
   }
 
   async findTransactions(query: ListFinanceAccountTransactionsQueryDto = {}) {
@@ -157,16 +134,8 @@ export class FinanceAccountsService {
     const where: Prisma.FinanceAccountTransactionWhereInput = {
       accountId: query.accountId,
       transactionType: query.transactionType,
-      transactionDate:
-        query.dateFrom || query.dateTo
-          ? {
-              gte: query.dateFrom ? new Date(query.dateFrom) : undefined,
-              lte: query.dateTo ? new Date(query.dateTo) : undefined,
-            }
-          : undefined,
-      account: {
-        accountType: query.accountType,
-      },
+      transactionDate: query.dateFrom || query.dateTo ? { gte: query.dateFrom ? new Date(query.dateFrom) : undefined, lte: query.dateTo ? new Date(query.dateTo) : undefined } : undefined,
+      account: { accountType: query.accountType },
       OR: search
         ? [
             { referenceNo: { contains: search, mode: 'insensitive' } },
@@ -181,7 +150,6 @@ export class FinanceAccountsService {
 
     const sortBy = query.sortBy ?? 'transactionDate';
     const sortOrder = query.sortOrder === 'asc' ? 'asc' : 'desc';
-
     const orderBy: Prisma.FinanceAccountTransactionOrderByWithRelationInput =
       sortBy === 'amount'
         ? { amount: sortOrder }
@@ -194,70 +162,32 @@ export class FinanceAccountsService {
     const [items, total, totals] = await this.prisma.$transaction([
       this.prisma.financeAccountTransaction.findMany({
         where,
-        include: {
-          account: true,
-          createdBy: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-            },
-          },
-        },
+        include: { account: true, createdBy: { select: { id: true, fullName: true, email: true } } },
         orderBy,
         skip,
         take,
       }),
       this.prisma.financeAccountTransaction.count({ where }),
-      this.prisma.financeAccountTransaction.findMany({
-        where,
-        select: {
-          id: true,
-          accountId: true,
-          amount: true,
-          transactionType: true,
-        },
-      }),
+      this.prisma.financeAccountTransaction.findMany({ where, select: { id: true, accountId: true, amount: true, transactionType: true } }),
     ]);
 
-    const totalIn = round2(
-      totals
-        .filter((row) => isInboundType(row.transactionType))
-        .reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
-    );
-    const totalOut = round2(
-      totals
-        .filter((row) => isOutboundType(row.transactionType))
-        .reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
-    );
+    const totalIn = round2(totals.filter((row) => isInboundType(row.transactionType)).reduce((sum, row) => sum + Number(row.amount ?? 0), 0));
+    const totalOut = round2(totals.filter((row) => isOutboundType(row.transactionType)).reduce((sum, row) => sum + Number(row.amount ?? 0), 0));
 
     return {
       ...toPaginatedResponse({ items, total, page, limit }),
-      summary: {
-        transactionCount: totals.length,
-        totalIn,
-        totalOut,
-        netChange: round2(totalIn - totalOut),
-        accountCount: new Set(totals.map((row) => row.accountId)).size,
-      },
+      summary: { transactionCount: totals.length, totalIn, totalOut, netChange: round2(totalIn - totalOut), accountCount: new Set(totals.map((row) => row.accountId)).size },
     };
   }
 
   async create(dto: CreateFinanceAccountDto, userId: string) {
     const code = normalizeCode(dto.code);
     const existing = await this.prisma.financeAccount.findUnique({ where: { code } });
-    if (existing) {
-      throw new ConflictException('Finance account code already exists');
-    }
+    if (existing) throw new ConflictException('Finance account code already exists');
 
     const openingBalance = round2(Number(dto.openingBalance ?? 0));
     const openingDate = normalizeDateOnly(dto.openingDate);
-
-    await this.financialPeriodsService.assertDateOpen(
-      openingDate,
-      userId,
-      'Krijimi i llogarise financiare',
-    );
+    await this.financialPeriodsService.assertDateOpen(openingDate, userId, 'Krijimi i llogarise financiare');
 
     const created = await this.prisma.$transaction(async (tx) => {
       const account = await tx.financeAccount.create({
@@ -277,113 +207,35 @@ export class FinanceAccountsService {
         },
       });
 
-      await this.accountingService.ensureFinanceAccountLedgerTx(tx, {
-        financeAccountId: account.id,
-        code: account.code,
-        name: account.name,
-        accountType: account.accountType,
-        isActive: account.isActive,
-        notes: account.notes,
-      });
+      await this.accountingService.ensureFinanceAccountLedgerTx(tx, { financeAccountId: account.id, code: account.code, name: account.name, accountType: account.accountType, isActive: account.isActive, notes: account.notes });
 
       if (openingBalance !== 0) {
-        const openingTransaction = await this.createAccountTransactionTx(tx, {
-          accountId: account.id,
-          amount: openingBalance,
-          transactionType: FinanceAccountTransactionType.OPENING,
-          transactionDate: openingDate,
-          notes: 'Opening balance',
-          createdById: userId,
-        });
-
-        await this.accountingService.postOpeningBalanceTx(tx, {
-          financeTransactionId: openingTransaction.id,
-          financeAccountId: account.id,
-          amount: openingBalance,
-          transactionDate: openingDate,
-          accountName: account.name,
-          createdById: userId,
-        });
+        const openingTransaction = await this.createAccountTransactionTx(tx, { accountId: account.id, amount: openingBalance, transactionType: FinanceAccountTransactionType.OPENING, transactionDate: openingDate, notes: 'Opening balance', createdById: userId });
+        await this.accountingService.postOpeningBalanceTx(tx, { financeTransactionId: openingTransaction.id, financeAccountId: account.id, amount: openingBalance, transactionDate: openingDate, accountName: account.name, createdById: userId });
       }
 
-      return tx.financeAccount.findUniqueOrThrow({
-        where: { id: account.id },
-      });
+      return tx.financeAccount.findUniqueOrThrow({ where: { id: account.id } });
     });
 
-    await this.auditLogs.log({
-      userId,
-      entityType: 'finance_accounts',
-      entityId: created.id,
-      action: 'CREATE',
-      metadata: {
-        code: created.code,
-        accountType: created.accountType,
-        openingBalance,
-      },
-    });
-
+    await this.auditLogs.log({ userId, entityType: 'finance_accounts', entityId: created.id, action: 'CREATE', metadata: { code: created.code, accountType: created.accountType, openingBalance } });
     return created;
   }
 
   async createManualTransaction(dto: CreateFinanceAccountTransactionDto, userId: string) {
     const transactionDate = normalizeDateOnly(dto.transactionDate);
     const amount = round2(Number(dto.amount));
-    const transactionType =
-      dto.direction === 'IN'
-        ? FinanceAccountTransactionType.MANUAL_IN
-        : FinanceAccountTransactionType.MANUAL_OUT;
+    const transactionType = dto.direction === 'IN' ? FinanceAccountTransactionType.MANUAL_IN : FinanceAccountTransactionType.MANUAL_OUT;
 
     return this.prisma.$transaction(async (tx) => {
-      const created = await this.createAccountTransactionTx(tx, {
-        accountId: dto.financeAccountId,
-        amount,
-        transactionType,
-        transactionDate,
-        referenceNo: dto.referenceNo,
-        counterpartyName: dto.counterpartyName,
-        notes: dto.notes,
-        createdById: userId,
-      });
-
-      await this.accountingService.postManualFinanceTransactionTx(tx, {
-        financeTransactionId: created.id,
-        financeAccountId: created.accountId,
-        transactionType,
-        amount,
-        transactionDate,
-        referenceNo: dto.referenceNo,
-        counterpartyName: dto.counterpartyName,
-        notes: dto.notes,
-        createdById: userId,
-      });
-
-      await tx.auditLog.create({
-        data: {
-          userId,
-          entityType: 'finance_account_transactions',
-          entityId: created.id,
-          action: 'CREATE_MANUAL_TRANSACTION',
-          metadata: {
-            accountId: created.accountId,
-            transactionType,
-            amount,
-            transactionDate: transactionDate.toISOString(),
-            referenceNo: dto.referenceNo,
-            counterpartyName: dto.counterpartyName,
-          } as Prisma.InputJsonValue,
-        },
-      });
-
+      const created = await this.createAccountTransactionTx(tx, { accountId: dto.financeAccountId, amount, transactionType, transactionDate, referenceNo: dto.referenceNo, counterpartyName: dto.counterpartyName, notes: dto.notes, createdById: userId });
+      await this.accountingService.postManualFinanceTransactionTx(tx, { financeTransactionId: created.id, financeAccountId: created.accountId, transactionType, amount, transactionDate, referenceNo: dto.referenceNo, counterpartyName: dto.counterpartyName, notes: dto.notes, createdById: userId });
+      await tx.auditLog.create({ data: { userId, entityType: 'finance_account_transactions', entityId: created.id, action: 'CREATE_MANUAL_TRANSACTION', metadata: { accountId: created.accountId, transactionType, amount, transactionDate: transactionDate.toISOString(), referenceNo: dto.referenceNo, counterpartyName: dto.counterpartyName } as Prisma.InputJsonValue } });
       return created;
     });
   }
 
   async createTransfer(dto: CreateFinanceTransferDto, userId: string) {
-    if (dto.sourceAccountId === dto.destinationAccountId) {
-      throw new BadRequestException('Source and destination account must be different');
-    }
-
+    if (dto.sourceAccountId === dto.destinationAccountId) throw new BadRequestException('Source and destination account must be different');
     const transactionDate = normalizeDateOnly(dto.transactionDate);
     const amount = round2(Number(dto.amount));
     const transferGroupId = randomUUID();
@@ -391,68 +243,11 @@ export class FinanceAccountsService {
     return this.prisma.$transaction(async (tx) => {
       const source = await this.getAccountOrThrowTx(tx, dto.sourceAccountId);
       const destination = await this.getAccountOrThrowTx(tx, dto.destinationAccountId);
-
-      const sourceTx = await this.createAccountTransactionTx(tx, {
-        accountId: source.id,
-        amount,
-        transactionType: FinanceAccountTransactionType.TRANSFER_OUT,
-        transactionDate,
-        referenceNo: dto.referenceNo,
-        notes: dto.notes,
-        counterpartyName: destination.name,
-        transferGroupId,
-        createdById: userId,
-      });
-
-      const destinationTx = await this.createAccountTransactionTx(tx, {
-        accountId: destination.id,
-        amount,
-        transactionType: FinanceAccountTransactionType.TRANSFER_IN,
-        transactionDate,
-        referenceNo: dto.referenceNo,
-        notes: dto.notes,
-        counterpartyName: source.name,
-        transferGroupId,
-        createdById: userId,
-      });
-
-      await this.accountingService.postFinanceTransferTx(tx, {
-        transferGroupId,
-        sourceTransactionId: sourceTx.id,
-        destinationTransactionId: destinationTx.id,
-        sourceAccountId: source.id,
-        destinationAccountId: destination.id,
-        amount,
-        transactionDate,
-        referenceNo: dto.referenceNo,
-        createdById: userId,
-      });
-
-      await tx.auditLog.create({
-        data: {
-          userId,
-          entityType: 'finance_account_transfers',
-          entityId: transferGroupId,
-          action: 'CREATE',
-          metadata: {
-            sourceAccountId: source.id,
-            sourceAccountCode: source.code,
-            destinationAccountId: destination.id,
-            destinationAccountCode: destination.code,
-            amount,
-            transactionDate: transactionDate.toISOString(),
-            referenceNo: dto.referenceNo,
-          } as Prisma.InputJsonValue,
-        },
-      });
-
-      return {
-        transferGroupId,
-        amount,
-        transactionDate,
-        sourceTransaction: sourceTx,
-        destinationTransaction: destinationTx,
-      };
+      const sourceTx = await this.createAccountTransactionTx(tx, { accountId: source.id, amount, transactionType: FinanceAccountTransactionType.TRANSFER_OUT, transactionDate, referenceNo: dto.referenceNo, notes: dto.notes, counterpartyName: destination.name, transferGroupId, createdById: userId });
+      const destinationTx = await this.createAccountTransactionTx(tx, { accountId: destination.id, amount, transactionType: FinanceAccountTransactionType.TRANSFER_IN, transactionDate, referenceNo: dto.referenceNo, notes: dto.notes, counterpartyName: source.name, transferGroupId, createdById: userId });
+      await this.accountingService.postFinanceTransferTx(tx, { transferGroupId, sourceTransactionId: sourceTx.id, destinationTransactionId: destinationTx.id, sourceAccountId: source.id, destinationAccountId: destination.id, amount, transactionDate, referenceNo: dto.referenceNo, createdById: userId });
+      await tx.auditLog.create({ data: { userId, entityType: 'finance_account_transfers', entityId: transferGroupId, action: 'CREATE', metadata: { sourceAccountId: source.id, sourceAccountCode: source.code, destinationAccountId: destination.id, destinationAccountCode: destination.code, amount, transactionDate: transactionDate.toISOString(), referenceNo: dto.referenceNo } as Prisma.InputJsonValue } });
+      return { transferGroupId, amount, transactionDate, sourceTransaction: sourceTx, destinationTransaction: destinationTx };
     });
   }
 
@@ -466,6 +261,7 @@ export class FinanceAccountsService {
       referenceNo?: string;
       notes?: string;
       counterpartyName?: string;
+      sourceDocumentType?: string;
       sourceDocumentId?: string;
       sourceDocumentNo?: string;
       financeSettlementId?: string;
@@ -482,7 +278,7 @@ export class FinanceAccountsService {
       referenceNo: params.referenceNo,
       notes: params.notes,
       counterpartyName: params.counterpartyName,
-      sourceDocumentType: 'sales-invoices',
+      sourceDocumentType: params.sourceDocumentType ?? 'sales-invoices',
       sourceDocumentId: params.sourceDocumentId,
       sourceDocumentNo: params.sourceDocumentNo,
       financeSettlementId: params.financeSettlementId,
@@ -516,6 +312,7 @@ export class FinanceAccountsService {
       referenceNo?: string;
       notes?: string;
       counterpartyName?: string;
+      sourceDocumentType?: string;
       sourceDocumentId?: string;
       sourceDocumentNo?: string;
       financeSettlementId?: string;
@@ -532,7 +329,7 @@ export class FinanceAccountsService {
       referenceNo: params.referenceNo,
       notes: params.notes,
       counterpartyName: params.counterpartyName,
-      sourceDocumentType: 'purchase-invoices',
+      sourceDocumentType: params.sourceDocumentType ?? 'purchase-invoices',
       sourceDocumentId: params.sourceDocumentId,
       sourceDocumentNo: params.sourceDocumentNo,
       financeSettlementId: params.financeSettlementId,
@@ -569,42 +366,15 @@ export class FinanceAccountsService {
       notes?: string;
     },
   ) {
-    const created = await this.createAccountTransactionTx(tx, {
-      accountId: params.financeAccountId,
-      amount: round2(params.amount),
-      transactionType: FinanceAccountTransactionType.PAYMENT,
-      transactionDate: params.transactionDate,
-      referenceNo: params.referenceNo,
-      notes: params.notes,
-      counterpartyName: 'Administrata Tatimore',
-      sourceDocumentType: 'vat-settlements',
-      sourceDocumentId: params.vatSettlementId,
-      sourceDocumentNo: params.settlementNo,
-      createdById: params.createdById,
-    });
-
-    await this.accountingService.postVatPaymentTx(tx, {
-      financeTransactionId: created.id,
-      financeAccountId: params.financeAccountId,
-      amount: round2(params.amount),
-      transactionDate: params.transactionDate,
-      settlementNo: params.settlementNo,
-      referenceNo: params.referenceNo,
-      notes: params.notes,
-      createdById: params.createdById,
-    });
-
+    const created = await this.createAccountTransactionTx(tx, { accountId: params.financeAccountId, amount: round2(params.amount), transactionType: FinanceAccountTransactionType.PAYMENT, transactionDate: params.transactionDate, referenceNo: params.referenceNo, notes: params.notes, counterpartyName: 'Administrata Tatimore', sourceDocumentType: 'vat-settlements', sourceDocumentId: params.vatSettlementId, sourceDocumentNo: params.settlementNo, createdById: params.createdById });
+    await this.accountingService.postVatPaymentTx(tx, { financeTransactionId: created.id, financeAccountId: params.financeAccountId, amount: round2(params.amount), transactionDate: params.transactionDate, settlementNo: params.settlementNo, referenceNo: params.referenceNo, notes: params.notes, createdById: params.createdById });
     return created;
   }
 
   private async getAccountOrThrowTx(tx: TransactionClient, id: string) {
     const account = await tx.financeAccount.findUnique({ where: { id } });
-    if (!account) {
-      throw new NotFoundException('Finance account not found');
-    }
-    if (!account.isActive) {
-      throw new BadRequestException('Finance account is inactive');
-    }
+    if (!account) throw new NotFoundException('Finance account not found');
+    if (!account.isActive) throw new BadRequestException('Finance account is inactive');
     return account;
   }
 
@@ -627,24 +397,14 @@ export class FinanceAccountsService {
       transferGroupId?: string;
     },
   ) {
-    await this.financialPeriodsService.assertDateOpen(
-      params.transactionDate,
-      params.createdById,
-      'Regjistrimi i levizjes financiare',
-      tx,
-    );
+    await this.financialPeriodsService.assertDateOpen(params.transactionDate, params.createdById, 'Regjistrimi i levizjes financiare', tx);
 
     const account = await this.getAccountOrThrowTx(tx, params.accountId);
     const balanceBefore = round2(Number(account.currentBalance ?? 0));
     const signedAmount = isInboundType(params.transactionType) ? params.amount : -params.amount;
     const balanceAfter = round2(balanceBefore + signedAmount);
 
-    await tx.financeAccount.update({
-      where: { id: account.id },
-      data: {
-        currentBalance: balanceAfter,
-      },
-    });
+    await tx.financeAccount.update({ where: { id: account.id }, data: { currentBalance: balanceAfter } });
 
     return tx.financeAccountTransaction.create({
       data: {
@@ -665,16 +425,7 @@ export class FinanceAccountsService {
         notes: normalizeOptional(params.notes),
         createdById: params.createdById,
       },
-      include: {
-        account: true,
-        createdBy: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-      },
+      include: { account: true, createdBy: { select: { id: true, fullName: true, email: true } } },
     });
   }
 }

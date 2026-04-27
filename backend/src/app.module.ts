@@ -30,6 +30,13 @@ import { FinancialPeriodsModule } from './financial-periods/financial-periods.mo
 import { AccountingModule } from './accounting/accounting.module';
 import { VatSettlementsModule } from './vat-settlements/vat-settlements.module';
 import { VatReturnsModule } from './vat-returns/vat-returns.module';
+import { FinanceDocumentsModule } from './finance-documents/finance-documents.module';
+import { StatementsModule } from './statements/statements.module';
+import { ControlTowerModule } from './control-tower/control-tower.module';
+import { CompanyPulseModule } from './company-pulse/company-pulse.module';
+import { CustomerRiskModule } from './customer-risk/customer-risk.module';
+import { SupplierRiskModule } from './supplier-risk/supplier-risk.module';
+import { ApprovalsModule } from './approvals/approvals.module';
 
 @Module({
   imports: [
@@ -64,6 +71,13 @@ import { VatReturnsModule } from './vat-returns/vat-returns.module';
     AccountingModule,
     VatSettlementsModule,
     VatReturnsModule,
+    FinanceDocumentsModule,
+    StatementsModule,
+    ControlTowerModule,
+    CompanyPulseModule,
+    CustomerRiskModule,
+    SupplierRiskModule,
+    ApprovalsModule,
   ],
 })
 export class AppModule {}

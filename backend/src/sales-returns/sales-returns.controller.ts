@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { SalesReturnsService } from './sales-returns.service';
+import { SalesReturnApprovalGateService } from './sales-return-approval-gate.service';
 import { CreateSalesReturnDto } from './dto/create-sales-return.dto';
 import { UpdateSalesReturnDto } from './dto/update-sales-return.dto';
 import { CurrentUser, JwtPayload } from '../auth/decorators/current-user.decorator';
@@ -12,7 +13,10 @@ import { PERMISSIONS } from '../auth/permissions';
 @ApiBearerAuth()
 @Controller('sales-returns')
 export class SalesReturnsController {
-  constructor(private readonly salesReturnsService: SalesReturnsService) {}
+  constructor(
+    private readonly salesReturnsService: SalesReturnsService,
+    private readonly salesReturnApprovalGateService: SalesReturnApprovalGateService,
+  ) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.salesReturnsRead)
@@ -44,7 +48,8 @@ export class SalesReturnsController {
 
   @Post(':id/post')
   @RequirePermissions(PERMISSIONS.salesReturnsManage)
-  post(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+  async post(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    await this.salesReturnApprovalGateService.assertPostAllowed(id, user.sub);
     return this.salesReturnsService.post(id, user.sub);
   }
 }

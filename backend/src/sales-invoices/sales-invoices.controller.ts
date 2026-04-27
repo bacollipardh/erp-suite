@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { SalesInvoicesService } from './sales-invoices.service';
+import { CustomerCreditApprovalGateService } from './customer-credit-approval-gate.service';
 import { CreateSalesInvoiceDto } from './dto/create-sales-invoice.dto';
 import { UpdateSalesInvoiceDto } from './dto/update-sales-invoice.dto';
 import { CurrentUser, JwtPayload } from '../auth/decorators/current-user.decorator';
@@ -13,7 +14,10 @@ import { PERMISSIONS } from '../auth/permissions';
 @ApiBearerAuth()
 @Controller('sales-invoices')
 export class SalesInvoicesController {
-  constructor(private readonly salesInvoicesService: SalesInvoicesService) {}
+  constructor(
+    private readonly salesInvoicesService: SalesInvoicesService,
+    private readonly customerCreditApprovalGateService: CustomerCreditApprovalGateService,
+  ) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.salesInvoicesRead)
@@ -45,7 +49,8 @@ export class SalesInvoicesController {
 
   @Post(':id/post')
   @RequirePermissions(PERMISSIONS.salesInvoicesManage)
-  post(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+  async post(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    await this.customerCreditApprovalGateService.assertPostAllowed(id, user.sub);
     return this.salesInvoicesService.post(id, user.sub);
   }
 
