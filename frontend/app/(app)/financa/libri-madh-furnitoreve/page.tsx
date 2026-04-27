@@ -1,4 +1,5 @@
 import { PageHeader } from '@/components/page-header';
+import { LedgerExportButton } from '@/components/ledger/ledger-export-button';
 import { api } from '@/lib/api';
 import { PERMISSIONS } from '@/lib/permissions';
 import { requirePagePermission } from '@/lib/server-page-auth';
@@ -97,10 +98,13 @@ export default async function Page({ searchParams }: { searchParams?: Promise<Se
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="Libri i Madh — Furnitorët"
-        description="Të gjitha lëvizjet financiare të furnitorëve: fatura, pagesa dhe balance."
-      />
+      <div className="flex items-start justify-between gap-4">
+        <PageHeader
+          title="Libri i Madh — Furnitorët"
+          description="Të gjitha lëvizjet financiare të furnitorëve: fatura, pagesa dhe balance."
+        />
+        <LedgerExportButton type="supplier" partyId={supplierId} dateFrom={dateFrom} dateTo={dateTo} />
+      </div>
 
       {/* Filter form */}
       <form className="rounded-xl border bg-white p-4 shadow-sm grid gap-3 md:grid-cols-4">

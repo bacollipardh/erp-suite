@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { round2 } from '../common/utils/money';
 
-type PolicyBody = { code?: string; name?: string; entityType?: string; action?: string; minAmount?: number | null; maxAmount?: number | null; requiredSteps?: number; isActive?: boolean };
+type PolicyBody = { code?: string; name?: string; entityType?: string; action?: string; minAmount?: number | null; maxAmount?: number | null; requiredSteps?: number; isActive?: boolean; slaHours?: number; autoApprove?: boolean };
 type StepBody = { stepNo?: number; approverRoleCode?: string | null; approverUserId?: string | null; label?: string | null; isRequired?: boolean };
 
 const clean = (value?: string | null) => { const result = value?.trim(); return result ? result : null; };
@@ -37,6 +37,8 @@ export class ApprovalsPolicyAdminService {
     const maxAmount = amount(body.maxAmount);
     const requiredSteps = stepCount(body.requiredSteps);
     const isActive = body.isActive === undefined ? true : Boolean(body.isActive);
+    const slaHours = body.slaHours === undefined ? 24 : Math.max(1, Math.trunc(Number(body.slaHours)));
+    const autoApprove = body.autoApprove === undefined ? false : Boolean(body.autoApprove);
     if (!code) throw new BadRequestException('code is required');
     if (!name) throw new BadRequestException('name is required');
     if (!entityType) throw new BadRequestException('entityType is required');
@@ -44,10 +46,10 @@ export class ApprovalsPolicyAdminService {
     if (minAmount !== null && maxAmount !== null && maxAmount < minAmount) throw new BadRequestException('maxAmount cannot be lower than minAmount');
 
     const rows = await this.prisma.$queryRawUnsafe<any[]>(
-      `INSERT INTO approval_policies (code, name, entity_type, action, min_amount, max_amount, required_steps, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, code, name, entity_type, action, min_amount, max_amount, required_steps, is_active, created_at, updated_at`,
-      code, name, entityType, action, minAmount, maxAmount, requiredSteps, isActive,
+      `INSERT INTO approval_policies (code, name, entity_type, action, min_amount, max_amount, required_steps, is_active, sla_hours, auto_approve)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id, code, name, entity_type, action, min_amount, max_amount, required_steps, is_active, sla_hours, auto_approve, created_at, updated_at`,
+      code, name, entityType, action, minAmount, maxAmount, requiredSteps, isActive, slaHours, autoApprove,
     );
     await this.syncPolicySteps(rows[0].id, requiredSteps);
     return this.mapPolicy(rows[0]);
@@ -65,12 +67,14 @@ export class ApprovalsPolicyAdminService {
     const maxAmount = body.maxAmount === undefined ? current.max_amount : amount(body.maxAmount);
     const requiredSteps = body.requiredSteps === undefined ? Number(current.required_steps ?? 1) : stepCount(body.requiredSteps);
     const isActive = body.isActive === undefined ? Boolean(current.is_active) : Boolean(body.isActive);
+    const slaHours = body.slaHours === undefined ? Number(current.sla_hours ?? 24) : Math.max(1, Math.trunc(Number(body.slaHours)));
+    const autoApprove = body.autoApprove === undefined ? Boolean(current.auto_approve) : Boolean(body.autoApprove);
     if (minAmount !== null && maxAmount !== null && Number(maxAmount) < Number(minAmount)) throw new BadRequestException('maxAmount cannot be lower than minAmount');
 
     const rows = await this.prisma.$queryRawUnsafe<any[]>(
-      `UPDATE approval_policies SET code = $2, name = $3, entity_type = $4, action = $5, min_amount = $6, max_amount = $7, required_steps = $8, is_active = $9, updated_at = now()
-       WHERE id = $1::uuid RETURNING id, code, name, entity_type, action, min_amount, max_amount, required_steps, is_active, created_at, updated_at`,
-      id, code, name, entityType, action, minAmount, maxAmount, requiredSteps, isActive,
+      `UPDATE approval_policies SET code = $2, name = $3, entity_type = $4, action = $5, min_amount = $6, max_amount = $7, required_steps = $8, is_active = $9, sla_hours = $10, auto_approve = $11, updated_at = now()
+       WHERE id = $1::uuid RETURNING id, code, name, entity_type, action, min_amount, max_amount, required_steps, is_active, sla_hours, auto_approve, created_at, updated_at`,
+      id, code, name, entityType, action, minAmount, maxAmount, requiredSteps, isActive, slaHours, autoApprove,
     );
     await this.syncPolicySteps(id, requiredSteps);
     return this.mapPolicy(rows[0]);
@@ -127,6 +131,6 @@ export class ApprovalsPolicyAdminService {
   }
 
   private mapPolicy(row: any) {
-    return { id: row.id, code: row.code, name: row.name, entityType: row.entity_type, action: row.action, minAmount: row.min_amount === null ? null : round2(Number(row.min_amount)), maxAmount: row.max_amount === null ? null : round2(Number(row.max_amount)), requiredSteps: Number(row.required_steps ?? 1), isActive: Boolean(row.is_active), createdAt: row.created_at, updatedAt: row.updated_at };
+    return { id: row.id, code: row.code, name: row.name, entityType: row.entity_type, action: row.action, minAmount: row.min_amount === null ? null : round2(Number(row.min_amount)), maxAmount: row.max_amount === null ? null : round2(Number(row.max_amount)), requiredSteps: Number(row.required_steps ?? 1), isActive: Boolean(row.is_active), slaHours: Number(row.sla_hours ?? 24), autoApprove: Boolean(row.auto_approve), createdAt: row.created_at, updatedAt: row.updated_at };
   }
 }

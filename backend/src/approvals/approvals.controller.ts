@@ -28,6 +28,8 @@ type PolicyBody = {
   maxAmount?: number | null;
   requiredSteps?: number;
   isActive?: boolean;
+  slaHours?: number;
+  autoApprove?: boolean;
 };
 
 type PolicyStepsBody = {
@@ -108,6 +110,12 @@ export class ApprovalsController {
     return this.approvalsService.findRequests({ status, scope, search, limit }, user?.sub);
   }
 
+  @Get('requests/overdue')
+  @RequirePermissions(PERMISSIONS.dashboard)
+  getOverdueRequests() {
+    return this.approvalsService.getOverdueRequests();
+  }
+
   @Get('requests/:id')
   @RequirePermissions(PERMISSIONS.dashboard)
   findOne(@Param('id') id: string) {
@@ -142,5 +150,17 @@ export class ApprovalsController {
   @RequirePermissions(PERMISSIONS.dashboard)
   comment(@Param('id') id: string, @Body() body: DecisionBody, @CurrentUser() user: JwtPayload) {
     return this.approvalsService.comment(id, body.note, user.sub);
+  }
+
+  @Post('requests/:id/escalate')
+  @RequirePermissions(PERMISSIONS.dashboard)
+  escalate(@Param('id') id: string, @Body() body: DecisionBody, @CurrentUser() user: JwtPayload) {
+    return this.approvalsService.escalate(id, body.note, user.sub);
+  }
+
+  @Get('policies/:id/active-requests')
+  @RequirePermissions(PERMISSIONS.dashboard)
+  getPolicyActiveRequestCount(@Param('id') id: string) {
+    return this.approvalsService.getPolicyActiveRequestCount(id);
   }
 }

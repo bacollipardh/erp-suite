@@ -4,11 +4,11 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
-type Action = 'approve' | 'reject' | 'cancel' | 'comment';
+type Action = 'approve' | 'reject' | 'cancel' | 'comment' | 'escalate';
 
 const buttonBase = 'rounded-lg px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50';
 
-export function ApprovalDecisionActions({ id, status }: { id: string; status: string }) {
+export function ApprovalDecisionActions({ id, status, isEscalated }: { id: string; status: string; isEscalated?: boolean }) {
   const router = useRouter();
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState<Action | null>(null);
@@ -51,6 +51,11 @@ export function ApprovalDecisionActions({ id, status }: { id: string; status: st
             <button type="button" disabled={busy !== null} onClick={() => run('reject')} className={`${buttonBase} bg-red-600 text-white hover:bg-red-700`}>
               {busy === 'reject' ? '...' : 'Reject'}
             </button>
+            {!isEscalated ? (
+              <button type="button" disabled={busy !== null} onClick={() => run('escalate')} className={`${buttonBase} border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100`}>
+                {busy === 'escalate' ? '...' : 'Eskaloje'}
+              </button>
+            ) : null}
             <button type="button" disabled={busy !== null} onClick={() => run('cancel')} className={`${buttonBase} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}>
               {busy === 'cancel' ? '...' : 'Cancel'}
             </button>

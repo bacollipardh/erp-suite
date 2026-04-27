@@ -288,3 +288,125 @@ export function buildPaymentActivityMailtoHref(
 
   return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
+
+// ── Sales Report ────────────────────────────────────────────────────────────
+
+type SalesReportExportItem = {
+  docNo: string;
+  docDate: string;
+  customer?: { name: string } | null;
+  createdBy?: { fullName: string } | null;
+  grandTotal: number;
+  subtotal: number;
+  taxTotal: number;
+  status: string;
+};
+
+type SalesReportExport = {
+  summary: { count: number; revenue: number; netTotal: number; taxTotal: number; avg: number };
+  recentInvoices: SalesReportExportItem[];
+};
+
+export function buildSalesReportCsv(report: SalesReportExport): string {
+  const rows = [
+    buildCsvRow(['Nr. Faturës', 'Data', 'Klienti', 'Agjenti', 'Neto', 'TVSH', 'Totali', 'Statusi']),
+    ...report.recentInvoices.map((row) =>
+      buildCsvRow([
+        row.docNo,
+        formatDateOnly(row.docDate),
+        row.customer?.name ?? '-',
+        (row.createdBy as any)?.fullName ?? '-',
+        formatAmount(Number(row.subtotal ?? 0)),
+        formatAmount(Number(row.taxTotal ?? 0)),
+        formatAmount(Number(row.grandTotal ?? 0)),
+        row.status,
+      ]),
+    ),
+    '',
+    buildCsvRow(['TOTALI', '', '', '', formatAmount(report.summary.netTotal), formatAmount(report.summary.taxTotal), formatAmount(report.summary.revenue), '']),
+    buildCsvRow(['Numri faturave', String(report.summary.count), '', '', '', '', '', '']),
+    buildCsvRow(['Mesatarja', formatAmount(report.summary.avg), '', '', '', '', '', '']),
+  ];
+  return rows.join('\n');
+}
+
+export function buildSalesReportFilename(date = new Date()) {
+  return `shitje-${slugifyDate(date)}.csv`;
+}
+
+// ── Ledger (Libri i Madh) ───────────────────────────────────────────────────
+
+type LedgerExportLine = {
+  docDate: string;
+  dueDate?: string | null;
+  sourceNo: string;
+  description: string;
+  referenceNo?: string | null;
+  partyName: string;
+  debit: number;
+  credit: number;
+  outstanding: number;
+  paymentStatus?: string | null;
+  balance: number;
+};
+
+type LedgerExport = {
+  type: string;
+  openingBalance: number;
+  closingBalance: number;
+  totalDebit: number;
+  totalCredit: number;
+  totalOutstanding: number;
+  lines: LedgerExportLine[];
+};
+
+const PAYMENT_STATUS_SQ: Record<string, string> = {
+  UNPAID: 'Pa paguar',
+  PARTIALLY_PAID: 'Pjeserisht',
+  PAID: 'Paguar',
+};
+
+export function buildLedgerCsv(report: LedgerExport): string {
+  const isCustomer = report.type === 'customer';
+  const rows = [
+    buildCsvRow([
+      'Data',
+      isCustomer ? 'Klienti' : 'Furnitori',
+      'Dokumenti',
+      'Tipi',
+      'Ref. Jashtme',
+      'Afati',
+      'Statusi',
+      isCustomer ? 'Debi' : 'Pagesa',
+      isCustomer ? 'Kredi' : 'Fatura',
+      'Pa Shlyer',
+      'Balance',
+    ]),
+    ...report.lines.map((line) =>
+      buildCsvRow([
+        formatDateOnly(line.docDate),
+        line.partyName,
+        line.sourceNo,
+        line.description,
+        line.referenceNo ?? '',
+        formatDateOnly(line.dueDate),
+        PAYMENT_STATUS_SQ[line.paymentStatus ?? ''] ?? '',
+        formatAmount(line.debit),
+        formatAmount(line.credit),
+        formatAmount(line.outstanding),
+        formatAmount(line.balance),
+      ]),
+    ),
+    '',
+    buildCsvRow(['Saldo Hapese', formatAmount(report.openingBalance), '', '', '', '', '', '', '', '', '']),
+    buildCsvRow(['Total Debi', formatAmount(report.totalDebit), '', '', '', '', '', '', '', '', '']),
+    buildCsvRow(['Total Kredi', formatAmount(report.totalCredit), '', '', '', '', '', '', '', '', '']),
+    buildCsvRow(['Pa Shlyer', formatAmount(report.totalOutstanding), '', '', '', '', '', '', '', '', '']),
+    buildCsvRow(['Saldo Mbyllesee', formatAmount(report.closingBalance), '', '', '', '', '', '', '', '', '']),
+  ];
+  return rows.join('\n');
+}
+
+export function buildLedgerFilename(type: 'customer' | 'supplier', date = new Date()) {
+  return `libri-madh-${type === 'customer' ? 'klienteve' : 'furnitoreve'}-${slugifyDate(date)}.csv`;
+}

@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import {
+  buildSalesReportCsv,
+  buildSalesReportFilename,
+  triggerCsvDownload,
+} from '@/lib/report-export';
 
 function fmt(n: number) {
   return n.toLocaleString('sq-AL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -324,6 +329,22 @@ export function SalesReportClient({
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </div>
+      ) : null}
+
+      {report && !loading ? (
+        <div className="flex justify-end">
+          <button
+            onClick={() => {
+              triggerCsvDownload(buildSalesReportFilename(), buildSalesReportCsv(report as any));
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Eksporto CSV
+          </button>
         </div>
       ) : null}
 

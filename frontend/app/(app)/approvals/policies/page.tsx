@@ -15,6 +15,8 @@ type Policy = {
   maxAmount: number | null;
   requiredSteps: number;
   isActive: boolean;
+  slaHours?: number;
+  autoApprove?: boolean;
 };
 
 type PoliciesPayload = { items: Policy[]; total: number };
