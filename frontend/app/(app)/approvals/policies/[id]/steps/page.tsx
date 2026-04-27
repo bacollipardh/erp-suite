@@ -17,14 +17,16 @@ type Policy = {
 type PolicyPayload = { items: Policy[]; total: number };
 type StepsPayload = { items: any[]; total: number };
 
-export default async function Page({ params }: { params: { id: string } }) {
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   await requirePagePermission(PERMISSIONS.dashboard);
+  const { id } = await params;
+
   const [policies, steps] = await Promise.all([
     api.query<PolicyPayload>('approvals/policies'),
-    api.query<StepsPayload>(`approvals/policies/${params.id}/steps`),
+    api.query<StepsPayload>(`approvals/policies/${id}/steps`),
   ]);
 
-  const policy = policies.items.find((item) => item.id === params.id);
+  const policy = policies.items.find((item) => item.id === id);
 
   return (
     <div className="space-y-5">
@@ -36,7 +38,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         <Link href="/approvals/policies" className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Back to Policies</Link>
       </div>
 
-      <PolicyStepsPanel policyId={params.id} steps={steps.items} />
+      <PolicyStepsPanel policyId={id} steps={steps.items} />
     </div>
   );
 }
