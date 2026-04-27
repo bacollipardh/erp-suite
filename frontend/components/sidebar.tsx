@@ -37,6 +37,18 @@ function ChevronIcon({ open }: { open: boolean }) {
   );
 }
 
+function isPathMatch(pathname: string, href: string) {
+  return pathname === href || (href !== '/' && pathname.startsWith(`${href}/`));
+}
+
+function findDeepestActiveHref(pathname: string, items: Array<{ href: string }>) {
+  return (
+    items
+      .filter((item) => isPathMatch(pathname, item.href))
+      .sort((a, b) => b.href.length - a.href.length)[0]?.href ?? null
+  );
+}
+
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
   const { user } = useSession();
@@ -52,6 +64,14 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
     [user],
   );
 
+  const activeHrefBySection = useMemo(() => {
+    const activeMap: Record<string, string | null> = {};
+    for (const section of visibleSections) {
+      activeMap[section.title] = findDeepestActiveHref(pathname, section.items);
+    }
+    return activeMap;
+  }, [pathname, visibleSections]);
+
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     for (const section of navSections) {
@@ -63,14 +83,14 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   useEffect(() => {
     const patch: Record<string, boolean> = {};
     for (const section of visibleSections) {
-      if (section.items.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))) {
+      if (activeHrefBySection[section.title]) {
         patch[section.title] = true;
       }
     }
     if (Object.keys(patch).length > 0) {
       setOpenSections((prev) => ({ ...prev, ...patch }));
     }
-  }, [pathname, visibleSections]);
+  }, [activeHrefBySection, visibleSections]);
 
   function toggle(title: string) {
     setOpenSections((prev) => ({ ...prev, [title]: !prev[title] }));
@@ -117,9 +137,8 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         <div className="space-y-1">
           {visibleSections.map((section) => {
             const isOpen = openSections[section.title] ?? false;
-            const hasActive = section.items.some(
-              (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
-            );
+            const activeHref = activeHrefBySection[section.title];
+            const hasActive = Boolean(activeHref);
 
             return (
               <div key={section.title}>
@@ -147,7 +166,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                 {isOpen ? (
                   <div className="ml-7 mt-1 space-y-1 border-l border-white/10 pl-3">
                     {section.items.map((item) => {
-                      const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                      const active = item.href === activeHref;
 
                       return (
                         <Link
