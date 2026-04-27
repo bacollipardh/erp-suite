@@ -13,9 +13,9 @@ export function StatsCard({
 }) {
   const content = (
     <>
-      <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{title}</p>
-      <p className="text-2xl font-bold text-slate-900 mt-1.5 tabular-nums">{value}</p>
-      {subtitle ? <p className="text-xs text-slate-400 mt-1">{subtitle}</p> : null}
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 tabular-nums">{value}</p>
+      {subtitle ? <p className="mt-1.5 text-xs leading-5 text-slate-500">{subtitle}</p> : null}
     </>
   );
 
@@ -23,7 +23,7 @@ export function StatsCard({
     return (
       <Link
         href={href}
-        className="block rounded-xl border bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        className="group block rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
       >
         {content}
       </Link>
@@ -31,7 +31,7 @@ export function StatsCard({
   }
 
   return (
-    <div className="rounded-xl border bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:shadow-lg">
       {content}
     </div>
   );
