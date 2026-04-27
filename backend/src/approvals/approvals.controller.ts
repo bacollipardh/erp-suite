@@ -60,6 +60,12 @@ export class ApprovalsController {
     return this.approvalsDashboardService.getDashboard();
   }
 
+  @Get('badge')
+  @RequirePermissions(PERMISSIONS.dashboard)
+  getBadge(@CurrentUser() user: JwtPayload) {
+    return this.approvalsService.getPendingBadge(user.sub);
+  }
+
   @Get('policies')
   @RequirePermissions(PERMISSIONS.dashboard)
   findPolicies() {
