@@ -38,6 +38,7 @@ import { CustomerRiskModule } from './customer-risk/customer-risk.module';
 import { SupplierRiskModule } from './supplier-risk/supplier-risk.module';
 import { ApprovalsModule } from './approvals/approvals.module';
 import { WmsModule } from './wms/wms.module';
+import { AgentOrdersModule } from './agent-orders/agent-orders.module';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { WmsModule } from './wms/wms.module';
     SupplierRiskModule,
     ApprovalsModule,
     WmsModule,
+    AgentOrdersModule,
   ],
 })
 export class AppModule {}

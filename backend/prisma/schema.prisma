@@ -121,6 +121,30 @@ enum WmsReservationStatus {
   @@map("wms_reservation_status")
 }
 
+enum AgentOrderType {
+  SALES_ORDER
+  RETURN_ORDER
+  OPEN_RETURN_ORDER
+  EXCHANGE_ORDER
+
+  @@map("agent_order_type")
+}
+
+enum AgentOrderStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  WMS_ASSIGNED
+  PICKING
+  PICKED
+  RECEIVED
+  READY_FOR_DOCUMENT
+  DOCUMENT_CREATED
+  CANCELLED
+
+  @@map("agent_order_status")
+}
+
 enum PaymentStatus {
   UNPAID
   PARTIALLY_PAID
@@ -293,6 +317,8 @@ model User {
   reopenedFinancialPeriods            FinancialPeriod[]             @relation("FinancialPeriodReopenedBy")
   createdVatSettlements               VatSettlement[]               @relation("VatSettlementCreatedBy")
   createdVatReturns                   VatReturn[]                   @relation("VatReturnCreatedBy")
+  createdAgentOrders                  AgentOrder[]                  @relation("AgentOrderCreatedBy")
+  assignedAgentOrders                 AgentOrder[]                  @relation("AgentOrderAssignedPicker")
   auditLogs                           AuditLog[]
   createdAt                           DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                           DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -355,6 +381,7 @@ model Warehouse {
   wmsMovements     WmsMovement[]
   wmsTasks         WmsTask[]
   wmsReservations  WmsReservation[]
+  agentOrders      AgentOrder[]
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -386,6 +413,7 @@ model Item {
   wmsMovements          WmsMovement[]
   wmsTasks              WmsTask[]
   wmsReservations       WmsReservation[]
+  agentOrderLines       AgentOrderLine[]
   createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -433,10 +461,33 @@ model Customer {
   salesInvoices          SalesInvoice[]
   salesReturns           SalesReturn[]
   financeSettlements     FinanceSettlement[] @relation("CustomerFinanceSettlements")
+  objects                CustomerObject[]
+  agentOrders            AgentOrder[]
   createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("customers")
+}
+
+model CustomerObject {
+  id          String       @id @default(uuid()) @db.Uuid
+  customerId  String       @map("customer_id") @db.Uuid
+  code        String       @db.VarChar(40)
+  name        String       @db.VarChar(150)
+  address     String?      @db.VarChar(255)
+  city        String?      @db.VarChar(100)
+  contactName String?      @map("contact_name") @db.VarChar(120)
+  phone       String?      @db.VarChar(50)
+  isActive    Boolean      @default(true) @map("is_active")
+  notes       String?
+  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  agentOrders AgentOrder[]
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([customerId, code])
+  @@index([customerId, isActive])
+  @@map("customer_objects")
 }
 
 model PaymentMethod {
@@ -660,6 +711,8 @@ model SalesInvoice {
   returns                      SalesReturn[]
   stockMovements               StockMovement[]
   wmsReservations              WmsReservation[]
+  agentOrders                  AgentOrder[]                  @relation("AgentOrderSalesInvoice")
+  sourceAgentReturnOrders      AgentOrder[]                  @relation("AgentOrderSourceSalesInvoice")
   sourceFinanceSettlements     FinanceSettlement[]           @relation("FinanceSettlementSourceSalesInvoice")
   financeSettlementAllocations FinanceSettlementAllocation[] @relation("FinanceSettlementTargetSalesInvoice")
   createdAt                    DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -696,6 +749,7 @@ model SalesInvoiceLine {
   item            Item              @relation(fields: [itemId], references: [id])
   returnLines     SalesReturnLine[]
   wmsReservations WmsReservation[]
+  agentOrderLines AgentOrderLine[]
 
   @@unique([salesInvoiceId, lineNo])
   @@index([itemId])
@@ -728,6 +782,7 @@ model SalesReturn {
   postedBy        User?             @relation("ReturnPostedBy", fields: [postedById], references: [id])
   lines           SalesReturnLine[]
   stockMovements  StockMovement[]
+  agentOrders     AgentOrder[]
   createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   postedAt        DateTime?         @map("posted_at") @db.Timestamptz(6)
   updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -763,6 +818,73 @@ model SalesReturnLine {
   @@index([salesInvoiceLineId])
   @@index([itemId])
   @@map("sales_return_lines")
+}
+
+model AgentOrder {
+  id                   String             @id @default(uuid()) @db.Uuid
+  orderNo              String             @unique @map("order_no") @db.VarChar(50)
+  orderType            AgentOrderType     @map("order_type")
+  status               AgentOrderStatus   @default(DRAFT)
+  customerId           String             @map("customer_id") @db.Uuid
+  customerObjectId     String?            @map("customer_object_id") @db.Uuid
+  warehouseId          String             @map("warehouse_id") @db.Uuid
+  sourceSalesInvoiceId String?            @map("source_sales_invoice_id") @db.Uuid
+  salesInvoiceId       String?            @map("sales_invoice_id") @db.Uuid
+  salesReturnId        String?            @map("sales_return_id") @db.Uuid
+  docDate              DateTime           @map("doc_date") @db.Date
+  dueDate              DateTime?          @map("due_date") @db.Date
+  priority             Int                @default(5)
+  assignedPickerId     String?            @map("assigned_picker_id") @db.Uuid
+  assignedAt           DateTime?          @map("assigned_at") @db.Timestamptz(6)
+  pickedAt             DateTime?          @map("picked_at") @db.Timestamptz(6)
+  receivedAt           DateTime?          @map("received_at") @db.Timestamptz(6)
+  readyAt              DateTime?          @map("ready_at") @db.Timestamptz(6)
+  notes                String?
+  createdById          String             @map("created_by") @db.Uuid
+  customer             Customer           @relation(fields: [customerId], references: [id])
+  customerObject       CustomerObject?    @relation(fields: [customerObjectId], references: [id])
+  warehouse            Warehouse          @relation(fields: [warehouseId], references: [id])
+  sourceSalesInvoice   SalesInvoice?      @relation("AgentOrderSourceSalesInvoice", fields: [sourceSalesInvoiceId], references: [id])
+  salesInvoice         SalesInvoice?      @relation("AgentOrderSalesInvoice", fields: [salesInvoiceId], references: [id])
+  salesReturn          SalesReturn?       @relation(fields: [salesReturnId], references: [id])
+  assignedPicker       User?              @relation("AgentOrderAssignedPicker", fields: [assignedPickerId], references: [id])
+  createdBy            User               @relation("AgentOrderCreatedBy", fields: [createdById], references: [id])
+  lines                AgentOrderLine[]
+  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([orderType, status])
+  @@index([customerId])
+  @@index([customerObjectId])
+  @@index([warehouseId])
+  @@index([assignedPickerId])
+  @@index([salesInvoiceId])
+  @@index([salesReturnId])
+  @@map("agent_orders")
+}
+
+model AgentOrderLine {
+  id                 String            @id @default(uuid()) @db.Uuid
+  agentOrderId       String            @map("agent_order_id") @db.Uuid
+  itemId             String            @map("item_id") @db.Uuid
+  salesInvoiceLineId String?           @map("sales_invoice_line_id") @db.Uuid
+  lineNo             Int               @map("line_no")
+  description        String?           @db.VarChar(255)
+  qty                Decimal           @db.Decimal(18, 3)
+  unitPrice          Decimal           @map("unit_price") @db.Decimal(18, 2)
+  discountPercent    Decimal           @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  taxPercent         Decimal           @map("tax_percent") @db.Decimal(5, 2)
+  notes              String?
+  agentOrder         AgentOrder        @relation(fields: [agentOrderId], references: [id], onDelete: Cascade)
+  item               Item              @relation(fields: [itemId], references: [id])
+  salesInvoiceLine   SalesInvoiceLine? @relation(fields: [salesInvoiceLineId], references: [id])
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([agentOrderId, lineNo])
+  @@index([itemId])
+  @@index([salesInvoiceLineId])
+  @@map("agent_order_lines")
 }
 
 model StockMovement {
