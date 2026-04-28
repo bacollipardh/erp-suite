@@ -39,7 +39,6 @@ export const navSections: NavSection[] = [
       { label: 'Pika e Shitjes', href: '/agjenti-shitjes', permission: PERMISSIONS.salesInvoicesManage },
       { label: 'Historiku POS', href: '/agjenti-shitjes/historiku', permission: PERMISSIONS.salesInvoicesRead },
       { label: 'Agent Orders', href: '/agjenti/orders', permission: PERMISSIONS.agentOrdersRead },
-      { label: 'Order i Ri Agjenti', href: '/agjenti/orders/new', permission: PERMISSIONS.agentOrdersManage },
       { label: 'Objektet e Bleresve', href: '/agjenti/objects', permission: PERMISSIONS.agentOrdersRead },
       { label: 'Klientet', href: '/customers', permission: PERMISSIONS.customersRead },
       { label: 'Faturat e Shitjes', href: '/sales-invoices', permission: PERMISSIONS.salesInvoicesRead },
