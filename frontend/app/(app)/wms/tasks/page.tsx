@@ -2,13 +2,15 @@ import { PageHeader } from '@/components/page-header';
 import { ServerDataTable } from '@/components/server-data-table';
 import { StatusBadge } from '@/components/status-badge';
 import { formatQty, locationLabel } from '@/components/wms/wms-display';
+import { WmsTaskActionsClient } from '@/components/wms/wms-forms-client';
 import { api } from '@/lib/api';
 import { formatDateOnly, formatDateTime } from '@/lib/date';
-import { PERMISSIONS } from '@/lib/permissions';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import { requirePagePermission } from '@/lib/server-page-auth';
 
 export default async function WmsTasksPage() {
-  await requirePagePermission(PERMISSIONS.wmsRead);
+  const user = await requirePagePermission(PERMISSIONS.wmsRead);
+  const canManage = hasPermission(user.permissions, PERMISSIONS.wmsManage);
   const tasks = await api.list('wms/tasks', { limit: 300 });
 
   return (
@@ -33,6 +35,11 @@ export default async function WmsTasksPage() {
           { key: 'reference', title: 'Reference', render: (row: any) => row.referenceNo ?? '-' },
           { key: 'createdAt', title: 'Krijuar', render: (row: any) => formatDateTime(row.createdAt) },
           { key: 'completedAt', title: 'Mbyllur', render: (row: any) => formatDateTime(row.completedAt) },
+          {
+            key: 'actions',
+            title: 'Veprime',
+            render: (row: any) => canManage ? <WmsTaskActionsClient taskId={row.id} status={row.status} /> : '-',
+          },
         ]}
       />
     </div>

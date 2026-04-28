@@ -3,7 +3,16 @@ import { CurrentUser, JwtPayload } from '../auth/decorators/current-user.decorat
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { PERMISSIONS } from '../auth/permissions';
 import { CreateWmsLocationDto, UpdateWmsLocationDto } from './dto/wms-location.dto';
-import { WmsCountDto, WmsMoveDto, WmsReceiveDto, WmsStatusDto } from './dto/wms-operations.dto';
+import {
+  WmsCountDto,
+  WmsCycleCountPlanDto,
+  WmsMoveDto,
+  WmsPutawayDto,
+  WmsReceiveDto,
+  WmsReplenishDto,
+  WmsStatusDto,
+  WmsTaskActionDto,
+} from './dto/wms-operations.dto';
 import { WmsQueryDto } from './dto/wms-query.dto';
 import { WmsService } from './wms.service';
 
@@ -47,6 +56,18 @@ export class WmsController {
     return this.wmsService.findTasks(query);
   }
 
+  @Get('reservations')
+  @RequirePermissions(PERMISSIONS.wmsRead)
+  findReservations(@Query() query: WmsQueryDto) {
+    return this.wmsService.findReservations(query);
+  }
+
+  @Get('expiry')
+  @RequirePermissions(PERMISSIONS.wmsRead)
+  findExpiry(@Query() query: WmsQueryDto) {
+    return this.wmsService.findExpiry(query);
+  }
+
   @Get('scan')
   @RequirePermissions(PERMISSIONS.wmsRead)
   scan(@Query('code') code: string) {
@@ -65,6 +86,18 @@ export class WmsController {
     return this.wmsService.move(dto, user.sub);
   }
 
+  @Post('putaway')
+  @RequirePermissions(PERMISSIONS.wmsMove)
+  putaway(@Body() dto: WmsPutawayDto, @CurrentUser() user: JwtPayload) {
+    return this.wmsService.putaway(dto, user.sub);
+  }
+
+  @Post('replenish')
+  @RequirePermissions(PERMISSIONS.wmsMove)
+  replenish(@Body() dto: WmsReplenishDto, @CurrentUser() user: JwtPayload) {
+    return this.wmsService.replenish(dto, user.sub);
+  }
+
   @Post('count')
   @RequirePermissions(PERMISSIONS.wmsCount)
   count(@Body() dto: WmsCountDto, @CurrentUser() user: JwtPayload) {
@@ -75,6 +108,42 @@ export class WmsController {
   @RequirePermissions(PERMISSIONS.wmsManage)
   changeInventoryStatus(@Body() dto: WmsStatusDto, @CurrentUser() user: JwtPayload) {
     return this.wmsService.changeInventoryStatus(dto, user.sub);
+  }
+
+  @Post('expiry/mark-expired')
+  @RequirePermissions(PERMISSIONS.wmsManage)
+  markExpiredStock(@CurrentUser() user: JwtPayload) {
+    return this.wmsService.markExpiredStock(user.sub);
+  }
+
+  @Post('cycle-counts/plan')
+  @RequirePermissions(PERMISSIONS.wmsCount)
+  createCycleCountPlan(@Body() dto: WmsCycleCountPlanDto, @CurrentUser() user: JwtPayload) {
+    return this.wmsService.createCycleCountPlan(dto, user.sub);
+  }
+
+  @Post('tasks/:id/start')
+  @RequirePermissions(PERMISSIONS.wmsManage)
+  startTask(@Param('id') id: string, @Body() dto: WmsTaskActionDto, @CurrentUser() user: JwtPayload) {
+    return this.wmsService.startTask(id, dto, user.sub);
+  }
+
+  @Post('tasks/:id/complete')
+  @RequirePermissions(PERMISSIONS.wmsManage)
+  completeTask(@Param('id') id: string, @Body() dto: WmsTaskActionDto, @CurrentUser() user: JwtPayload) {
+    return this.wmsService.completeTask(id, dto, user.sub);
+  }
+
+  @Post('tasks/:id/cancel')
+  @RequirePermissions(PERMISSIONS.wmsManage)
+  cancelTask(@Param('id') id: string, @Body() dto: WmsTaskActionDto, @CurrentUser() user: JwtPayload) {
+    return this.wmsService.cancelTask(id, dto, user.sub);
+  }
+
+  @Post('tasks/:id/short')
+  @RequirePermissions(PERMISSIONS.wmsManage)
+  shortTask(@Param('id') id: string, @Body() dto: WmsTaskActionDto, @CurrentUser() user: JwtPayload) {
+    return this.wmsService.shortTask(id, dto, user.sub);
   }
 
   @Post('picking/sales-invoices/:id/plan')
@@ -93,5 +162,11 @@ export class WmsController {
   @RequirePermissions(PERMISSIONS.wmsPick)
   releaseSalesPick(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.wmsService.releaseSalesPick(id, user.sub);
+  }
+
+  @Post('packing/sales-invoices/:id/pack')
+  @RequirePermissions(PERMISSIONS.wmsPick)
+  packSalesInvoice(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.wmsService.packSalesInvoice(id, user.sub);
   }
 }

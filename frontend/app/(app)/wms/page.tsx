@@ -64,6 +64,15 @@ export default async function WmsHubPage() {
             tone="amber"
           />
         ) : null}
+        {canRead ? (
+          <DomainActionCard
+            title="Rezervimet WMS"
+            description="Shiko rezervimet nga picking dhe statusin reserved, picked, shipped ose released."
+            href="/wms/reservations"
+            badge="Reservation"
+            tone="indigo"
+          />
+        ) : null}
         {canReceive ? (
           <DomainActionCard
             title="Pranim Malli"
@@ -75,9 +84,27 @@ export default async function WmsHubPage() {
         ) : null}
         {canMove ? (
           <DomainActionCard
+            title="Putaway"
+            description="Leviz mallin nga receiving/returns/quarantine drejt storage ose picking."
+            href="/wms/putaway"
+            badge="Inbound"
+            tone="slate"
+          />
+        ) : null}
+        {canMove ? (
+          <DomainActionCard
             title="Levizje Bin-to-Bin"
             description="Leviz sasi ose serial number nga nje lokacion WMS ne tjetrin."
             href="/wms/move"
+            badge="Move"
+            tone="indigo"
+          />
+        ) : null}
+        {canMove ? (
+          <DomainActionCard
+            title="Replenishment"
+            description="Rimbush lokacionet picking nga storage per punen ditore te shitjes."
+            href="/wms/replenishment"
             badge="Move"
             tone="indigo"
           />
@@ -91,12 +118,30 @@ export default async function WmsHubPage() {
             tone="slate"
           />
         ) : null}
+        {canCount ? (
+          <DomainActionCard
+            title="Cycle Count"
+            description="Krijo detyra numerimi sipas magazines, lokacionit ose artikullit."
+            href="/wms/cycle-counts"
+            badge="Plan"
+            tone="amber"
+          />
+        ) : null}
         {canManage ? (
           <DomainActionCard
             title="QC dhe Bllokim"
             description="Vendos stokun ne quarantine, damaged ose expired qe te mos shitet."
             href="/wms/qc"
             badge="Quality"
+            tone="amber"
+          />
+        ) : null}
+        {canRead ? (
+          <DomainActionCard
+            title="Skadencat"
+            description="Monitoro stokun qe skadon dhe blloko automatikisht rreshtat e skaduar."
+            href="/wms/expiry"
+            badge="Expiry"
             tone="amber"
           />
         ) : null}
@@ -107,6 +152,15 @@ export default async function WmsHubPage() {
             href="/wms/picking"
             badge="Outbound"
             tone="emerald"
+          />
+        ) : null}
+        {canPick ? (
+          <DomainActionCard
+            title="Packing Shitje"
+            description="Konfirmo paketimin pas picking dhe para postimit/shipping te fatures."
+            href="/wms/packing"
+            badge="Outbound"
+            tone="slate"
           />
         ) : null}
         {canRead ? (

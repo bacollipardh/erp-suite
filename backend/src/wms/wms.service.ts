@@ -13,7 +13,16 @@ import { PrismaService } from '../prisma/prisma.service';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
 import { WmsQueryDto } from './dto/wms-query.dto';
 import { CreateWmsLocationDto, UpdateWmsLocationDto } from './dto/wms-location.dto';
-import { WmsCountDto, WmsMoveDto, WmsReceiveDto, WmsStatusDto } from './dto/wms-operations.dto';
+import {
+  WmsCountDto,
+  WmsCycleCountPlanDto,
+  WmsMoveDto,
+  WmsPutawayDto,
+  WmsReceiveDto,
+  WmsReplenishDto,
+  WmsStatusDto,
+  WmsTaskActionDto,
+} from './dto/wms-operations.dto';
 
 type Tx = PrismaService | any;
 
@@ -303,6 +312,94 @@ export class WmsService {
     return toPaginatedResponse({ items, total, page, limit });
   }
 
+  async findReservations(query: WmsQueryDto = {}) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const { skip, take } = toPagination(page, limit);
+    const search = query.search?.trim();
+    const where = {
+      ...(query.warehouseId ? { warehouseId: query.warehouseId } : {}),
+      ...(query.locationId ? { locationId: query.locationId } : {}),
+      ...(query.itemId ? { itemId: query.itemId } : {}),
+      ...(query.status ? { status: query.status as WmsReservationStatus } : {}),
+      ...(query.sourceId ? { salesInvoiceId: query.sourceId } : {}),
+      ...(search
+        ? {
+            OR: [
+              { lotCode: { contains: search, mode: 'insensitive' as const } },
+              { serialNo: { contains: search, mode: 'insensitive' as const } },
+              { item: { name: { contains: search, mode: 'insensitive' as const } } },
+              { item: { code: { contains: search, mode: 'insensitive' as const } } },
+              { location: { code: { contains: search, mode: 'insensitive' as const } } },
+              { salesInvoice: { docNo: { contains: search, mode: 'insensitive' as const } } },
+              { salesInvoice: { customer: { name: { contains: search, mode: 'insensitive' as const } } } },
+            ],
+          }
+        : {}),
+    };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.wmsReservation.findMany({
+        where,
+        include: {
+          warehouse: true,
+          location: true,
+          item: true,
+          salesInvoice: { include: { customer: true } },
+          salesInvoiceLine: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.wmsReservation.count({ where }),
+    ]);
+
+    return toPaginatedResponse({ items, total, page, limit });
+  }
+
+  async findExpiry(query: WmsQueryDto = {}) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const days = query.days ?? 30;
+    const { skip, take } = toPagination(page, limit);
+    const cutoff = todayUtcDate();
+    cutoff.setUTCDate(cutoff.getUTCDate() + days);
+    const where = {
+      ...(query.warehouseId ? { warehouseId: query.warehouseId } : {}),
+      ...(query.locationId ? { locationId: query.locationId } : {}),
+      ...(query.itemId ? { itemId: query.itemId } : {}),
+      expiryDate: { not: null, lte: cutoff },
+      ...(query.status ? { inventoryStatus: query.status as WmsInventoryStatus } : {}),
+    };
+
+    const [items, total, summaryRows] = await this.prisma.$transaction([
+      this.prisma.wmsStock.findMany({
+        where,
+        include: { warehouse: true, location: true, item: true },
+        orderBy: [{ expiryDate: 'asc' }, { item: { name: 'asc' } }],
+        skip,
+        take,
+      }),
+      this.prisma.wmsStock.count({ where }),
+      this.prisma.wmsStock.findMany({
+        where,
+        select: { qtyOnHand: true, reservedQty: true, pickedQty: true, inventoryStatus: true },
+      }),
+    ]);
+
+    return {
+      ...toPaginatedResponse({ items, total, page, limit }),
+      summary: {
+        rows: summaryRows.length,
+        qtyOnHand: roundQty(summaryRows.reduce((sum, row) => sum + numberValue(row.qtyOnHand), 0)),
+        reservedQty: roundQty(summaryRows.reduce((sum, row) => sum + numberValue(row.reservedQty), 0)),
+        pickedQty: roundQty(summaryRows.reduce((sum, row) => sum + numberValue(row.pickedQty), 0)),
+        days,
+      },
+    };
+  }
+
   async receive(dto: WmsReceiveDto, userId: string) {
     const qty = Number(dto.qty);
     const serialNumbers = (dto.serialNumbers ?? []).map((entry) => entry.trim()).filter(Boolean);
@@ -385,98 +482,30 @@ export class WmsService {
   }
 
   async move(dto: WmsMoveDto, userId: string) {
-    const qty = Number(dto.serialNo ? 1 : dto.qty);
-    if (!Number.isFinite(qty) || qty <= 0) throw new BadRequestException('Quantity is required');
-    if (dto.fromLocationId === dto.toLocationId) {
-      throw new BadRequestException('Source and destination locations must be different');
-    }
+    return this.executeStockMove(dto, userId, {
+      movementType: WmsMovementType.MOVE,
+      taskType: WmsTaskType.MOVE,
+      referencePrefix: 'MOVE',
+    });
+  }
 
-    const [fromLocation, toLocation] = await Promise.all([
-      this.getActiveLocation(dto.fromLocationId),
-      this.getActiveLocation(dto.toLocationId),
-    ]);
-    if (fromLocation.warehouseId !== toLocation.warehouseId) {
-      throw new BadRequestException('Locations must belong to the same warehouse');
-    }
+  async putaway(dto: WmsPutawayDto, userId: string) {
+    return this.executeStockMove(dto, userId, {
+      movementType: WmsMovementType.PUTAWAY,
+      taskType: WmsTaskType.PUTAWAY,
+      referencePrefix: 'PUT',
+      sourceLocationTypes: [WmsLocationType.RECEIVING, WmsLocationType.RETURNS, WmsLocationType.QUARANTINE],
+      destinationLocationTypes: [WmsLocationType.STORAGE, WmsLocationType.PICKING, WmsLocationType.QUARANTINE],
+    });
+  }
 
-    const lotCode = nullableText(dto.lotCode);
-    const serialNo = nullableText(dto.serialNo);
-    const expiryDate = dateOnly(dto.expiryDate);
-    const referenceNo = nullableText(dto.referenceNo) ?? `MOVE-${Date.now()}`;
-
-    return this.prisma.$transaction(async (tx) => {
-      if (serialNo) {
-        const source = await this.findStock(tx, {
-          locationId: fromLocation.id,
-          itemId: dto.itemId,
-          lotCode,
-          serialNo,
-          expiryDate,
-          inventoryStatus: WmsInventoryStatus.AVAILABLE,
-        });
-        this.assertAvailable(source, qty);
-        await tx.wmsStock.update({
-          where: { id: source.id },
-          data: { locationId: toLocation.id, warehouseId: toLocation.warehouseId },
-        });
-      } else {
-        const source = await this.decreaseStock(tx, {
-          locationId: fromLocation.id,
-          itemId: dto.itemId,
-          qty,
-          lotCode,
-          serialNo,
-          expiryDate,
-          inventoryStatus: WmsInventoryStatus.AVAILABLE,
-        });
-        await this.increaseStock(tx, {
-          warehouseId: toLocation.warehouseId,
-          locationId: toLocation.id,
-          itemId: dto.itemId,
-          qty,
-          lotCode: source.lotCode,
-          serialNo: source.serialNo,
-          expiryDate: source.expiryDate,
-          manufacturingDate: source.manufacturingDate,
-          inventoryStatus: source.inventoryStatus,
-        });
-      }
-
-      await this.createMovement(tx, {
-        warehouseId: fromLocation.warehouseId,
-        itemId: dto.itemId,
-        fromLocationId: fromLocation.id,
-        toLocationId: toLocation.id,
-        movementType: WmsMovementType.MOVE,
-        qty,
-        lotCode,
-        serialNo,
-        expiryDate,
-        referenceNo,
-        notes: nullableText(dto.notes),
-        createdById: userId,
-      });
-
-      await tx.wmsTask.create({
-        data: {
-          warehouseId: fromLocation.warehouseId,
-          itemId: dto.itemId,
-          sourceLocationId: fromLocation.id,
-          destinationLocationId: toLocation.id,
-          taskType: WmsTaskType.MOVE,
-          status: WmsTaskStatus.DONE,
-          qty,
-          lotCode,
-          serialNo,
-          expiryDate,
-          referenceNo,
-          notes: nullableText(dto.notes),
-          createdById: userId,
-          completedAt: new Date(),
-        },
-      });
-
-      return { referenceNo };
+  async replenish(dto: WmsReplenishDto, userId: string) {
+    return this.executeStockMove(dto, userId, {
+      movementType: WmsMovementType.REPLENISH,
+      taskType: WmsTaskType.REPLENISH,
+      referencePrefix: 'REP',
+      sourceLocationTypes: [WmsLocationType.STORAGE],
+      destinationLocationTypes: [WmsLocationType.PICKING],
     });
   }
 
@@ -758,6 +787,24 @@ export class WmsService {
         data: { status: WmsTaskStatus.DONE, completedAt: new Date() },
       });
 
+      const packTaskCount = await tx.wmsTask.count({
+        where: { sourceType: 'SALES_INVOICE', sourceId: salesInvoiceId, taskType: WmsTaskType.PACK },
+      });
+      if (packTaskCount === 0) {
+        await tx.wmsTask.create({
+          data: {
+            warehouseId: invoice.warehouseId,
+            taskType: WmsTaskType.PACK,
+            status: WmsTaskStatus.PENDING,
+            sourceType: 'SALES_INVOICE',
+            sourceId: invoice.id,
+            referenceNo: invoice.docNo,
+            notes: 'Pack picked goods before posting/shipping',
+            createdById: userId,
+          },
+        });
+      }
+
       return { salesInvoiceId, docNo: invoice.docNo, picked: reservations.length };
     });
   }
@@ -820,19 +867,175 @@ export class WmsService {
     });
   }
 
-  async ensureSalesInvoiceReadyToPost(invoice: SalesInvoiceForWms) {
-    const reservations = await this.prisma.wmsReservation.findMany({
-      where: { salesInvoiceId: invoice.id, status: WmsReservationStatus.PICKED },
+  async packSalesInvoice(salesInvoiceId: string, userId: string) {
+    const invoice = await this.loadSalesInvoiceForWms(salesInvoiceId);
+    await this.assertSalesInvoicePicked(invoice);
+
+    const existing = await this.prisma.wmsTask.findFirst({
+      where: {
+        sourceType: 'SALES_INVOICE',
+        sourceId: salesInvoiceId,
+        taskType: WmsTaskType.PACK,
+        status: WmsTaskStatus.DONE,
+      },
     });
-    for (const line of invoice.lines) {
-      const pickedQty = reservations
-        .filter((reservation) => reservation.salesInvoiceLineId === line.id)
-        .reduce((sum, reservation) => sum + numberValue(reservation.qtyPicked), 0);
-      if (roundQty(pickedQty) < numberValue(line.qty)) {
-        throw new BadRequestException(
-          `Sales invoice ${invoice.docNo} cannot be posted before WMS picking is completed`,
-        );
+    if (existing) return { salesInvoiceId, docNo: invoice.docNo, packed: true };
+
+    await this.prisma.wmsTask.create({
+      data: {
+        warehouseId: invoice.warehouseId,
+        taskType: WmsTaskType.PACK,
+        status: WmsTaskStatus.DONE,
+        sourceType: 'SALES_INVOICE',
+        sourceId: invoice.id,
+        referenceNo: invoice.docNo,
+        notes: 'Packed for shipment',
+        createdById: userId,
+        completedAt: new Date(),
+      },
+    });
+
+    return { salesInvoiceId, docNo: invoice.docNo, packed: true };
+  }
+
+  async createCycleCountPlan(dto: WmsCycleCountPlanDto, userId: string) {
+    await this.ensureWarehouse(dto.warehouseId);
+    const referenceNo = nullableText(dto.referenceNo) ?? `CYCLE-${Date.now()}`;
+    const rows = await this.prisma.wmsStock.findMany({
+      where: {
+        warehouseId: dto.warehouseId,
+        ...(dto.locationId ? { locationId: dto.locationId } : {}),
+        ...(dto.itemId ? { itemId: dto.itemId } : {}),
+      },
+      include: { location: true },
+      orderBy: [{ location: { code: 'asc' } }, { item: { name: 'asc' } }],
+    });
+
+    if (!rows.length && (!dto.locationId || !dto.itemId)) {
+      throw new BadRequestException('No WMS stock found for cycle count plan');
+    }
+
+    const tasks = rows.length
+      ? rows.map((row) => ({
+          warehouseId: row.warehouseId,
+          itemId: row.itemId,
+          sourceLocationId: row.locationId,
+          taskType: WmsTaskType.COUNT,
+          status: WmsTaskStatus.PENDING,
+          qty: row.qtyOnHand,
+          lotCode: row.lotCode,
+          serialNo: row.serialNo,
+          expiryDate: row.expiryDate,
+          referenceNo,
+          notes: nullableText(dto.notes),
+          createdById: userId,
+        }))
+      : [
+          {
+            warehouseId: dto.warehouseId,
+            itemId: dto.itemId,
+            sourceLocationId: dto.locationId,
+            taskType: WmsTaskType.COUNT,
+            status: WmsTaskStatus.PENDING,
+            referenceNo,
+            notes: nullableText(dto.notes),
+            createdById: userId,
+          },
+        ];
+
+    await this.prisma.wmsTask.createMany({ data: tasks });
+    return { referenceNo, tasks: tasks.length };
+  }
+
+  async startTask(id: string, dto: WmsTaskActionDto, userId: string) {
+    return this.updateTaskStatus(id, WmsTaskStatus.IN_PROGRESS, userId, dto ?? {});
+  }
+
+  async completeTask(id: string, dto: WmsTaskActionDto, userId: string) {
+    return this.updateTaskStatus(id, WmsTaskStatus.DONE, userId, dto ?? {});
+  }
+
+  async cancelTask(id: string, dto: WmsTaskActionDto, userId: string) {
+    return this.updateTaskStatus(id, WmsTaskStatus.CANCELLED, userId, dto ?? {});
+  }
+
+  async shortTask(id: string, dto: WmsTaskActionDto, userId: string) {
+    return this.updateTaskStatus(id, WmsTaskStatus.SHORT, userId, dto ?? {});
+  }
+
+  async markExpiredStock(userId: string) {
+    const rows = await this.prisma.wmsStock.findMany({
+      where: {
+        inventoryStatus: WmsInventoryStatus.AVAILABLE,
+        expiryDate: { not: null, lt: todayUtcDate() },
+        reservedQty: 0,
+        pickedQty: 0,
+        qtyOnHand: { gt: 0 },
+      },
+    });
+    const referenceNo = `EXP-${Date.now()}`;
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const row of rows) {
+        await tx.wmsStock.update({
+          where: { id: row.id },
+          data: { inventoryStatus: WmsInventoryStatus.EXPIRED },
+        });
+        await this.createMovement(tx, {
+          warehouseId: row.warehouseId,
+          itemId: row.itemId,
+          fromLocationId: row.locationId,
+          toLocationId: row.locationId,
+          movementType: WmsMovementType.EXPIRE,
+          qty: numberValue(row.qtyOnHand),
+          lotCode: row.lotCode,
+          serialNo: row.serialNo,
+          expiryDate: row.expiryDate,
+          referenceNo,
+          notes: 'Automatically marked as expired',
+          createdById: userId,
+        });
+        await tx.wmsTask.create({
+          data: {
+            warehouseId: row.warehouseId,
+            itemId: row.itemId,
+            sourceLocationId: row.locationId,
+            taskType: WmsTaskType.QC,
+            status: WmsTaskStatus.DONE,
+            qty: row.qtyOnHand,
+            lotCode: row.lotCode,
+            serialNo: row.serialNo,
+            expiryDate: row.expiryDate,
+            referenceNo,
+            notes: 'Expired inventory blocked from sales',
+            createdById: userId,
+            completedAt: new Date(),
+          },
+        });
       }
+    });
+
+    return {
+      referenceNo,
+      rows: rows.length,
+      qtyOnHand: roundQty(rows.reduce((sum, row) => sum + numberValue(row.qtyOnHand), 0)),
+    };
+  }
+
+  async ensureSalesInvoiceReadyToPost(invoice: SalesInvoiceForWms) {
+    await this.assertSalesInvoicePicked(invoice);
+    const packed = await this.prisma.wmsTask.findFirst({
+      where: {
+        sourceType: 'SALES_INVOICE',
+        sourceId: invoice.id,
+        taskType: WmsTaskType.PACK,
+        status: WmsTaskStatus.DONE,
+      },
+    });
+    if (!packed) {
+      throw new BadRequestException(
+        `Sales invoice ${invoice.docNo} cannot be posted before WMS packing is completed`,
+      );
     }
   }
 
@@ -883,6 +1086,19 @@ export class WmsService {
         createdById: userId,
       });
     }
+    await tx.wmsTask.create({
+      data: {
+        warehouseId: invoice.warehouseId,
+        taskType: WmsTaskType.SHIP,
+        status: WmsTaskStatus.DONE,
+        sourceType: 'SALES_INVOICE',
+        sourceId: invoice.id,
+        referenceNo: invoice.docNo,
+        notes: 'Shipped after sales invoice posting',
+        createdById: userId,
+        completedAt: new Date(),
+      },
+    });
   }
 
   async scan(code: string) {
@@ -920,6 +1136,171 @@ export class WmsService {
       }),
     ]);
     return { items, locations, stocks };
+  }
+
+  private async assertSalesInvoicePicked(invoice: SalesInvoiceForWms) {
+    const reservations = await this.prisma.wmsReservation.findMany({
+      where: { salesInvoiceId: invoice.id, status: WmsReservationStatus.PICKED },
+    });
+    for (const line of invoice.lines) {
+      const pickedQty = reservations
+        .filter((reservation) => reservation.salesInvoiceLineId === line.id)
+        .reduce((sum, reservation) => sum + numberValue(reservation.qtyPicked), 0);
+      if (roundQty(pickedQty) < numberValue(line.qty)) {
+        throw new BadRequestException(
+          `Sales invoice ${invoice.docNo} cannot be posted before WMS picking is completed`,
+        );
+      }
+    }
+  }
+
+  private async updateTaskStatus(
+    id: string,
+    status: WmsTaskStatus,
+    userId: string,
+    dto: WmsTaskActionDto = {},
+  ) {
+    const task = await this.prisma.wmsTask.findUnique({ where: { id } });
+    if (!task) throw new NotFoundException('WMS task not found');
+    if (task.status === WmsTaskStatus.DONE || task.status === WmsTaskStatus.CANCELLED) {
+      throw new BadRequestException('Closed WMS tasks cannot be changed');
+    }
+
+    return this.prisma.wmsTask.update({
+      where: { id },
+      data: {
+        status,
+        assignedToId: status === WmsTaskStatus.IN_PROGRESS ? userId : task.assignedToId,
+        notes: nullableText(dto.notes) ?? task.notes,
+        completedAt:
+          status === WmsTaskStatus.DONE ||
+          status === WmsTaskStatus.CANCELLED ||
+          status === WmsTaskStatus.SHORT
+            ? new Date()
+            : task.completedAt,
+      },
+      include: {
+        warehouse: true,
+        item: true,
+        sourceLocation: true,
+        destinationLocation: true,
+      },
+    });
+  }
+
+  private async executeStockMove(
+    dto: WmsMoveDto,
+    userId: string,
+    config: {
+      movementType: WmsMovementType;
+      taskType: WmsTaskType;
+      referencePrefix: string;
+      sourceLocationTypes?: WmsLocationType[];
+      destinationLocationTypes?: WmsLocationType[];
+    },
+  ) {
+    const qty = Number(dto.serialNo ? 1 : dto.qty);
+    if (!Number.isFinite(qty) || qty <= 0) throw new BadRequestException('Quantity is required');
+    if (dto.fromLocationId === dto.toLocationId) {
+      throw new BadRequestException('Source and destination locations must be different');
+    }
+
+    const [fromLocation, toLocation] = await Promise.all([
+      this.getActiveLocation(dto.fromLocationId),
+      this.getActiveLocation(dto.toLocationId),
+    ]);
+    if (fromLocation.warehouseId !== toLocation.warehouseId) {
+      throw new BadRequestException('Locations must belong to the same warehouse');
+    }
+    if (config.sourceLocationTypes && !config.sourceLocationTypes.includes(fromLocation.locationType)) {
+      throw new BadRequestException('Source location type is not valid for this WMS workflow');
+    }
+    if (
+      config.destinationLocationTypes &&
+      !config.destinationLocationTypes.includes(toLocation.locationType)
+    ) {
+      throw new BadRequestException('Destination location type is not valid for this WMS workflow');
+    }
+
+    const lotCode = nullableText(dto.lotCode);
+    const serialNo = nullableText(dto.serialNo);
+    const expiryDate = dateOnly(dto.expiryDate);
+    const referenceNo = nullableText(dto.referenceNo) ?? `${config.referencePrefix}-${Date.now()}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      if (serialNo) {
+        const source = await this.findStock(tx, {
+          locationId: fromLocation.id,
+          itemId: dto.itemId,
+          lotCode,
+          serialNo,
+          expiryDate,
+          inventoryStatus: WmsInventoryStatus.AVAILABLE,
+        });
+        this.assertAvailable(source, qty);
+        await tx.wmsStock.update({
+          where: { id: source.id },
+          data: { locationId: toLocation.id, warehouseId: toLocation.warehouseId },
+        });
+      } else {
+        const source = await this.decreaseStock(tx, {
+          locationId: fromLocation.id,
+          itemId: dto.itemId,
+          qty,
+          lotCode,
+          serialNo,
+          expiryDate,
+          inventoryStatus: WmsInventoryStatus.AVAILABLE,
+        });
+        await this.increaseStock(tx, {
+          warehouseId: toLocation.warehouseId,
+          locationId: toLocation.id,
+          itemId: dto.itemId,
+          qty,
+          lotCode: source.lotCode,
+          serialNo: source.serialNo,
+          expiryDate: source.expiryDate,
+          manufacturingDate: source.manufacturingDate,
+          inventoryStatus: source.inventoryStatus,
+        });
+      }
+
+      await this.createMovement(tx, {
+        warehouseId: fromLocation.warehouseId,
+        itemId: dto.itemId,
+        fromLocationId: fromLocation.id,
+        toLocationId: toLocation.id,
+        movementType: config.movementType,
+        qty,
+        lotCode,
+        serialNo,
+        expiryDate,
+        referenceNo,
+        notes: nullableText(dto.notes),
+        createdById: userId,
+      });
+
+      await tx.wmsTask.create({
+        data: {
+          warehouseId: fromLocation.warehouseId,
+          itemId: dto.itemId,
+          sourceLocationId: fromLocation.id,
+          destinationLocationId: toLocation.id,
+          taskType: config.taskType,
+          status: WmsTaskStatus.DONE,
+          qty,
+          lotCode,
+          serialNo,
+          expiryDate,
+          referenceNo,
+          notes: nullableText(dto.notes),
+          createdById: userId,
+          completedAt: new Date(),
+        },
+      });
+
+      return { referenceNo };
+    });
   }
 
   private async ensureWarehouse(id: string) {

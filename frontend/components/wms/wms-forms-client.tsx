@@ -445,3 +445,283 @@ export function WmsScannerClient() {
     </div>
   );
 }
+
+function WmsWorkflowMoveForm({
+  endpoint,
+  locations,
+  items,
+  fromLabel,
+  toLabel,
+  buttonLabel,
+  buttonClassName,
+}: {
+  endpoint: string;
+  locations: LocationOption[];
+  items: Option[];
+  fromLabel: string;
+  toLabel: string;
+  buttonLabel: string;
+  buttonClassName: string;
+}) {
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setMessage('');
+    const data = new FormData(event.currentTarget);
+    try {
+      const result: any = await api.post(endpoint, {
+        fromLocationId: data.get('fromLocationId'),
+        toLocationId: data.get('toLocationId'),
+        itemId: data.get('itemId'),
+        qty: Number(data.get('qty') || 0),
+        lotCode: data.get('lotCode') || undefined,
+        serialNo: data.get('serialNo') || undefined,
+        expiryDate: data.get('expiryDate') || undefined,
+        referenceNo: data.get('referenceNo') || undefined,
+        notes: data.get('notes') || undefined,
+      });
+      event.currentTarget.reset();
+      setMessage(`Workflow u ruajt: ${result.referenceNo}`);
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <Message message={message} error={error} />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <select name="fromLocationId" required className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="">{fromLabel}</option>
+          {locations.map((location) => <option key={location.id} value={location.id}>{locationLabel(location)}</option>)}
+        </select>
+        <select name="toLocationId" required className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="">{toLabel}</option>
+          {locations.map((location) => <option key={location.id} value={location.id}>{locationLabel(location)}</option>)}
+        </select>
+        <select name="itemId" required className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="">Artikulli</option>
+          {items.map((item) => <option key={item.id} value={item.id}>{label(item)}</option>)}
+        </select>
+        <input name="qty" type="number" step="0.001" placeholder="Sasia" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <input name="lotCode" placeholder="Lot kodi" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <input name="serialNo" placeholder="Serial number" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <input name="expiryDate" type="date" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <input name="referenceNo" placeholder="Reference" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <input name="notes" placeholder="Shenime" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      </div>
+      <button disabled={busy} className={`${buttonClassName} rounded-xl px-4 py-2 text-sm font-medium text-white disabled:opacity-50`}>
+        {busy ? 'Duke ruajtur...' : buttonLabel}
+      </button>
+    </form>
+  );
+}
+
+export function WmsPutawayForm({ locations, items }: { locations: LocationOption[]; items: Option[] }) {
+  return (
+    <WmsWorkflowMoveForm
+      endpoint="wms/putaway"
+      locations={locations}
+      items={items}
+      fromLabel="Nga receiving / returns"
+      toLabel="Ne storage / picking"
+      buttonLabel="Ruaj putaway"
+      buttonClassName="bg-blue-600"
+    />
+  );
+}
+
+export function WmsReplenishmentForm({ locations, items }: { locations: LocationOption[]; items: Option[] }) {
+  return (
+    <WmsWorkflowMoveForm
+      endpoint="wms/replenish"
+      locations={locations}
+      items={items}
+      fromLabel="Nga storage"
+      toLabel="Ne picking"
+      buttonLabel="Ruaj replenishment"
+      buttonClassName="bg-cyan-600"
+    />
+  );
+}
+
+export function WmsCycleCountPlanForm({
+  warehouses,
+  locations,
+  items,
+}: {
+  warehouses: Option[];
+  locations: LocationOption[];
+  items: Option[];
+}) {
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setMessage('');
+    const data = new FormData(event.currentTarget);
+    try {
+      const result: any = await api.post('wms/cycle-counts/plan', {
+        warehouseId: data.get('warehouseId'),
+        locationId: data.get('locationId') || undefined,
+        itemId: data.get('itemId') || undefined,
+        referenceNo: data.get('referenceNo') || undefined,
+        notes: data.get('notes') || undefined,
+      });
+      event.currentTarget.reset();
+      setMessage(`Plani u krijua: ${result.referenceNo}. Detyra: ${result.tasks}`);
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <Message message={message} error={error} />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <select name="warehouseId" required className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="">Magazina</option>
+          {warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{label(warehouse)}</option>)}
+        </select>
+        <select name="locationId" className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="">Te gjitha lokacionet</option>
+          {locations.map((location) => <option key={location.id} value={location.id}>{locationLabel(location)}</option>)}
+        </select>
+        <select name="itemId" className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="">Te gjithe artikujt</option>
+          {items.map((item) => <option key={item.id} value={item.id}>{label(item)}</option>)}
+        </select>
+        <input name="referenceNo" placeholder="Reference" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <input name="notes" placeholder="Shenime" className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2" />
+      </div>
+      <button disabled={busy} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+        {busy ? 'Duke krijuar...' : 'Krijo plan count'}
+      </button>
+    </form>
+  );
+}
+
+export function WmsExpiryActions() {
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function markExpired() {
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const result: any = await api.post('wms/expiry/mark-expired', {});
+      setMessage(`U bllokuan ${result.rows} rreshta te skaduar. Sasia: ${result.qtyOnHand}`);
+      window.location.reload();
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <Message message={message} error={error} />
+      <button type="button" onClick={markExpired} disabled={busy} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+        {busy ? 'Duke bllokuar...' : 'Blloko stokun e skaduar'}
+      </button>
+    </div>
+  );
+}
+
+export function WmsPackingClient({ invoices }: { invoices: Array<{ id: string; docNo: string; customer?: { name: string } | null }> }) {
+  const [invoiceId, setInvoiceId] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function pack() {
+    if (!invoiceId) {
+      setError('Zgjidh faturën e shitjes.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.post(`wms/packing/sales-invoices/${invoiceId}/pack`, {});
+      setMessage('Packing u konfirmua. Fatura tani mund te postohet/shipped.');
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <Message message={message} error={error} />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto]">
+        <select value={invoiceId} onChange={(event) => setInvoiceId(event.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="">Zgjidh sales invoice draft</option>
+          {invoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.docNo} - {invoice.customer?.name ?? '-'}</option>)}
+        </select>
+        <button type="button" onClick={pack} disabled={busy} className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+          {busy ? 'Duke paketuar...' : 'Konfirmo packing'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function WmsTaskActionsClient({ taskId, status }: { taskId: string; status?: string | null }) {
+  const [busy, setBusy] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const closed = status === 'DONE' || status === 'CANCELLED' || status === 'SHORT';
+
+  async function action(kind: 'start' | 'complete' | 'cancel' | 'short') {
+    setBusy(kind);
+    setMessage('');
+    setError('');
+    try {
+      await api.post(`wms/tasks/${taskId}/${kind}`, {});
+      setMessage('OK');
+      window.location.reload();
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  if (closed) return <span className="text-xs text-slate-400">Mbyllur</span>;
+
+  return (
+    <div className="flex items-center gap-2">
+      <button type="button" onClick={() => action('start')} disabled={Boolean(busy)} className="rounded-lg border border-blue-200 px-2 py-1 text-xs font-medium text-blue-700 disabled:opacity-50">
+        {busy === 'start' ? '...' : 'Start'}
+      </button>
+      <button type="button" onClick={() => action('complete')} disabled={Boolean(busy)} className="rounded-lg border border-emerald-200 px-2 py-1 text-xs font-medium text-emerald-700 disabled:opacity-50">
+        {busy === 'complete' ? '...' : 'Done'}
+      </button>
+      <button type="button" onClick={() => action('short')} disabled={Boolean(busy)} className="rounded-lg border border-amber-200 px-2 py-1 text-xs font-medium text-amber-700 disabled:opacity-50">
+        Short
+      </button>
+      <button type="button" onClick={() => action('cancel')} disabled={Boolean(busy)} className="rounded-lg border border-rose-200 px-2 py-1 text-xs font-medium text-rose-700 disabled:opacity-50">
+        Cancel
+      </button>
+      {message || error ? <span className={`text-xs ${error ? 'text-rose-600' : 'text-emerald-600'}`}>{error || message}</span> : null}
+    </div>
+  );
+}

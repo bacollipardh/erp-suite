@@ -1,0 +1,2 @@
+ALTER TYPE "wms_movement_type" ADD VALUE IF NOT EXISTS 'REPLENISH';
+ALTER TYPE "wms_movement_type" ADD VALUE IF NOT EXISTS 'EXPIRE';

@@ -83,6 +83,10 @@ export class WmsMoveDto {
   notes?: string;
 }
 
+export class WmsPutawayDto extends WmsMoveDto {}
+
+export class WmsReplenishDto extends WmsMoveDto {}
+
 export class WmsCountDto {
   @IsUUID()
   locationId: string;
@@ -137,6 +141,33 @@ export class WmsStatusDto {
   @IsString()
   expiryDate?: string;
 
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+export class WmsCycleCountPlanDto {
+  @IsUUID()
+  warehouseId: string;
+
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  itemId?: string;
+
+  @IsOptional()
+  @IsString()
+  referenceNo?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+export class WmsTaskActionDto {
   @IsOptional()
   @IsString()
   notes?: string;
