@@ -20,6 +20,7 @@ type StepsPayload = { items: any[]; total: number };
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   await requirePagePermission(PERMISSIONS.dashboard);
   const { id } = await params;
+
   const [policies, steps] = await Promise.all([
     api.query<PolicyPayload>('approvals/policies'),
     api.query<StepsPayload>(`approvals/policies/${id}/steps`),
