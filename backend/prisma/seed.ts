@@ -1,11 +1,20 @@
 import {
+  AgentOrderStatus,
+  AgentOrderType,
   FinanceAccountTransactionType,
   FinanceAccountType,
   FiscalMode,
   JournalEntryLineSide,
   LedgerAccountCategory,
   LedgerAccountReportSection,
+  MovementType,
   PrismaClient,
+  WmsInventoryStatus,
+  WmsLocationStatus,
+  WmsLocationType,
+  WmsMovementType,
+  WmsTaskStatus,
+  WmsTaskType,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
@@ -96,7 +105,8 @@ const SYSTEM_LEDGER_ACCOUNTS: Array<{
     category: LedgerAccountCategory.ASSET,
     reportSection: LedgerAccountReportSection.CURRENT_ASSET,
     sortOrder: 1325,
-    description: 'Teprica e TVSH-se qe pret kompensim ose rimbursim pas settlement-it.',
+    description:
+      'Teprica e TVSH-se qe pret kompensim ose rimbursim pas settlement-it.',
   },
   {
     code: SYSTEM_LEDGER_ACCOUNT_CODES.accountsPayable,
@@ -120,7 +130,8 @@ const SYSTEM_LEDGER_ACCOUNTS: Array<{
     category: LedgerAccountCategory.LIABILITY,
     reportSection: LedgerAccountReportSection.CURRENT_LIABILITY,
     sortOrder: 2175,
-    description: 'Konto manuale per accruals, detyrime te pambyllura dhe provizione operative.',
+    description:
+      'Konto manuale per accruals, detyrime te pambyllura dhe provizione operative.',
     allowManual: true,
   },
   {
@@ -382,7 +393,9 @@ async function upsertFinanceAccount(params: {
     },
   });
 
-  const openingBalance = Number(existing?.openingBalance ?? params.openingBalance ?? 0);
+  const openingBalance = Number(
+    existing?.openingBalance ?? params.openingBalance ?? 0,
+  );
   const currentBalance = Number(existing?.currentBalance ?? openingBalance);
 
   return prisma.financeAccount.upsert({
@@ -417,32 +430,411 @@ async function upsertFinanceAccount(params: {
   });
 }
 
+function seedDate(year: number, month: number, day: number) {
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+async function upsertCustomerObject(params: {
+  customerId: string;
+  code: string;
+  name: string;
+  address?: string | null;
+  city?: string | null;
+  contactName?: string | null;
+  phone?: string | null;
+  notes?: string | null;
+}) {
+  return prisma.customerObject.upsert({
+    where: {
+      customerId_code: {
+        customerId: params.customerId,
+        code: params.code,
+      },
+    },
+    update: {
+      name: params.name,
+      address: params.address ?? null,
+      city: params.city ?? null,
+      contactName: params.contactName ?? null,
+      phone: params.phone ?? null,
+      isActive: true,
+      notes: params.notes ?? null,
+    },
+    create: {
+      customerId: params.customerId,
+      code: params.code,
+      name: params.name,
+      address: params.address ?? null,
+      city: params.city ?? null,
+      contactName: params.contactName ?? null,
+      phone: params.phone ?? null,
+      isActive: true,
+      notes: params.notes ?? null,
+    },
+  });
+}
+
+async function upsertWmsLocation(params: {
+  warehouseId: string;
+  code: string;
+  barcode: string;
+  zone: string;
+  aisle?: string | null;
+  rack?: string | null;
+  shelf?: string | null;
+  bin?: string | null;
+  locationType: WmsLocationType;
+  status?: WmsLocationStatus;
+  maxQty?: number | null;
+  notes?: string | null;
+}) {
+  return prisma.wmsLocation.upsert({
+    where: {
+      warehouseId_code: {
+        warehouseId: params.warehouseId,
+        code: params.code,
+      },
+    },
+    update: {
+      barcode: params.barcode,
+      zone: params.zone,
+      aisle: params.aisle ?? null,
+      rack: params.rack ?? null,
+      shelf: params.shelf ?? null,
+      bin: params.bin ?? null,
+      locationType: params.locationType,
+      status: params.status ?? WmsLocationStatus.ACTIVE,
+      maxQty: params.maxQty ?? null,
+      notes: params.notes ?? null,
+    },
+    create: {
+      warehouseId: params.warehouseId,
+      code: params.code,
+      barcode: params.barcode,
+      zone: params.zone,
+      aisle: params.aisle ?? null,
+      rack: params.rack ?? null,
+      shelf: params.shelf ?? null,
+      bin: params.bin ?? null,
+      locationType: params.locationType,
+      status: params.status ?? WmsLocationStatus.ACTIVE,
+      maxQty: params.maxQty ?? null,
+      notes: params.notes ?? null,
+    },
+  });
+}
+
+async function upsertStockBalance(params: {
+  warehouseId: string;
+  itemId: string;
+  qtyOnHand: number;
+  avgCost: number;
+}) {
+  return prisma.stockBalance.upsert({
+    where: {
+      warehouseId_itemId: {
+        warehouseId: params.warehouseId,
+        itemId: params.itemId,
+      },
+    },
+    update: {
+      qtyOnHand: params.qtyOnHand,
+      avgCost: params.avgCost,
+    },
+    create: {
+      warehouseId: params.warehouseId,
+      itemId: params.itemId,
+      qtyOnHand: params.qtyOnHand,
+      avgCost: params.avgCost,
+    },
+  });
+}
+
+async function upsertStockOpeningMovement(params: {
+  warehouseId: string;
+  itemId: string;
+  qtyIn: number;
+  unitCost: number;
+  referenceNo: string;
+  movementAt: Date;
+}) {
+  const existing = await prisma.stockMovement.findFirst({
+    where: {
+      warehouseId: params.warehouseId,
+      itemId: params.itemId,
+      movementType: MovementType.ADJUSTMENT_PLUS,
+      referenceNo: params.referenceNo,
+    },
+    select: { id: true },
+  });
+
+  const data = {
+    warehouseId: params.warehouseId,
+    itemId: params.itemId,
+    movementType: MovementType.ADJUSTMENT_PLUS,
+    qtyIn: params.qtyIn,
+    qtyOut: 0,
+    unitCost: params.unitCost,
+    referenceNo: params.referenceNo,
+    movementAt: params.movementAt,
+  };
+
+  if (existing) {
+    return prisma.stockMovement.update({
+      where: { id: existing.id },
+      data,
+    });
+  }
+
+  return prisma.stockMovement.create({ data });
+}
+
+async function upsertWmsStock(params: {
+  warehouseId: string;
+  locationId: string;
+  itemId: string;
+  qtyOnHand: number;
+  lotCode?: string | null;
+  serialNo?: string | null;
+  expiryDate?: Date | null;
+  manufacturingDate?: Date | null;
+  inventoryStatus?: WmsInventoryStatus;
+}) {
+  const existing = await prisma.wmsStock.findFirst({
+    where: {
+      warehouseId: params.warehouseId,
+      locationId: params.locationId,
+      itemId: params.itemId,
+      lotCode: params.lotCode ?? null,
+      serialNo: params.serialNo ?? null,
+      expiryDate: params.expiryDate ?? null,
+      inventoryStatus: params.inventoryStatus ?? WmsInventoryStatus.AVAILABLE,
+    },
+    select: { id: true },
+  });
+
+  const data = {
+    warehouseId: params.warehouseId,
+    locationId: params.locationId,
+    itemId: params.itemId,
+    lotCode: params.lotCode ?? null,
+    serialNo: params.serialNo ?? null,
+    expiryDate: params.expiryDate ?? null,
+    manufacturingDate: params.manufacturingDate ?? null,
+    qtyOnHand: params.qtyOnHand,
+    reservedQty: 0,
+    pickedQty: 0,
+    inventoryStatus: params.inventoryStatus ?? WmsInventoryStatus.AVAILABLE,
+  };
+
+  if (existing) {
+    return prisma.wmsStock.update({
+      where: { id: existing.id },
+      data,
+    });
+  }
+
+  return prisma.wmsStock.create({ data });
+}
+
+async function upsertWmsOpeningMovement(params: {
+  warehouseId: string;
+  locationId: string;
+  itemId: string;
+  qty: number;
+  referenceNo: string;
+  createdById: string;
+  lotCode?: string | null;
+  serialNo?: string | null;
+  expiryDate?: Date | null;
+}) {
+  const existing = await prisma.wmsMovement.findFirst({
+    where: {
+      warehouseId: params.warehouseId,
+      itemId: params.itemId,
+      toLocationId: params.locationId,
+      movementType: WmsMovementType.RECEIVE,
+      referenceNo: params.referenceNo,
+      lotCode: params.lotCode ?? null,
+      serialNo: params.serialNo ?? null,
+      expiryDate: params.expiryDate ?? null,
+    },
+    select: { id: true },
+  });
+
+  const data = {
+    warehouseId: params.warehouseId,
+    itemId: params.itemId,
+    toLocationId: params.locationId,
+    movementType: WmsMovementType.RECEIVE,
+    qty: params.qty,
+    lotCode: params.lotCode ?? null,
+    serialNo: params.serialNo ?? null,
+    expiryDate: params.expiryDate ?? null,
+    sourceType: 'SEED_OPENING',
+    referenceNo: params.referenceNo,
+    notes: 'Seed opening WMS stock',
+    createdById: params.createdById,
+  };
+
+  if (existing) {
+    return prisma.wmsMovement.update({
+      where: { id: existing.id },
+      data,
+    });
+  }
+
+  return prisma.wmsMovement.create({ data });
+}
+
+async function upsertWmsTask(params: {
+  warehouseId: string;
+  itemId?: string | null;
+  sourceLocationId?: string | null;
+  destinationLocationId?: string | null;
+  taskType: WmsTaskType;
+  status: WmsTaskStatus;
+  qty?: number | null;
+  referenceNo: string;
+  assignedToId?: string | null;
+  createdById: string;
+  priority?: number;
+  notes?: string | null;
+}) {
+  const existing = await prisma.wmsTask.findFirst({
+    where: {
+      taskType: params.taskType,
+      sourceType: 'SEED_DEMO',
+      referenceNo: params.referenceNo,
+    },
+    select: { id: true },
+  });
+
+  const data = {
+    warehouseId: params.warehouseId,
+    itemId: params.itemId ?? null,
+    sourceLocationId: params.sourceLocationId ?? null,
+    destinationLocationId: params.destinationLocationId ?? null,
+    taskType: params.taskType,
+    status: params.status,
+    qty: params.qty ?? null,
+    sourceType: 'SEED_DEMO',
+    referenceNo: params.referenceNo,
+    assignedToId: params.assignedToId ?? null,
+    priority: params.priority ?? 5,
+    notes: params.notes ?? null,
+    createdById: params.createdById,
+    completedAt: params.status === WmsTaskStatus.DONE ? new Date() : null,
+  };
+
+  if (existing) {
+    return prisma.wmsTask.update({
+      where: { id: existing.id },
+      data,
+    });
+  }
+
+  return prisma.wmsTask.create({ data });
+}
+
+async function upsertDemoAgentOrder(params: {
+  orderNo: string;
+  orderType: AgentOrderType;
+  status: AgentOrderStatus;
+  customerId: string;
+  customerObjectId?: string | null;
+  warehouseId: string;
+  createdById: string;
+  assignedPickerId?: string | null;
+  lines: Array<{
+    itemId: string;
+    description: string;
+    qty: number;
+    unitPrice: number;
+    taxPercent: number;
+  }>;
+}) {
+  const existing = await prisma.agentOrder.findUnique({
+    where: { orderNo: params.orderNo },
+    select: { id: true },
+  });
+
+  const orderData = {
+    orderType: params.orderType,
+    status: params.status,
+    customerId: params.customerId,
+    customerObjectId: params.customerObjectId ?? null,
+    warehouseId: params.warehouseId,
+    docDate: seedDate(new Date().getUTCFullYear(), 4, 28),
+    dueDate: seedDate(new Date().getUTCFullYear(), 5, 5),
+    priority: 3,
+    assignedPickerId: params.assignedPickerId ?? null,
+    assignedAt: params.assignedPickerId ? new Date() : null,
+    notes: 'Demo order per testim Agent -> WMS -> Fature.',
+    createdById: params.createdById,
+  };
+
+  const lineCreates = params.lines.map((line, index) => ({
+    lineNo: index + 1,
+    itemId: line.itemId,
+    description: line.description,
+    qty: line.qty,
+    unitPrice: line.unitPrice,
+    discountPercent: 0,
+    taxPercent: line.taxPercent,
+  }));
+
+  if (existing) {
+    await prisma.agentOrderLine.deleteMany({
+      where: { agentOrderId: existing.id },
+    });
+
+    return prisma.agentOrder.update({
+      where: { id: existing.id },
+      data: {
+        ...orderData,
+        lines: { create: lineCreates },
+      },
+      include: { lines: true },
+    });
+  }
+
+  return prisma.agentOrder.create({
+    data: {
+      orderNo: params.orderNo,
+      ...orderData,
+      lines: { create: lineCreates },
+    },
+    include: { lines: true },
+  });
+}
+
 async function ensureChartOfAccountsSeed() {
   for (const account of SYSTEM_LEDGER_ACCOUNTS) {
     await prisma.ledgerAccount.upsert({
       where: { code: account.code },
-        update: {
-          name: account.name,
-          category: account.category,
-          reportSection: account.reportSection,
-          isSystem: true,
-          isActive: true,
-          allowManual: account.allowManual ?? false,
-          sortOrder: account.sortOrder,
-          description: account.description,
-        },
-        create: {
-          code: account.code,
+      update: {
         name: account.name,
-          category: account.category,
-          reportSection: account.reportSection,
-          isSystem: true,
-          isActive: true,
-          allowManual: account.allowManual ?? false,
-          sortOrder: account.sortOrder,
-          description: account.description,
-        },
-      });
+        category: account.category,
+        reportSection: account.reportSection,
+        isSystem: true,
+        isActive: true,
+        allowManual: account.allowManual ?? false,
+        sortOrder: account.sortOrder,
+        description: account.description,
+      },
+      create: {
+        code: account.code,
+        name: account.name,
+        category: account.category,
+        reportSection: account.reportSection,
+        isSystem: true,
+        isActive: true,
+        allowManual: account.allowManual ?? false,
+        sortOrder: account.sortOrder,
+        description: account.description,
+      },
+    });
   }
 
   const financeAccounts = await prisma.financeAccount.findMany({
@@ -467,7 +859,8 @@ async function ensureChartOfAccountsSeed() {
         isSystem: true,
         isActive: account.isActive,
         allowManual: false,
-        sortOrder: account.accountType === FinanceAccountType.CASH ? 1010 : 1020,
+        sortOrder:
+          account.accountType === FinanceAccountType.CASH ? 1010 : 1020,
         description: account.notes?.trim() || null,
       },
       create: {
@@ -478,7 +871,8 @@ async function ensureChartOfAccountsSeed() {
         isSystem: true,
         isActive: account.isActive,
         allowManual: false,
-        sortOrder: account.accountType === FinanceAccountType.CASH ? 1010 : 1020,
+        sortOrder:
+          account.accountType === FinanceAccountType.CASH ? 1010 : 1020,
         description: account.notes?.trim() || null,
       },
     });
@@ -753,6 +1147,12 @@ async function main() {
     create: { code: 'PURCHASE', name: 'Purchase Operator', isActive: true },
   });
 
+  const wmsRole = await prisma.role.upsert({
+    where: { code: 'WMS' },
+    update: { name: 'Warehouse Picker', isActive: true },
+    create: { code: 'WMS', name: 'Warehouse Picker', isActive: true },
+  });
+
   const adminUser = await upsertUser({
     id: ADMIN_ID,
     roleId: adminRole.id,
@@ -812,6 +1212,23 @@ async function main() {
     },
   });
 
+  const pickerUser = await prisma.user.upsert({
+    where: { email: 'picker@erp.local' },
+    update: {
+      roleId: wmsRole.id,
+      fullName: 'Warehouse Picker',
+      passwordHash,
+      isActive: true,
+    },
+    create: {
+      roleId: wmsRole.id,
+      fullName: 'Warehouse Picker',
+      email: 'picker@erp.local',
+      passwordHash,
+      isActive: true,
+    },
+  });
+
   await prisma.companyProfile.upsert({
     where: { id: COMPANY_PROFILE_ID },
     update: {
@@ -863,10 +1280,34 @@ async function main() {
     create: { code: 'SERVICES', name: 'Services' },
   });
 
-  await prisma.itemCategory.upsert({
+  const accessoriesCategory = await prisma.itemCategory.upsert({
     where: { code: 'ACCESSORIES' },
     update: { name: 'Accessories', parentId: goodsCategory.id },
-    create: { code: 'ACCESSORIES', name: 'Accessories', parentId: goodsCategory.id },
+    create: {
+      code: 'ACCESSORIES',
+      name: 'Accessories',
+      parentId: goodsCategory.id,
+    },
+  });
+
+  const electronicsCategory = await prisma.itemCategory.upsert({
+    where: { code: 'ELECTRONICS' },
+    update: { name: 'Electronics', parentId: goodsCategory.id },
+    create: {
+      code: 'ELECTRONICS',
+      name: 'Electronics',
+      parentId: goodsCategory.id,
+    },
+  });
+
+  const consumablesCategory = await prisma.itemCategory.upsert({
+    where: { code: 'CONSUMABLES' },
+    update: { name: 'Consumables', parentId: goodsCategory.id },
+    create: {
+      code: 'CONSUMABLES',
+      name: 'Consumables',
+      parentId: goodsCategory.id,
+    },
   });
 
   const unitPiece = await prisma.unit.upsert({
@@ -885,6 +1326,18 @@ async function main() {
     where: { code: 'L' },
     update: { name: 'Liter' },
     create: { code: 'L', name: 'Liter' },
+  });
+
+  const unitPack = await prisma.unit.upsert({
+    where: { code: 'PAK' },
+    update: { name: 'Pako' },
+    create: { code: 'PAK', name: 'Pako' },
+  });
+
+  const unitHour = await prisma.unit.upsert({
+    where: { code: 'ORE' },
+    update: { name: 'Ore' },
+    create: { code: 'ORE', name: 'Ore' },
   });
 
   const tax18 = await prisma.taxRate.upsert({
@@ -907,14 +1360,32 @@ async function main() {
 
   const mainWarehouse = await prisma.warehouse.upsert({
     where: { code: 'MAIN' },
-    update: { name: 'Main Warehouse', address: 'Prishtine, Kosovo', isActive: true },
-    create: { code: 'MAIN', name: 'Main Warehouse', address: 'Prishtine, Kosovo', isActive: true },
+    update: {
+      name: 'Main Warehouse',
+      address: 'Prishtine, Kosovo',
+      isActive: true,
+    },
+    create: {
+      code: 'MAIN',
+      name: 'Main Warehouse',
+      address: 'Prishtine, Kosovo',
+      isActive: true,
+    },
   });
 
-  await prisma.warehouse.upsert({
+  const secondaryWarehouse = await prisma.warehouse.upsert({
     where: { code: 'SECONDARY' },
-    update: { name: 'Secondary Warehouse', address: 'Prizren, Kosovo', isActive: true },
-    create: { code: 'SECONDARY', name: 'Secondary Warehouse', address: 'Prizren, Kosovo', isActive: true },
+    update: {
+      name: 'Secondary Warehouse',
+      address: 'Prizren, Kosovo',
+      isActive: true,
+    },
+    create: {
+      code: 'SECONDARY',
+      name: 'Secondary Warehouse',
+      address: 'Prizren, Kosovo',
+      isActive: true,
+    },
   });
 
   await prisma.paymentMethod.upsert({
@@ -935,6 +1406,12 @@ async function main() {
     create: { code: 'CREDIT', name: 'Credit / Card', isActive: true },
   });
 
+  await prisma.paymentMethod.upsert({
+    where: { code: 'CARD' },
+    update: { name: 'Card POS', isActive: true },
+    create: { code: 'CARD', name: 'Card POS', isActive: true },
+  });
+
   await upsertFinanceAccount({
     code: 'CASH_MAIN',
     name: 'Main Cash Desk',
@@ -953,6 +1430,16 @@ async function main() {
     swiftCode: 'BPBUSXK1',
     openingBalance: 5000,
     notes: 'Llogaria bankare kryesore e kompanise.',
+  });
+
+  await upsertFinanceAccount({
+    code: 'CARD_POS',
+    name: 'Card POS Clearing',
+    accountType: FinanceAccountType.BANK,
+    bankName: 'POS Processor',
+    bankAccountNo: 'POS-001',
+    openingBalance: 250,
+    notes: 'Llogari per arketimet me kartele deri ne pajtim bankar.',
   });
 
   await upsertDocumentSeries({
@@ -977,11 +1464,13 @@ async function main() {
   await ensureFinancialYear(currentYear);
   await ensureFinancialYear(currentYear + 1);
 
-  await prisma.item.upsert({
+  const laptop = await prisma.item.upsert({
     where: { code: 'LAPTOP-001' },
     update: {
+      barcode: '383000000001',
       name: 'Laptop Pro 15',
-      categoryId: goodsCategory.id,
+      description: 'Serial tracked demo item',
+      categoryId: electronicsCategory.id,
       unitId: unitPiece.id,
       taxRateId: tax18.id,
       standardPurchasePrice: 800,
@@ -991,9 +1480,10 @@ async function main() {
     },
     create: {
       code: 'LAPTOP-001',
+      barcode: '383000000001',
       name: 'Laptop Pro 15',
-      description: 'Business laptop',
-      categoryId: goodsCategory.id,
+      description: 'Serial tracked demo item',
+      categoryId: electronicsCategory.id,
       unitId: unitPiece.id,
       taxRateId: tax18.id,
       standardPurchasePrice: 800,
@@ -1003,25 +1493,176 @@ async function main() {
     },
   });
 
-  await prisma.item.upsert({
+  const monitor = await prisma.item.upsert({
     where: { code: 'MONITOR-001' },
     update: {
+      barcode: '383000000002',
       name: 'Monitor 24',
-      categoryId: goodsCategory.id,
+      description: 'Standard stock item',
+      categoryId: electronicsCategory.id,
       unitId: unitPiece.id,
       taxRateId: tax18.id,
       standardPurchasePrice: 200,
       standardSalesPrice: 280,
+      minSalesPrice: 230,
       isActive: true,
     },
     create: {
       code: 'MONITOR-001',
+      barcode: '383000000002',
       name: 'Monitor 24',
-      categoryId: goodsCategory.id,
+      description: 'Standard stock item',
+      categoryId: electronicsCategory.id,
       unitId: unitPiece.id,
       taxRateId: tax18.id,
       standardPurchasePrice: 200,
       standardSalesPrice: 280,
+      minSalesPrice: 230,
+      isActive: true,
+    },
+  });
+
+  const mouse = await prisma.item.upsert({
+    where: { code: 'MOUSE-001' },
+    update: {
+      barcode: '383000000003',
+      name: 'Wireless Mouse',
+      description: 'Fast moving accessory',
+      categoryId: accessoriesCategory.id,
+      unitId: unitPiece.id,
+      taxRateId: tax18.id,
+      standardPurchasePrice: 12,
+      standardSalesPrice: 22,
+      minSalesPrice: 16,
+      isActive: true,
+    },
+    create: {
+      code: 'MOUSE-001',
+      barcode: '383000000003',
+      name: 'Wireless Mouse',
+      description: 'Fast moving accessory',
+      categoryId: accessoriesCategory.id,
+      unitId: unitPiece.id,
+      taxRateId: tax18.id,
+      standardPurchasePrice: 12,
+      standardSalesPrice: 22,
+      minSalesPrice: 16,
+      isActive: true,
+    },
+  });
+
+  const keyboard = await prisma.item.upsert({
+    where: { code: 'KEYBOARD-001' },
+    update: {
+      barcode: '383000000004',
+      name: 'Keyboard AL Layout',
+      description: 'Standard stock item',
+      categoryId: accessoriesCategory.id,
+      unitId: unitPiece.id,
+      taxRateId: tax18.id,
+      standardPurchasePrice: 18,
+      standardSalesPrice: 35,
+      minSalesPrice: 25,
+      isActive: true,
+    },
+    create: {
+      code: 'KEYBOARD-001',
+      barcode: '383000000004',
+      name: 'Keyboard AL Layout',
+      description: 'Standard stock item',
+      categoryId: accessoriesCategory.id,
+      unitId: unitPiece.id,
+      taxRateId: tax18.id,
+      standardPurchasePrice: 18,
+      standardSalesPrice: 35,
+      minSalesPrice: 25,
+      isActive: true,
+    },
+  });
+
+  const usbCable = await prisma.item.upsert({
+    where: { code: 'USB-CABLE-001' },
+    update: {
+      barcode: '383000000005',
+      name: 'USB-C Cable 1m',
+      description: 'Small accessory for barcode scan tests',
+      categoryId: accessoriesCategory.id,
+      unitId: unitPiece.id,
+      taxRateId: tax18.id,
+      standardPurchasePrice: 3,
+      standardSalesPrice: 7,
+      minSalesPrice: 5,
+      isActive: true,
+    },
+    create: {
+      code: 'USB-CABLE-001',
+      barcode: '383000000005',
+      name: 'USB-C Cable 1m',
+      description: 'Small accessory for barcode scan tests',
+      categoryId: accessoriesCategory.id,
+      unitId: unitPiece.id,
+      taxRateId: tax18.id,
+      standardPurchasePrice: 3,
+      standardSalesPrice: 7,
+      minSalesPrice: 5,
+      isActive: true,
+    },
+  });
+
+  const coffee = await prisma.item.upsert({
+    where: { code: 'COFFEE-001' },
+    update: {
+      barcode: '383000000006',
+      name: 'Coffee 1kg',
+      description: 'Lot and expiry tracked demo item',
+      categoryId: consumablesCategory.id,
+      unitId: unitPack.id,
+      taxRateId: tax18.id,
+      standardPurchasePrice: 6,
+      standardSalesPrice: 10,
+      minSalesPrice: 8,
+      isActive: true,
+    },
+    create: {
+      code: 'COFFEE-001',
+      barcode: '383000000006',
+      name: 'Coffee 1kg',
+      description: 'Lot and expiry tracked demo item',
+      categoryId: consumablesCategory.id,
+      unitId: unitPack.id,
+      taxRateId: tax18.id,
+      standardPurchasePrice: 6,
+      standardSalesPrice: 10,
+      minSalesPrice: 8,
+      isActive: true,
+    },
+  });
+
+  const sugar = await prisma.item.upsert({
+    where: { code: 'SUGAR-001' },
+    update: {
+      barcode: '383000000007',
+      name: 'Sugar 1kg',
+      description: 'Lot tracked demo item',
+      categoryId: consumablesCategory.id,
+      unitId: unitKg.id,
+      taxRateId: tax18.id,
+      standardPurchasePrice: 0.7,
+      standardSalesPrice: 1.2,
+      minSalesPrice: 1,
+      isActive: true,
+    },
+    create: {
+      code: 'SUGAR-001',
+      barcode: '383000000007',
+      name: 'Sugar 1kg',
+      description: 'Lot tracked demo item',
+      categoryId: consumablesCategory.id,
+      unitId: unitKg.id,
+      taxRateId: tax18.id,
+      standardPurchasePrice: 0.7,
+      standardSalesPrice: 1.2,
+      minSalesPrice: 1,
       isActive: true,
     },
   });
@@ -1029,9 +1670,11 @@ async function main() {
   await prisma.item.upsert({
     where: { code: 'CONSULT-001' },
     update: {
+      barcode: null,
       name: 'IT Consulting',
+      description: 'Service item without stock movement',
       categoryId: servicesCategory.id,
-      unitId: unitKg.id,
+      unitId: unitHour.id,
       taxRateId: tax18.id,
       standardPurchasePrice: 0,
       standardSalesPrice: 65,
@@ -1040,8 +1683,9 @@ async function main() {
     create: {
       code: 'CONSULT-001',
       name: 'IT Consulting',
+      description: 'Service item without stock movement',
       categoryId: servicesCategory.id,
-      unitId: unitKg.id,
+      unitId: unitHour.id,
       taxRateId: tax18.id,
       standardPurchasePrice: 0,
       standardSalesPrice: 65,
@@ -1076,7 +1720,34 @@ async function main() {
     },
   });
 
-  await prisma.customer.upsert({
+  await prisma.supplier.upsert({
+    where: { code: 'SUP-002' },
+    update: {
+      name: 'Office Wholesale LLC',
+      fiscalNo: '70022345',
+      vatNo: '331022345',
+      address: 'Rr. Tirana 12',
+      city: 'Prizren',
+      phone: '+38344222333',
+      email: 'orders@office-wholesale.local',
+      paymentTermsDays: 15,
+      isActive: true,
+    },
+    create: {
+      code: 'SUP-002',
+      name: 'Office Wholesale LLC',
+      fiscalNo: '70022345',
+      vatNo: '331022345',
+      address: 'Rr. Tirana 12',
+      city: 'Prizren',
+      phone: '+38344222333',
+      email: 'orders@office-wholesale.local',
+      paymentTermsDays: 15,
+      isActive: true,
+    },
+  });
+
+  const customerAbc = await prisma.customer.upsert({
     where: { code: 'CUS-001' },
     update: {
       name: 'Kompania ABC Shpk',
@@ -1105,42 +1776,412 @@ async function main() {
     },
   });
 
-  await prisma.customer.upsert({
+  const customerXyz = await prisma.customer.upsert({
     where: { code: 'CUS-002' },
     update: {
       name: 'Biznesi XYZ',
+      fiscalNo: '70066666',
+      vatNo: '331066666',
+      address: 'Rr. Deshmoret 20',
       city: 'Ferizaj',
+      phone: '+38344555777',
+      email: 'office@xyz.local',
+      creditLimit: 2500,
       isActive: true,
     },
     create: {
       code: 'CUS-002',
       name: 'Biznesi XYZ',
+      fiscalNo: '70066666',
+      vatNo: '331066666',
+      address: 'Rr. Deshmoret 20',
       city: 'Ferizaj',
+      phone: '+38344555777',
+      email: 'office@xyz.local',
+      creditLimit: 2500,
       isActive: true,
     },
   });
 
-  await prisma.stockBalance.upsert({
-    where: {
-      warehouseId_itemId: {
-        warehouseId: mainWarehouse.id,
-        itemId: (
-          await prisma.item.findUniqueOrThrow({ where: { code: 'LAPTOP-001' }, select: { id: true } })
-        ).id,
-      },
-    },
+  const customerRetail = await prisma.customer.upsert({
+    where: { code: 'CUS-003' },
     update: {
-      qtyOnHand: 10,
-      avgCost: 800,
+      name: 'Retail Test Customer',
+      fiscalNo: '70077777',
+      vatNo: '331077777',
+      address: 'Rr. B 10',
+      city: 'Prishtine',
+      phone: '+38344555888',
+      email: 'retail@test.local',
+      creditLimit: 1000,
+      defaultDiscountPercent: 0,
+      isActive: true,
     },
     create: {
-      warehouseId: mainWarehouse.id,
-      itemId: (
-        await prisma.item.findUniqueOrThrow({ where: { code: 'LAPTOP-001' }, select: { id: true } })
-      ).id,
-      qtyOnHand: 10,
-      avgCost: 800,
+      code: 'CUS-003',
+      name: 'Retail Test Customer',
+      fiscalNo: '70077777',
+      vatNo: '331077777',
+      address: 'Rr. B 10',
+      city: 'Prishtine',
+      phone: '+38344555888',
+      email: 'retail@test.local',
+      creditLimit: 1000,
+      defaultDiscountPercent: 0,
+      isActive: true,
     },
+  });
+
+  const abcMainObject = await upsertCustomerObject({
+    customerId: customerAbc.id,
+    code: 'ABC-PR-01',
+    name: 'ABC Qendra',
+    address: 'Rr. Nena Tereze 1',
+    city: 'Prishtine',
+    contactName: 'Arben Krasniqi',
+    phone: '+38344111000',
+    notes: 'Objekt kryesor per porosite e agjentit.',
+  });
+
+  await upsertCustomerObject({
+    customerId: customerAbc.id,
+    code: 'ABC-WH-01',
+    name: 'ABC Depo',
+    address: 'Zona Industriale',
+    city: 'Prishtine',
+    contactName: 'Drita Berisha',
+    phone: '+38344111001',
+  });
+
+  await upsertCustomerObject({
+    customerId: customerXyz.id,
+    code: 'XYZ-FZ-01',
+    name: 'XYZ Market Ferizaj',
+    address: 'Rr. Deshmoret 20',
+    city: 'Ferizaj',
+    contactName: 'Blerim Hoxha',
+    phone: '+38344112000',
+  });
+
+  await upsertCustomerObject({
+    customerId: customerRetail.id,
+    code: 'RTL-PR-01',
+    name: 'Retail POS Counter',
+    address: 'Rr. B 10',
+    city: 'Prishtine',
+    contactName: 'Nora Gashi',
+    phone: '+38344113000',
+  });
+
+  const receivingLocation = await upsertWmsLocation({
+    warehouseId: mainWarehouse.id,
+    code: 'MAIN-REC-01',
+    barcode: 'LOC-MAIN-REC-01',
+    zone: 'RECEIVING',
+    aisle: 'R',
+    rack: '01',
+    shelf: '00',
+    bin: '01',
+    locationType: WmsLocationType.RECEIVING,
+    maxQty: 500,
+    notes: 'Lokacion per pranime fillestare.',
+  });
+
+  const storageLocation = await upsertWmsLocation({
+    warehouseId: mainWarehouse.id,
+    code: 'MAIN-A01-R01-S01-B01',
+    barcode: 'LOC-MAIN-A01-R01-S01-B01',
+    zone: 'A',
+    aisle: '01',
+    rack: 'R01',
+    shelf: 'S01',
+    bin: 'B01',
+    locationType: WmsLocationType.STORAGE,
+    maxQty: 300,
+    notes: 'Storage kryesor per artikuj me rotacion normal.',
+  });
+
+  const pickingLocation = await upsertWmsLocation({
+    warehouseId: mainWarehouse.id,
+    code: 'MAIN-A01-R01-S01-B02',
+    barcode: 'LOC-MAIN-A01-R01-S01-B02',
+    zone: 'A',
+    aisle: '01',
+    rack: 'R01',
+    shelf: 'S01',
+    bin: 'B02',
+    locationType: WmsLocationType.PICKING,
+    maxQty: 150,
+    notes: 'Lokacion picking per shitje te perditshme.',
+  });
+
+  await upsertWmsLocation({
+    warehouseId: mainWarehouse.id,
+    code: 'MAIN-PACK-01',
+    barcode: 'LOC-MAIN-PACK-01',
+    zone: 'PACK',
+    aisle: 'P',
+    rack: '01',
+    shelf: '00',
+    bin: '01',
+    locationType: WmsLocationType.PACKING,
+    maxQty: 100,
+  });
+
+  await upsertWmsLocation({
+    warehouseId: mainWarehouse.id,
+    code: 'MAIN-SHIP-01',
+    barcode: 'LOC-MAIN-SHIP-01',
+    zone: 'SHIP',
+    aisle: 'S',
+    rack: '01',
+    shelf: '00',
+    bin: '01',
+    locationType: WmsLocationType.SHIPPING,
+    maxQty: 100,
+  });
+
+  await upsertWmsLocation({
+    warehouseId: mainWarehouse.id,
+    code: 'MAIN-RET-01',
+    barcode: 'LOC-MAIN-RET-01',
+    zone: 'RETURNS',
+    aisle: 'RT',
+    rack: '01',
+    shelf: '00',
+    bin: '01',
+    locationType: WmsLocationType.RETURNS,
+    maxQty: 100,
+    notes: 'Lokacion per kthime nga klientet.',
+  });
+
+  await upsertWmsLocation({
+    warehouseId: mainWarehouse.id,
+    code: 'MAIN-QC-01',
+    barcode: 'LOC-MAIN-QC-01',
+    zone: 'QC',
+    aisle: 'Q',
+    rack: '01',
+    shelf: '00',
+    bin: '01',
+    locationType: WmsLocationType.QUARANTINE,
+    status: WmsLocationStatus.QUARANTINE,
+    maxQty: 100,
+    notes: 'Karantine/QC per mall te kthyer ose te dyshimte.',
+  });
+
+  await upsertWmsLocation({
+    warehouseId: mainWarehouse.id,
+    code: 'MAIN-DMG-01',
+    barcode: 'LOC-MAIN-DMG-01',
+    zone: 'DAMAGED',
+    aisle: 'D',
+    rack: '01',
+    shelf: '00',
+    bin: '01',
+    locationType: WmsLocationType.DAMAGED,
+    status: WmsLocationStatus.DAMAGED,
+    maxQty: 50,
+    notes: 'Mall i demtuar, i bllokuar per shitje.',
+  });
+
+  await upsertWmsLocation({
+    warehouseId: secondaryWarehouse.id,
+    code: 'SEC-A01-R01-S01-B01',
+    barcode: 'LOC-SEC-A01-R01-S01-B01',
+    zone: 'A',
+    aisle: '01',
+    rack: 'R01',
+    shelf: 'S01',
+    bin: 'B01',
+    locationType: WmsLocationType.STORAGE,
+    maxQty: 200,
+  });
+
+  const openingAt = seedDate(currentYear, 1, 1);
+  const openingRows = [
+    { item: laptop, qty: 5, avgCost: 800, location: storageLocation },
+    { item: monitor, qty: 18, avgCost: 200, location: pickingLocation },
+    { item: mouse, qty: 120, avgCost: 12, location: pickingLocation },
+    { item: keyboard, qty: 45, avgCost: 18, location: storageLocation },
+    { item: usbCable, qty: 200, avgCost: 3, location: pickingLocation },
+    { item: coffee, qty: 80, avgCost: 6, location: storageLocation },
+    { item: sugar, qty: 150, avgCost: 0.7, location: storageLocation },
+  ];
+
+  for (const row of openingRows) {
+    await upsertStockBalance({
+      warehouseId: mainWarehouse.id,
+      itemId: row.item.id,
+      qtyOnHand: row.qty,
+      avgCost: row.avgCost,
+    });
+
+    await upsertStockOpeningMovement({
+      warehouseId: mainWarehouse.id,
+      itemId: row.item.id,
+      qtyIn: row.qty,
+      unitCost: row.avgCost,
+      referenceNo: `SEED-STOCK-${row.item.code}`,
+      movementAt: openingAt,
+    });
+  }
+
+  const laptopSerials = [
+    'LP15-2026-0001',
+    'LP15-2026-0002',
+    'LP15-2026-0003',
+    'LP15-2026-0004',
+    'LP15-2026-0005',
+  ];
+  for (const serialNo of laptopSerials) {
+    await upsertWmsStock({
+      warehouseId: mainWarehouse.id,
+      locationId: storageLocation.id,
+      itemId: laptop.id,
+      qtyOnHand: 1,
+      serialNo,
+      inventoryStatus: WmsInventoryStatus.AVAILABLE,
+    });
+    await upsertWmsOpeningMovement({
+      warehouseId: mainWarehouse.id,
+      locationId: storageLocation.id,
+      itemId: laptop.id,
+      qty: 1,
+      referenceNo: `SEED-WMS-${serialNo}`,
+      createdById: adminUser.id,
+      serialNo,
+    });
+  }
+
+  const aggregateWmsRows = [
+    {
+      item: monitor,
+      qty: 18,
+      location: pickingLocation,
+      lotCode: null,
+      expiryDate: null,
+    },
+    {
+      item: mouse,
+      qty: 120,
+      location: pickingLocation,
+      lotCode: null,
+      expiryDate: null,
+    },
+    {
+      item: keyboard,
+      qty: 45,
+      location: storageLocation,
+      lotCode: null,
+      expiryDate: null,
+    },
+    {
+      item: usbCable,
+      qty: 200,
+      location: pickingLocation,
+      lotCode: null,
+      expiryDate: null,
+    },
+    {
+      item: coffee,
+      qty: 50,
+      location: storageLocation,
+      lotCode: 'LOT-COF-2026-01',
+      expiryDate: seedDate(currentYear + 1, 1, 31),
+    },
+    {
+      item: coffee,
+      qty: 30,
+      location: pickingLocation,
+      lotCode: 'LOT-COF-2026-02',
+      expiryDate: seedDate(currentYear + 1, 3, 31),
+    },
+    {
+      item: sugar,
+      qty: 150,
+      location: storageLocation,
+      lotCode: 'LOT-SUG-2026-01',
+      expiryDate: seedDate(currentYear + 1, 6, 30),
+    },
+  ];
+
+  for (const row of aggregateWmsRows) {
+    await upsertWmsStock({
+      warehouseId: mainWarehouse.id,
+      locationId: row.location.id,
+      itemId: row.item.id,
+      qtyOnHand: row.qty,
+      lotCode: row.lotCode,
+      expiryDate: row.expiryDate,
+      inventoryStatus: WmsInventoryStatus.AVAILABLE,
+    });
+    await upsertWmsOpeningMovement({
+      warehouseId: mainWarehouse.id,
+      locationId: row.location.id,
+      itemId: row.item.id,
+      qty: row.qty,
+      referenceNo: `SEED-WMS-${row.item.code}-${row.lotCode ?? row.location.code}`,
+      createdById: adminUser.id,
+      lotCode: row.lotCode,
+      expiryDate: row.expiryDate,
+    });
+  }
+
+  await upsertWmsTask({
+    warehouseId: mainWarehouse.id,
+    itemId: monitor.id,
+    sourceLocationId: pickingLocation.id,
+    taskType: WmsTaskType.COUNT,
+    status: WmsTaskStatus.PENDING,
+    qty: 18,
+    referenceNo: 'SEED-COUNT-MONITOR',
+    assignedToId: pickerUser.id,
+    createdById: adminUser.id,
+    priority: 4,
+    notes: 'Demo cycle count per lokacion picking.',
+  });
+
+  await upsertWmsTask({
+    warehouseId: mainWarehouse.id,
+    itemId: coffee.id,
+    sourceLocationId: receivingLocation.id,
+    destinationLocationId: storageLocation.id,
+    taskType: WmsTaskType.PUTAWAY,
+    status: WmsTaskStatus.PENDING,
+    qty: 10,
+    referenceNo: 'SEED-PUTAWAY-COFFEE',
+    assignedToId: pickerUser.id,
+    createdById: adminUser.id,
+    priority: 3,
+    notes: 'Demo putaway task per trajnimin e WMS.',
+  });
+
+  await upsertDemoAgentOrder({
+    orderNo: 'AO-DEMO-0001',
+    orderType: AgentOrderType.SALES_ORDER,
+    status: AgentOrderStatus.SUBMITTED,
+    customerId: customerAbc.id,
+    customerObjectId: abcMainObject.id,
+    warehouseId: mainWarehouse.id,
+    createdById: adminUser.id,
+    assignedPickerId: null,
+    lines: [
+      {
+        itemId: monitor.id,
+        description: 'Monitor per zyre',
+        qty: 2,
+        unitPrice: 280,
+        taxPercent: 18,
+      },
+      {
+        itemId: mouse.id,
+        description: 'Mouse wireless per ekip',
+        qty: 5,
+        unitPrice: 22,
+        taxPercent: 18,
+      },
+    ],
   });
 
   await seedOpeningLedgerBalances(
@@ -1155,6 +2196,7 @@ async function main() {
   console.log(`  manager@erp.local / ${DEFAULT_PASSWORD}`);
   console.log(`  sales@erp.local / ${DEFAULT_PASSWORD}`);
   console.log(`  purchase@erp.local / ${DEFAULT_PASSWORD}`);
+  console.log(`  picker@erp.local / ${DEFAULT_PASSWORD}`);
 }
 
 main()
