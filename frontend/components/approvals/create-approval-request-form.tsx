@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
-export function CreateApprovalRequestForm() {
+export function CreateApprovalRequestForm({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [entityType, setEntityType] = useState('supplier-payments');

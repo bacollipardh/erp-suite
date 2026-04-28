@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { PageHeader } from '@/components/page-header';
 import { ApprovalActions } from '@/components/approvals/approval-actions';
-import { CreateApprovalRequestForm } from '@/components/approvals/create-approval-request-form';
 import { api } from '@/lib/api';
 import { PERMISSIONS } from '@/lib/permissions';
 import { requirePagePermission } from '@/lib/server-page-auth';
@@ -50,7 +49,9 @@ export default async function Page({ searchParams }: { searchParams?: Promise<Se
   return <div className="space-y-5">
     <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
       <PageHeader title="Approval Inbox" description="Qendra e aprovimeve me kontroll role/user, SLA dhe self-approval prevention." />
-      <CreateApprovalRequestForm />
+      <Link href="/approvals/new" className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+        New Approval Request
+      </Link>
     </div>
 
     <div className="grid gap-3 md:grid-cols-3">

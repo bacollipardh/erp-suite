@@ -1,26 +1,49 @@
+import { DomainActionCard } from '@/components/domain/domain-action-card';
 import { PageHeader } from '@/components/page-header';
-import { api } from '@/lib/api';
-import { PERMISSIONS } from '@/lib/permissions';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import { requireAnyPagePermission } from '@/lib/server-page-auth';
-import { StockOperationsClient } from '@/components/stock/stock-operations-client';
 
 export default async function StockOperationsPage() {
-  await requireAnyPagePermission([PERMISSIONS.stockAdjust, PERMISSIONS.stockTransfer]);
-  const [warehouses, items] = await Promise.all([
-    api.list('warehouses'),
-    api.list('items'),
-  ]);
+  const user = await requireAnyPagePermission([PERMISSIONS.stockAdjust, PERMISSIONS.stockTransfer]);
+  const canAdjust = hasPermission(user.permissions, PERMISSIONS.stockAdjust);
+  const canTransfer = hasPermission(user.permissions, PERMISSIONS.stockTransfer);
 
   return (
-    <div>
+    <div className="space-y-5">
       <PageHeader
         title="Operacionet e Stokut"
-        description="Rregullime, transfere dhe inventarizim me preview te stokut dhe rezultat operacional."
+        description="Zgjidh nje operacion te vetem per te punuar pa i perzier rregullimet, transferet dhe inventarizimin."
       />
-      <StockOperationsClient
-        warehouses={warehouses.filter((warehouse: any) => warehouse.isActive !== false)}
-        items={items.filter((item: any) => item.isActive !== false)}
-      />
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        {canAdjust ? (
+          <DomainActionCard
+            title="Rregullim Stoku"
+            description="Shto ose zbrit sasi per nje artikull ne nje magazine te vetme."
+            href="/stock/operations/rregullim"
+            badge="Adjustment"
+            tone="indigo"
+          />
+        ) : null}
+        {canTransfer ? (
+          <DomainActionCard
+            title="Transfer Magazinash"
+            description="Leviz sasi nga nje magazine burim ne nje magazine destinacion."
+            href="/stock/operations/transfer"
+            badge="Transfer"
+            tone="emerald"
+          />
+        ) : null}
+        {canAdjust ? (
+          <DomainActionCard
+            title="Inventarizim"
+            description="Vendos sasine e numeruar dhe krijo diferencen e stokut ne menyre te kontrolluar."
+            href="/stock/operations/inventarizim"
+            badge="Count"
+            tone="amber"
+          />
+        ) : null}
+      </div>
     </div>
   );
 }

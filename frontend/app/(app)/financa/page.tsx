@@ -1,8 +1,4 @@
 import { DomainActionCard } from '@/components/domain/domain-action-card';
-import type {
-  FinancialPeriodSummary,
-  FinancialPeriodsPage,
-} from '@/components/finance/financial-periods-client';
 import { StatsCard } from '@/components/stats-card';
 import { api } from '@/lib/api';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
@@ -28,7 +24,6 @@ export default async function FinanceHubPage() {
     PERMISSIONS.reportsAccounting,
   ]);
 
-  const currentYear = new Date().getUTCFullYear();
   const canReceivables = hasPermission(user.permissions, PERMISSIONS.reportsReceivables);
   const canPayables = hasPermission(user.permissions, PERMISSIONS.reportsPayables);
   const canReceiptReallocation = hasPermission(user.permissions, PERMISSIONS.salesInvoicesPay);
@@ -43,7 +38,7 @@ export default async function FinanceHubPage() {
     PERMISSIONS.reportsPayables,
   ]);
 
-  const [summary, accountSummary, reconciliationSummary, financialPeriodsPage] = await Promise.all([
+  const [summary, accountSummary, reconciliationSummary] = await Promise.all([
     hasPermission(user.permissions, PERMISSIONS.dashboard)
       ? api.getOne('dashboard/summary')
       : Promise.resolve(null),
@@ -51,18 +46,7 @@ export default async function FinanceHubPage() {
     canFinanceAccounts
       ? api.listPage('finance-reconciliation/statement-lines', { limit: 1 })
       : Promise.resolve(null),
-    canFinancialPeriods
-      ? api.listPage<FinancialPeriodsPage>('financial-periods', { year: currentYear })
-      : Promise.resolve(null),
   ]);
-
-  const currentFinancialPeriodId = financialPeriodsPage?.currentPeriodId ?? null;
-  const currentFinancialPeriodSummary =
-    canFinancialPeriods && currentFinancialPeriodId
-      ? await api.fetch<FinancialPeriodSummary>(
-          `/financial-periods/${currentFinancialPeriodId}/summary`,
-        )
-      : null;
 
   const openReconciliations =
     Number(reconciliationSummary?.summary?.unmatchedCount ?? 0) +
@@ -162,6 +146,15 @@ export default async function FinanceHubPage() {
             href="/financa/periudhat"
             badge="Month End"
             tone="slate"
+          />
+        ) : null}
+        {canFinancialPeriods ? (
+          <DomainActionCard
+            title="Kontrolli Mujor"
+            description="Shiko checklist-in e mbylljes, overdue exposure dhe exceptions para close-it mujor."
+            href="/financa/kontrolli-mujor"
+            badge="Month End"
+            tone="amber"
           />
         ) : null}
         {canAccountingRead ? (
@@ -265,121 +258,6 @@ export default async function FinanceHubPage() {
         ) : null}
       </div>
 
-      {canFinancialPeriods && currentFinancialPeriodSummary ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">Month-End Control Center</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Periudha aktuale {currentFinancialPeriodSummary.period.label} monitorohet me
-                checklist, exposure dhe exceptions para mbylljes mujore.
-              </p>
-            </div>
-            <a
-              href="/financa/periudhat"
-              className="inline-flex rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Hap periudhat financiare
-            </a>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-4 xl:grid-cols-4">
-            <StatsCard
-              title="Blockers"
-              value={currentFinancialPeriodSummary.checklist.blockerCount}
-              subtitle={
-                currentFinancialPeriodSummary.checklist.periodReadyToClose
-                  ? 'Ready to close'
-                  : 'Kerkohen veprime para mbylljes'
-              }
-              href="/financa/periudhat"
-            />
-            <StatsCard
-              title="Receivables Overdue"
-              value={currentFinancialPeriodSummary.checklist.overdueReceivablesCount}
-              subtitle={fmtMoney(
-                currentFinancialPeriodSummary.summary.overdueReceivablesOutstanding,
-              )}
-              href="/arketime"
-            />
-            <StatsCard
-              title="Payables Overdue"
-              value={currentFinancialPeriodSummary.checklist.overduePayablesCount}
-              subtitle={fmtMoney(currentFinancialPeriodSummary.summary.overduePayablesOutstanding)}
-              href="/pagesat"
-            />
-            <StatsCard
-              title="Reconciliation Exceptions"
-              value={currentFinancialPeriodSummary.checklist.reconciliationExceptionCount}
-              subtitle={fmtMoney(currentFinancialPeriodSummary.summary.reconciliationDifference)}
-              href="/financa/pajtimi-bankar"
-            />
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-              <h3 className="text-sm font-semibold text-slate-900">Checklist i mbylljes</h3>
-              <div className="mt-3 space-y-2 text-sm text-slate-600">
-                <div className="flex items-center justify-between">
-                  <span>Receivables overdue</span>
-                  <span className="font-semibold">
-                    {currentFinancialPeriodSummary.checklist.overdueReceivablesCount}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Payables overdue</span>
-                  <span className="font-semibold">
-                    {currentFinancialPeriodSummary.checklist.overduePayablesCount}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Unapplied receipts</span>
-                  <span className="font-semibold">
-                    {currentFinancialPeriodSummary.checklist.unappliedReceiptCount}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Unapplied payments</span>
-                  <span className="font-semibold">
-                    {currentFinancialPeriodSummary.checklist.unappliedPaymentCount}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Draft docs</span>
-                  <span className="font-semibold">
-                    {currentFinancialPeriodSummary.checklist.draftSalesCount +
-                      currentFinancialPeriodSummary.checklist.draftPurchaseCount +
-                      currentFinancialPeriodSummary.checklist.draftReturnCount}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-              <h3 className="text-sm font-semibold text-slate-900">Arsyet kryesore</h3>
-              <p className="mt-2 text-sm text-slate-600">
-                {currentFinancialPeriodSummary.checklist.periodReadyToClose
-                  ? 'Periudha aktuale duket gati per soft-close ose close sipas kontrollit financiar.'
-                  : 'Mbyllja mujore ende ka bllokues aktive ne aging, unapplied balances ose pajtimin bankar.'}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2 text-sm">
-                <a href="/arketime" className="font-medium text-indigo-700 hover:text-indigo-900">
-                  Shiko arketimet
-                </a>
-                <a href="/pagesat" className="font-medium text-indigo-700 hover:text-indigo-900">
-                  Shiko pagesat
-                </a>
-                <a
-                  href="/financa/pajtimi-bankar"
-                  className="font-medium text-indigo-700 hover:text-indigo-900"
-                >
-                  Shiko pajtimin bankar
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

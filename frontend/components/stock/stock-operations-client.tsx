@@ -65,6 +65,8 @@ type PaginatedResponse<T> = {
   items: T[];
 };
 
+type StockOperationMode = 'all' | 'adjustment' | 'transfer' | 'count';
+
 function parseApiError(error: unknown) {
   if (error instanceof Error) {
     try {
@@ -264,14 +266,19 @@ function LatestResultCard({ result }: { result: LatestResult | null }) {
 export function StockOperationsClient({
   warehouses,
   items,
+  mode = 'all',
 }: {
   warehouses: any[];
   items: any[];
+  mode?: StockOperationMode;
 }) {
   const router = useRouter();
   const { user } = useSession();
   const canAdjust = hasPermission(user?.permissions, PERMISSIONS.stockAdjust);
   const canTransfer = hasPermission(user?.permissions, PERMISSIONS.stockTransfer);
+  const showAdjustment = mode === 'all' || mode === 'adjustment';
+  const showTransfer = mode === 'all' || mode === 'transfer';
+  const showCount = mode === 'all' || mode === 'count';
   const today = new Date().toISOString().slice(0, 10);
 
   const [message, setMessage] = useState<string | null>(null);
@@ -599,7 +606,7 @@ export function StockOperationsClient({
 
       <LatestResultCard result={latestResult} />
 
-      {canAdjust ? (
+      {canAdjust && showAdjustment ? (
         <div className="grid grid-cols-1 xl:grid-cols-[1.7fr_1fr] gap-4">
           <form onSubmit={submitAdjustment} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
             <div>
@@ -638,7 +645,7 @@ export function StockOperationsClient({
         </div>
       ) : null}
 
-      {canTransfer ? (
+      {canTransfer && showTransfer ? (
         <div className="grid grid-cols-1 xl:grid-cols-[1.7fr_1fr] gap-4">
           <form onSubmit={submitTransfer} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
             <div>
@@ -687,7 +694,7 @@ export function StockOperationsClient({
         </div>
       ) : null}
 
-      {canAdjust ? (
+      {canAdjust && showCount ? (
         <div className="grid grid-cols-1 xl:grid-cols-[1.7fr_1fr] gap-4">
           <form onSubmit={submitCount} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
             <div>

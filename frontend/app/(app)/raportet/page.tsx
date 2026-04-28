@@ -50,6 +50,7 @@ export default async function ReportsHubPage() {
     PERMISSIONS.reportsSales,
     PERMISSIONS.reportsReceivables,
     PERMISSIONS.reportsPayables,
+    PERMISSIONS.financeAccountsRead,
     PERMISSIONS.reportsAccounting,
     PERMISSIONS.stockRead,
   ]);
@@ -58,6 +59,7 @@ export default async function ReportsHubPage() {
   const canFinance = hasPermission(user.permissions, [
     PERMISSIONS.reportsReceivables,
     PERMISSIONS.reportsPayables,
+    PERMISSIONS.financeAccountsRead,
   ]);
   const canAccounting = hasPermission(user.permissions, PERMISSIONS.reportsAccounting);
   const canStock = hasPermission(user.permissions, PERMISSIONS.stockRead);
