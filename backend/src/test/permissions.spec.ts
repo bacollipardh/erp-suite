@@ -15,6 +15,8 @@ describe('Permission matrix', () => {
 
     expect(permissions).toContain(PERMISSIONS.stockAdjust);
     expect(permissions).toContain(PERMISSIONS.stockTransfer);
+    expect(permissions).toContain(PERMISSIONS.wmsManage);
+    expect(permissions).toContain(PERMISSIONS.wmsReceive);
     expect(permissions).toContain(PERMISSIONS.accountingRead);
     expect(permissions).toContain(PERMISSIONS.reportsAccounting);
     expect(permissions).not.toContain(PERMISSIONS.rolesManage);
@@ -27,8 +29,11 @@ describe('Permission matrix', () => {
 
     expect(permissions).toContain(PERMISSIONS.salesInvoicesManage);
     expect(permissions).toContain(PERMISSIONS.salesReturnsManage);
+    expect(permissions).toContain(PERMISSIONS.wmsRead);
+    expect(permissions).toContain(PERMISSIONS.wmsPick);
     expect(permissions).not.toContain(PERMISSIONS.purchaseInvoicesManage);
     expect(permissions).not.toContain(PERMISSIONS.stockAdjust);
+    expect(permissions).not.toContain(PERMISSIONS.wmsManage);
     expect(permissions).not.toContain(PERMISSIONS.accountingRead);
     expect(permissions).not.toContain(PERMISSIONS.reportsAccounting);
   });

@@ -32,6 +32,93 @@ enum MovementType {
   @@map("movement_type")
 }
 
+enum WmsLocationType {
+  RECEIVING
+  STORAGE
+  PICKING
+  PACKING
+  SHIPPING
+  QUARANTINE
+  RETURNS
+  DAMAGED
+
+  @@map("wms_location_type")
+}
+
+enum WmsLocationStatus {
+  ACTIVE
+  BLOCKED
+  QUARANTINE
+  FULL
+  DAMAGED
+  INACTIVE
+
+  @@map("wms_location_status")
+}
+
+enum WmsInventoryStatus {
+  AVAILABLE
+  QUARANTINE
+  DAMAGED
+  EXPIRED
+
+  @@map("wms_inventory_status")
+}
+
+enum WmsMovementType {
+  RECEIVE
+  PUTAWAY
+  MOVE
+  RESERVE
+  PICK
+  RELEASE
+  SHIP
+  COUNT_ADJUSTMENT
+  QUARANTINE
+  RELEASE_QUARANTINE
+  DAMAGE
+  SCRAP
+  RETURN
+
+  @@map("wms_movement_type")
+}
+
+enum WmsTaskType {
+  RECEIVE
+  PUTAWAY
+  PICK
+  PACK
+  SHIP
+  MOVE
+  COUNT
+  REPLENISH
+  QC
+
+  @@map("wms_task_type")
+}
+
+enum WmsTaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  CANCELLED
+  SHORT
+  BLOCKED
+
+  @@map("wms_task_status")
+}
+
+enum WmsReservationStatus {
+  RESERVED
+  PICKED
+  RELEASED
+  SHIPPED
+  CANCELLED
+  SHORT
+
+  @@map("wms_reservation_status")
+}
+
 enum PaymentStatus {
   UNPAID
   PARTIALLY_PAID
@@ -261,6 +348,11 @@ model Warehouse {
   salesInvoices    SalesInvoice[]
   stockMovements   StockMovement[]
   stockBalances    StockBalance[]
+  wmsLocations     WmsLocation[]
+  wmsStocks        WmsStock[]
+  wmsMovements     WmsMovement[]
+  wmsTasks         WmsTask[]
+  wmsReservations  WmsReservation[]
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -288,6 +380,10 @@ model Item {
   returnLines           SalesReturnLine[]
   stockMovements        StockMovement[]
   stockBalances         StockBalance[]
+  wmsStocks             WmsStock[]
+  wmsMovements          WmsMovement[]
+  wmsTasks              WmsTask[]
+  wmsReservations       WmsReservation[]
   createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -561,6 +657,7 @@ model SalesInvoice {
   lines                        SalesInvoiceLine[]
   returns                      SalesReturn[]
   stockMovements               StockMovement[]
+  wmsReservations              WmsReservation[]
   sourceFinanceSettlements     FinanceSettlement[]           @relation("FinanceSettlementSourceSalesInvoice")
   financeSettlementAllocations FinanceSettlementAllocation[] @relation("FinanceSettlementTargetSalesInvoice")
   createdAt                    DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -596,6 +693,7 @@ model SalesInvoiceLine {
   salesInvoice    SalesInvoice      @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
   item            Item              @relation(fields: [itemId], references: [id])
   returnLines     SalesReturnLine[]
+  wmsReservations WmsReservation[]
 
   @@unique([salesInvoiceId, lineNo])
   @@index([itemId])
@@ -707,6 +805,162 @@ model StockBalance {
   @@unique([warehouseId, itemId])
   @@index([itemId])
   @@map("stock_balances")
+}
+
+model WmsLocation {
+  id              String            @id @default(uuid()) @db.Uuid
+  warehouseId     String            @map("warehouse_id") @db.Uuid
+  code            String            @db.VarChar(60)
+  barcode         String?           @unique @db.VarChar(120)
+  zone            String            @db.VarChar(40)
+  aisle           String?           @db.VarChar(40)
+  rack            String?           @db.VarChar(40)
+  shelf           String?           @db.VarChar(40)
+  bin             String?           @db.VarChar(40)
+  locationType    WmsLocationType   @default(STORAGE) @map("location_type")
+  status          WmsLocationStatus @default(ACTIVE)
+  maxWeight       Decimal?          @map("max_weight") @db.Decimal(18, 3)
+  maxVolume       Decimal?          @map("max_volume") @db.Decimal(18, 3)
+  maxQty          Decimal?          @map("max_qty") @db.Decimal(18, 3)
+  notes           String?
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  warehouse       Warehouse         @relation(fields: [warehouseId], references: [id])
+  stocks          WmsStock[]
+  fromMovements   WmsMovement[]     @relation("WmsMovementFromLocation")
+  toMovements     WmsMovement[]     @relation("WmsMovementToLocation")
+  sourceTasks     WmsTask[]         @relation("WmsTaskSourceLocation")
+  destinationTasks WmsTask[]        @relation("WmsTaskDestinationLocation")
+  reservations    WmsReservation[]
+
+  @@unique([warehouseId, code])
+  @@index([warehouseId, status])
+  @@index([zone, aisle, rack, shelf, bin])
+  @@map("wms_locations")
+}
+
+model WmsStock {
+  id              String             @id @default(uuid()) @db.Uuid
+  warehouseId     String             @map("warehouse_id") @db.Uuid
+  locationId      String             @map("location_id") @db.Uuid
+  itemId          String             @map("item_id") @db.Uuid
+  lotCode         String?            @map("lot_code") @db.VarChar(80)
+  serialNo        String?            @map("serial_no") @db.VarChar(120)
+  expiryDate      DateTime?          @map("expiry_date") @db.Date
+  manufacturingDate DateTime?        @map("manufacturing_date") @db.Date
+  qtyOnHand       Decimal            @default(0) @map("qty_on_hand") @db.Decimal(18, 3)
+  reservedQty     Decimal            @default(0) @map("reserved_qty") @db.Decimal(18, 3)
+  pickedQty       Decimal            @default(0) @map("picked_qty") @db.Decimal(18, 3)
+  inventoryStatus WmsInventoryStatus @default(AVAILABLE) @map("inventory_status")
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  warehouse       Warehouse          @relation(fields: [warehouseId], references: [id])
+  location        WmsLocation        @relation(fields: [locationId], references: [id])
+  item            Item               @relation(fields: [itemId], references: [id])
+
+  @@unique([itemId, serialNo])
+  @@index([warehouseId, itemId])
+  @@index([locationId, itemId])
+  @@index([lotCode])
+  @@index([expiryDate])
+  @@index([inventoryStatus])
+  @@map("wms_stocks")
+}
+
+model WmsMovement {
+  id                String          @id @default(uuid()) @db.Uuid
+  warehouseId       String          @map("warehouse_id") @db.Uuid
+  itemId            String          @map("item_id") @db.Uuid
+  fromLocationId    String?         @map("from_location_id") @db.Uuid
+  toLocationId      String?         @map("to_location_id") @db.Uuid
+  movementType      WmsMovementType @map("movement_type")
+  qty               Decimal         @db.Decimal(18, 3)
+  lotCode           String?         @map("lot_code") @db.VarChar(80)
+  serialNo          String?         @map("serial_no") @db.VarChar(120)
+  expiryDate        DateTime?       @map("expiry_date") @db.Date
+  sourceType        String?         @map("source_type") @db.VarChar(60)
+  sourceId          String?         @map("source_id") @db.Uuid
+  referenceNo       String?         @map("reference_no") @db.VarChar(80)
+  notes             String?
+  createdById       String?         @map("created_by") @db.Uuid
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  warehouse         Warehouse       @relation(fields: [warehouseId], references: [id])
+  item              Item            @relation(fields: [itemId], references: [id])
+  fromLocation      WmsLocation?    @relation("WmsMovementFromLocation", fields: [fromLocationId], references: [id])
+  toLocation        WmsLocation?    @relation("WmsMovementToLocation", fields: [toLocationId], references: [id])
+
+  @@index([warehouseId, itemId])
+  @@index([fromLocationId])
+  @@index([toLocationId])
+  @@index([movementType])
+  @@index([sourceType, sourceId])
+  @@index([createdAt])
+  @@map("wms_movements")
+}
+
+model WmsTask {
+  id                    String        @id @default(uuid()) @db.Uuid
+  warehouseId           String        @map("warehouse_id") @db.Uuid
+  itemId                String?       @map("item_id") @db.Uuid
+  sourceLocationId      String?       @map("source_location_id") @db.Uuid
+  destinationLocationId String?       @map("destination_location_id") @db.Uuid
+  taskType              WmsTaskType   @map("task_type")
+  status                WmsTaskStatus @default(PENDING)
+  qty                   Decimal?      @db.Decimal(18, 3)
+  lotCode               String?       @map("lot_code") @db.VarChar(80)
+  serialNo              String?       @map("serial_no") @db.VarChar(120)
+  expiryDate            DateTime?     @map("expiry_date") @db.Date
+  sourceType            String?       @map("source_type") @db.VarChar(60)
+  sourceId              String?       @map("source_id") @db.Uuid
+  referenceNo           String?       @map("reference_no") @db.VarChar(80)
+  assignedToId          String?       @map("assigned_to") @db.Uuid
+  priority              Int           @default(5)
+  notes                 String?
+  createdById           String?       @map("created_by") @db.Uuid
+  completedAt           DateTime?     @map("completed_at") @db.Timestamptz(6)
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  warehouse             Warehouse     @relation(fields: [warehouseId], references: [id])
+  item                  Item?         @relation(fields: [itemId], references: [id])
+  sourceLocation        WmsLocation?  @relation("WmsTaskSourceLocation", fields: [sourceLocationId], references: [id])
+  destinationLocation   WmsLocation?  @relation("WmsTaskDestinationLocation", fields: [destinationLocationId], references: [id])
+
+  @@index([warehouseId, status])
+  @@index([taskType])
+  @@index([sourceType, sourceId])
+  @@index([assignedToId])
+  @@map("wms_tasks")
+}
+
+model WmsReservation {
+  id                 String               @id @default(uuid()) @db.Uuid
+  salesInvoiceId     String               @map("sales_invoice_id") @db.Uuid
+  salesInvoiceLineId String               @map("sales_invoice_line_id") @db.Uuid
+  warehouseId        String               @map("warehouse_id") @db.Uuid
+  locationId         String               @map("location_id") @db.Uuid
+  itemId             String               @map("item_id") @db.Uuid
+  qtyReserved        Decimal              @map("qty_reserved") @db.Decimal(18, 3)
+  qtyPicked          Decimal              @default(0) @map("qty_picked") @db.Decimal(18, 3)
+  lotCode            String?              @map("lot_code") @db.VarChar(80)
+  serialNo           String?              @map("serial_no") @db.VarChar(120)
+  expiryDate         DateTime?            @map("expiry_date") @db.Date
+  status             WmsReservationStatus @default(RESERVED)
+  createdById        String?              @map("created_by") @db.Uuid
+  pickedAt           DateTime?            @map("picked_at") @db.Timestamptz(6)
+  shippedAt          DateTime?            @map("shipped_at") @db.Timestamptz(6)
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  salesInvoice       SalesInvoice         @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
+  salesInvoiceLine   SalesInvoiceLine     @relation(fields: [salesInvoiceLineId], references: [id], onDelete: Cascade)
+  warehouse          Warehouse            @relation(fields: [warehouseId], references: [id])
+  location           WmsLocation          @relation(fields: [locationId], references: [id])
+  item               Item                 @relation(fields: [itemId], references: [id])
+
+  @@index([salesInvoiceId, status])
+  @@index([salesInvoiceLineId])
+  @@index([warehouseId, itemId])
+  @@index([locationId])
+  @@map("wms_reservations")
 }
 
 model CompanyProfile {

@@ -6,9 +6,10 @@ import { FinanceAccountsModule } from '../finance-accounts/finance-accounts.modu
 import { FinancialPeriodsModule } from '../financial-periods/financial-periods.module';
 import { AccountingModule } from '../accounting/accounting.module';
 import { CustomerCreditApprovalGateService } from './customer-credit-approval-gate.service';
+import { WmsModule } from '../wms/wms.module';
 
 @Module({
-  imports: [StockModule, FinanceAccountsModule, FinancialPeriodsModule, AccountingModule],
+  imports: [StockModule, FinanceAccountsModule, FinancialPeriodsModule, AccountingModule, WmsModule],
   controllers: [SalesInvoicesController],
   providers: [SalesInvoicesService, CustomerCreditApprovalGateService],
   exports: [SalesInvoicesService],

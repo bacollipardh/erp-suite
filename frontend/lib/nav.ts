@@ -114,6 +114,29 @@ export const navSections: NavSection[] = [
     ],
   },
   {
+    title: 'WMS',
+    iconPath:
+      'M3.75 7.5L12 3l8.25 4.5m-16.5 0L12 12m-8.25-4.5v9L12 21m0-9l8.25-4.5M12 12v9m8.25-13.5v9L12 21',
+    defaultOpen: true,
+    items: [
+      {
+        label: 'Qendra WMS',
+        href: '/wms',
+        permission: [PERMISSIONS.wmsRead, PERMISSIONS.wmsManage, PERMISSIONS.wmsReceive, PERMISSIONS.wmsMove, PERMISSIONS.wmsPick, PERMISSIONS.wmsCount],
+      },
+      { label: 'Lokacionet WMS', href: '/wms/locations', permission: PERMISSIONS.wmsRead },
+      { label: 'Balancat WMS', href: '/wms/balances', permission: PERMISSIONS.wmsRead },
+      { label: 'Levizjet WMS', href: '/wms/movements', permission: PERMISSIONS.wmsRead },
+      { label: 'Detyrat WMS', href: '/wms/tasks', permission: PERMISSIONS.wmsRead },
+      { label: 'Pranim Malli', href: '/wms/receiving', permission: PERMISSIONS.wmsReceive },
+      { label: 'Levizje Bin-to-Bin', href: '/wms/move', permission: PERMISSIONS.wmsMove },
+      { label: 'Inventarizim WMS', href: '/wms/counts', permission: PERMISSIONS.wmsCount },
+      { label: 'QC dhe Bllokim', href: '/wms/qc', permission: PERMISSIONS.wmsManage },
+      { label: 'Picking Shitje', href: '/wms/picking', permission: PERMISSIONS.wmsPick },
+      { label: 'Scanner WMS', href: '/wms/scanner', permission: PERMISSIONS.wmsRead },
+    ],
+  },
+  {
     title: 'Raportet',
     iconPath:
       'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z',

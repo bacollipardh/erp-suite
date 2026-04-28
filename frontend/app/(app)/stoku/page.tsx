@@ -10,6 +10,7 @@ export default async function StockHubPage() {
     PERMISSIONS.warehousesRead,
     PERMISSIONS.stockRead,
     PERMISSIONS.stockAdjust,
+    PERMISSIONS.wmsRead,
   ]);
 
   const [summary, warehouses] = await Promise.all([
@@ -25,6 +26,7 @@ export default async function StockHubPage() {
   const canWarehouses = hasPermission(user.permissions, PERMISSIONS.warehousesRead);
   const canStockRead = hasPermission(user.permissions, PERMISSIONS.stockRead);
   const canStockAdjust = hasPermission(user.permissions, PERMISSIONS.stockAdjust);
+  const canWmsRead = hasPermission(user.permissions, PERMISSIONS.wmsRead);
 
   return (
     <div className="space-y-6">
@@ -95,6 +97,15 @@ export default async function StockHubPage() {
             href="/stock/operations"
             badge="Operative"
             tone="slate"
+          />
+        ) : null}
+        {canWmsRead ? (
+          <DomainActionCard
+            title="WMS"
+            description="Menaxho lokacionet Zone/Aisle/Rack/Shelf/Bin, lot/skadence/serial number dhe picking."
+            href="/wms"
+            badge="Warehouse"
+            tone="emerald"
           />
         ) : null}
         {canStockRead ? (

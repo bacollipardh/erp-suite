@@ -24,6 +24,7 @@ import {
 import { FinanceAccountsService } from '../finance-accounts/finance-accounts.service';
 import { FinancialPeriodsService } from '../financial-periods/financial-periods.service';
 import { AccountingService } from '../accounting/accounting.service';
+import { WmsService } from '../wms/wms.service';
 
 @Injectable()
 export class SalesInvoicesService {
@@ -34,6 +35,7 @@ export class SalesInvoicesService {
     private readonly financeAccountsService: FinanceAccountsService,
     private readonly financialPeriodsService: FinancialPeriodsService,
     private readonly accountingService: AccountingService,
+    private readonly wmsService: WmsService,
   ) {}
 
   async findAll(query: PaginationDto = {}) {
@@ -409,6 +411,8 @@ export class SalesInvoicesService {
       'Postimi i fatures se shitjes',
     );
 
+    await this.wmsService.ensureSalesInvoiceReadyToPost(existing);
+
     for (const line of existing.lines) {
       await this.stockService.ensureSufficientStock({
         warehouseId: existing.warehouseId,
@@ -454,6 +458,8 @@ export class SalesInvoicesService {
           inventoryValue + Number(line.qty ?? 0) * Number(balance?.avgCost ?? 0),
         );
       }
+
+      await this.wmsService.shipSalesInvoiceTx(tx, updated, postedById);
 
       await this.accountingService.postSalesInvoiceTx(tx, {
         invoice: {
