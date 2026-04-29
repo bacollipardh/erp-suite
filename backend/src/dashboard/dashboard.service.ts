@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DocumentStatus, PaymentStatus } from '@prisma/client';
+import { DocumentStatus, PaymentStatus, WmsReservationStatus, WmsTaskStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { round2 } from '../common/utils/money';
 import { calculateOutstandingAmount, resolveDueState } from '../common/utils/payments';
@@ -248,6 +248,11 @@ export class DashboardService {
       openPayableDocs,
       receiptLogs,
       paymentLogs,
+      openWmsTasksCount,
+      blockedWmsTasksCount,
+      openWmsReservationsCount,
+      wmsBypassLogsMonth,
+      postLogsMonth,
     ] = await this.prisma.$transaction([
       this.prisma.purchaseInvoice.aggregate({
         where: { status: { in: ACTIVE_DOCUMENT_STATUSES } },
@@ -323,7 +328,51 @@ export class DashboardService {
         },
         select: { metadata: true },
       }),
+      this.prisma.wmsTask.count({
+        where: {
+          status: {
+            in: [WmsTaskStatus.PENDING, WmsTaskStatus.IN_PROGRESS, WmsTaskStatus.BLOCKED],
+          },
+        },
+      }),
+      this.prisma.wmsTask.count({
+        where: {
+          status: WmsTaskStatus.BLOCKED,
+        },
+      }),
+      this.prisma.wmsReservation.count({
+        where: {
+          status: {
+            in: [WmsReservationStatus.RESERVED, WmsReservationStatus.PICKED],
+          },
+        },
+      }),
+      this.prisma.auditLog.findMany({
+        where: {
+          entityType: 'sales_invoices',
+          action: 'WMS_BYPASS_POST',
+          createdAt: { gte: monthStart },
+        },
+        select: { metadata: true },
+      }),
+      this.prisma.auditLog.findMany({
+        where: {
+          entityType: 'sales_invoices',
+          action: 'POST',
+          createdAt: { gte: monthStart },
+        },
+        select: { metadata: true },
+      }),
     ]);
+
+    const [pendingApprovalsRow] = await this.prisma.$queryRawUnsafe<
+      { pending_count: number; escalated_count: number }[]
+    >(`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'PENDING')::int AS pending_count,
+        COUNT(*) FILTER (WHERE status = 'PENDING' AND is_escalated = true)::int AS escalated_count
+      FROM approval_requests
+    `);
 
     const postedPurchases = Number(purchaseTotals._sum.grandTotal ?? 0);
     const postedSales = Number(salesTotals._sum.grandTotal ?? 0);
@@ -358,6 +407,14 @@ export class DashboardService {
       }, 0),
     );
 
+    const wmsWorkflowPostsMonth = postLogsMonth.reduce((count, entry) => {
+      const metadata =
+        entry.metadata && typeof entry.metadata === 'object'
+          ? (entry.metadata as Record<string, unknown>)
+          : {};
+      return metadata.wmsMode === 'WORKFLOW' ? count + 1 : count;
+    }, 0);
+
     return {
       counts: {
         items: itemsCount,
@@ -388,6 +445,22 @@ export class DashboardService {
       cashflow: {
         receiptsMonth,
         paymentsMonth,
+      },
+      operations: {
+        wms: {
+          openTasks: openWmsTasksCount,
+          blockedTasks: blockedWmsTasksCount,
+          openReservations: openWmsReservationsCount,
+        },
+        approvals: {
+          pendingCount: Number(pendingApprovalsRow?.pending_count ?? 0),
+          escalatedCount: Number(pendingApprovalsRow?.escalated_count ?? 0),
+        },
+        salesExecution: {
+          postedWithoutWmsMonth: wmsBypassLogsMonth.length,
+          postedWithWmsMonth: wmsWorkflowPostsMonth,
+          postedTotalMonth: postLogsMonth.length,
+        },
       },
     };
   }

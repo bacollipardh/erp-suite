@@ -112,6 +112,45 @@ export default async function DashboardPage() {
         />
       </div>
 
+      <div className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">Ekzekutimi Operativ</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Pamje e shpejte per WMS, approvals dhe faturat qe kane kaluar pa workflow.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatsCard
+            title="WMS Task Aktive"
+            value={summary.operations?.wms?.openTasks ?? 0}
+            subtitle="Pending / In progress / Blocked"
+            href={canStockHub ? '/wms/tasks' : undefined}
+          />
+          <StatsCard
+            title="WMS të Bllokuara"
+            value={summary.operations?.wms?.blockedTasks ?? 0}
+            subtitle="Kerkon nderhyrje"
+            href={canStockHub ? '/wms/tasks?status=BLOCKED' : undefined}
+          />
+          <StatsCard
+            title="Approvals në Pritje"
+            value={summary.operations?.approvals?.pendingCount ?? 0}
+            subtitle={
+              Number(summary.operations?.approvals?.escalatedCount ?? 0) > 0
+                ? `${summary.operations?.approvals?.escalatedCount ?? 0} te eskaluara`
+                : 'Pa eskalime aktive'
+            }
+            href={canApprovals ? '/approvals?status=PENDING' : undefined}
+          />
+          <StatsCard
+            title="Pa WMS këtë Muaj"
+            value={summary.operations?.salesExecution?.postedWithoutWmsMonth ?? 0}
+            subtitle={`Me WMS: ${summary.operations?.salesExecution?.postedWithWmsMonth ?? 0}`}
+            href={canSalesHub ? '/audit-logs?search=WMS_BYPASS_POST' : undefined}
+          />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
         {canSalesHub ? (
           <DomainActionCard
