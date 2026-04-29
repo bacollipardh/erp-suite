@@ -29,12 +29,40 @@ type CartLine = {
   taxPercent: number;
 };
 
+type PosSuccess = {
+  id: string;
+  docNo: string;
+  posted: boolean;
+  warning?: string;
+};
+
 function calcLine(l: CartLine) {
   const base = l.qty * l.unitPrice;
   const disc = base * (l.discountPercent / 100);
   const net  = base - disc;
   const tax  = net * (l.taxPercent / 100);
   return { net, tax, gross: net + tax };
+}
+
+function parseApiError(error: unknown) {
+  if (error instanceof Error) {
+    try {
+      const parsed = JSON.parse(error.message) as { message?: string | string[] };
+      if (Array.isArray(parsed.message)) return parsed.message.join(', ');
+      if (typeof parsed.message === 'string') return parsed.message;
+    } catch {
+      // Fall through to the original error message.
+    }
+    return error.message;
+  }
+  return 'Gabim gjatë krijimit të faturës.';
+}
+
+async function prepareWmsAndPostInvoice(invoiceId: string) {
+  await api.post(`wms/picking/sales-invoices/${invoiceId}/plan`, {});
+  await api.post(`wms/picking/sales-invoices/${invoiceId}/confirm`, {});
+  await api.post(`wms/packing/sales-invoices/${invoiceId}/pack`, {});
+  return api.postDocument('sales-invoices', invoiceId);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -73,7 +101,7 @@ export function PosForm({
   // UI
   const [busy, setBusy]                   = useState(false);
   const [error, setError]                 = useState<string | null>(null);
-  const [success, setSuccess]             = useState<{ id: string; docNo: string } | null>(null);
+  const [success, setSuccess]             = useState<PosSuccess | null>(null);
 
   // ── Customer dropdown ───────────────────────────────────────────────────────
   const custResults = useMemo(() => {
@@ -186,17 +214,23 @@ async function handleSubmit() {
       if (notes.trim()) payload.notes = notes.trim();
 
       const invoice = await api.create('sales-invoices', payload);
-      await api.postDocument('sales-invoices', invoice.id);
 
-      setSuccess({ id: invoice.id, docNo: invoice.docNo });
+      try {
+        await prepareWmsAndPostInvoice(invoice.id);
+        setSuccess({ id: invoice.id, docNo: invoice.docNo, posted: true });
+      } catch (postError) {
+        const message = parseApiError(postError);
+        setSuccess({ id: invoice.id, docNo: invoice.docNo, posted: false, warning: message });
+        setError(`Fatura ${invoice.docNo} u krijua si draft, por WMS/postimi nuk u kompletua: ${message}`);
+      }
+
       setCart([]);
       setCustomerId('');
       setCustomerQ('');
       setNotes('');
       router.refresh();
-    } catch (err: any) {
-      try { setError(JSON.parse(err.message).message ?? err.message); }
-      catch { setError(err.message ?? 'Gabim gjatë krijimit të faturës.'); }
+    } catch (err: unknown) {
+      setError(parseApiError(err));
     } finally {
       setBusy(false);
     }
@@ -207,25 +241,57 @@ async function handleSubmit() {
     <div className="space-y-4">
       {/* ── Success ── */}
       {success && (
-        <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-emerald-700 font-medium text-sm">
+        <div className={`rounded-xl border px-4 py-3 flex flex-wrap items-center justify-between gap-3 ${
+          success.posted
+            ? 'bg-emerald-50 border-emerald-200'
+            : 'bg-amber-50 border-amber-200'
+        }`}>
+          <div className={`flex items-center gap-2 font-medium text-sm ${
+            success.posted ? 'text-emerald-700' : 'text-amber-800'
+          }`}>
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 shrink-0">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              {success.posted ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.007v.008H12v-.008zM10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              )}
             </svg>
-            Fatura <strong className="mx-1">{success.docNo}</strong> u krijua dhe u postua!
+            <span>
+              Fatura <strong className="mx-1">{success.docNo}</strong>{' '}
+              {success.posted
+                ? 'u krijua, WMS u kompletua dhe u postua.'
+                : 'u krijua si draft. Kontrollo WMS/postimin.'}
+            </span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <PdfButtons
               baseHref={`/api/proxy/pdf/sales-invoices/${success.id}`}
               docNo={success.docNo}
             />
+            <a
+              href={`/sales-invoices/${success.id}`}
+              className={`text-xs px-2 py-1 rounded-lg transition-colors ${
+                success.posted
+                  ? 'text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100'
+                  : 'text-amber-700 hover:text-amber-900 hover:bg-amber-100'
+              }`}
+            >
+              Hap faturën
+            </a>
             <button
               onClick={() => setSuccess(null)}
-              className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 rounded-lg hover:bg-emerald-100 transition-colors"
+              className={`text-xs px-2 py-1 rounded-lg transition-colors ${
+                success.posted
+                  ? 'text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100'
+                  : 'text-amber-700 hover:text-amber-900 hover:bg-amber-100'
+              }`}
             >
               Mbyll
             </button>
           </div>
+          {!success.posted && success.warning && (
+            <p className="basis-full text-xs text-amber-700">{success.warning}</p>
+          )}
         </div>
       )}
 

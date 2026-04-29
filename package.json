@@ -14,6 +14,7 @@
     "migrate:deploy": "npm run prisma:migrate:deploy --prefix backend",
     "smoke:auth": "node scripts/smoke-auth.mjs",
     "smoke:agent-wms": "node scripts/smoke-agent-wms-flow.mjs",
+    "smoke:pos-wms": "node scripts/smoke-pos-wms-flow.mjs",
     "smoke:full": "node scripts/smoke-suite.mjs"
   }
 }
