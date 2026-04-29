@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   AgentOrderStatus,
   AgentOrderType,
@@ -9,23 +13,33 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { CustomerCreditApprovalGateService } from '../sales-invoices/customer-credit-approval-gate.service';
 import { SalesInvoicesService } from '../sales-invoices/sales-invoices.service';
 import { SalesReturnsService } from '../sales-returns/sales-returns.service';
 import { WmsService } from '../wms/wms.service';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
 import { AgentOrderQueryDto } from './dto/agent-order-query.dto';
-import { CreateAgentOrderDto, CreateAgentOrderLineDto } from './dto/create-agent-order.dto';
+import {
+  CreateAgentOrderDto,
+  CreateAgentOrderLineDto,
+} from './dto/create-agent-order.dto';
 import { UpdateAgentOrderDto } from './dto/update-agent-order.dto';
 import {
   AssignAgentOrderDto,
   CreateAgentSalesInvoiceDto,
   CreateAgentSalesReturnDto,
 } from './dto/agent-order-actions.dto';
-import { CreateCustomerObjectDto, UpdateCustomerObjectDto } from './dto/customer-object.dto';
+import {
+  CreateCustomerObjectDto,
+  UpdateCustomerObjectDto,
+} from './dto/customer-object.dto';
 
 type Tx = Prisma.TransactionClient;
 
-const SALES_ORDER_TYPES: AgentOrderType[] = [AgentOrderType.SALES_ORDER, AgentOrderType.EXCHANGE_ORDER];
+const SALES_ORDER_TYPES: AgentOrderType[] = [
+  AgentOrderType.SALES_ORDER,
+  AgentOrderType.EXCHANGE_ORDER,
+];
 const RETURN_ORDER_TYPES: AgentOrderType[] = [
   AgentOrderType.RETURN_ORDER,
   AgentOrderType.OPEN_RETURN_ORDER,
@@ -39,7 +53,9 @@ function nullableText(value?: string | null) {
 function dateOnly(value?: string | Date | null) {
   if (!value) return undefined;
   const date = new Date(value);
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
 }
 
 function lineQty(value: unknown) {
@@ -51,6 +67,7 @@ export class AgentOrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLogs: AuditLogsService,
+    private readonly customerCreditApprovalGateService: CustomerCreditApprovalGateService,
     private readonly salesInvoicesService: SalesInvoicesService,
     private readonly salesReturnsService: SalesReturnsService,
     private readonly wmsService: WmsService,
@@ -62,18 +79,28 @@ export class AgentOrdersService {
     const { skip, take } = toPagination(page, limit);
     const search = query.search?.trim();
     const where: Prisma.AgentOrderWhereInput = {
-      ...(query.orderType ? { orderType: this.resolveOrderType(query.orderType) } : {}),
+      ...(query.orderType
+        ? { orderType: this.resolveOrderType(query.orderType) }
+        : {}),
       ...(query.status ? { status: this.resolveStatus(query.status) } : {}),
       ...(query.customerId ? { customerId: query.customerId } : {}),
       ...(query.warehouseId ? { warehouseId: query.warehouseId } : {}),
-      ...(query.assignedPickerId ? { assignedPickerId: query.assignedPickerId } : {}),
+      ...(query.assignedPickerId
+        ? { assignedPickerId: query.assignedPickerId }
+        : {}),
       ...(search
         ? {
             OR: [
               { orderNo: { contains: search, mode: 'insensitive' } },
               { customer: { name: { contains: search, mode: 'insensitive' } } },
-              { customerObject: { name: { contains: search, mode: 'insensitive' } } },
-              { warehouse: { name: { contains: search, mode: 'insensitive' } } },
+              {
+                customerObject: {
+                  name: { contains: search, mode: 'insensitive' },
+                },
+              },
+              {
+                warehouse: { name: { contains: search, mode: 'insensitive' } },
+              },
             ],
           }
         : {}),
@@ -145,7 +172,9 @@ export class AgentOrdersService {
   async update(id: string, dto: UpdateAgentOrderDto, userId: string) {
     const existing = await this.findOne(id);
     if (!this.canEdit(existing.status)) {
-      throw new BadRequestException('Agent order can be changed only before WMS assignment');
+      throw new BadRequestException(
+        'Agent order can be changed only before WMS assignment',
+      );
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -154,12 +183,12 @@ export class AgentOrdersService {
         customerId: dto.customerId ?? existing.customerId,
         customerObjectId:
           dto.customerObjectId === undefined
-            ? existing.customerObjectId ?? undefined
+            ? (existing.customerObjectId ?? undefined)
             : dto.customerObjectId,
         warehouseId: dto.warehouseId ?? existing.warehouseId,
         sourceSalesInvoiceId:
           dto.sourceSalesInvoiceId === undefined
-            ? existing.sourceSalesInvoiceId ?? undefined
+            ? (existing.sourceSalesInvoiceId ?? undefined)
             : dto.sourceSalesInvoiceId,
         docDate:
           dto.docDate ??
@@ -199,12 +228,19 @@ export class AgentOrdersService {
           orderType: dto.orderType,
           customerId: dto.customerId,
           customerObjectId:
-            dto.customerObjectId === undefined ? undefined : dto.customerObjectId || null,
+            dto.customerObjectId === undefined
+              ? undefined
+              : dto.customerObjectId || null,
           warehouseId: dto.warehouseId,
           sourceSalesInvoiceId:
-            dto.sourceSalesInvoiceId === undefined ? undefined : dto.sourceSalesInvoiceId || null,
+            dto.sourceSalesInvoiceId === undefined
+              ? undefined
+              : dto.sourceSalesInvoiceId || null,
           docDate: dto.docDate ? dateOnly(dto.docDate) : undefined,
-          dueDate: dto.dueDate === undefined ? undefined : dateOnly(dto.dueDate) ?? null,
+          dueDate:
+            dto.dueDate === undefined
+              ? undefined
+              : (dateOnly(dto.dueDate) ?? null),
           priority: dto.priority,
           notes: dto.notes === undefined ? undefined : nullableText(dto.notes),
           lines: dto.lines ? { create: this.mapLines(dto.lines) } : undefined,
@@ -235,14 +271,23 @@ export class AgentOrdersService {
 
   async assign(id: string, dto: AssignAgentOrderDto, userId: string) {
     const order = await this.findOne(id);
-    const assignable: AgentOrderStatus[] = [AgentOrderStatus.SUBMITTED, AgentOrderStatus.APPROVED];
+    const assignable: AgentOrderStatus[] = [
+      AgentOrderStatus.SUBMITTED,
+      AgentOrderStatus.APPROVED,
+    ];
     if (!assignable.includes(order.status)) {
-      throw new BadRequestException('Agent order must be submitted or approved before WMS assignment');
+      throw new BadRequestException(
+        'Agent order must be submitted or approved before WMS assignment',
+      );
     }
 
-    const picker = await this.prisma.user.findUnique({ where: { id: dto.assignedPickerId } });
+    const picker = await this.prisma.user.findUnique({
+      where: { id: dto.assignedPickerId },
+    });
     if (!picker || !picker.isActive) {
-      throw new BadRequestException('Picker/receiver user not found or inactive');
+      throw new BadRequestException(
+        'Picker/receiver user not found or inactive',
+      );
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -307,9 +352,15 @@ export class AgentOrdersService {
     });
 
     await this.audit(id, userId, 'START_WMS');
-    return this.transition(id, userId, 'START_PICKING', [AgentOrderStatus.WMS_ASSIGNED], {
-      status: AgentOrderStatus.PICKING,
-    });
+    return this.transition(
+      id,
+      userId,
+      'START_PICKING',
+      [AgentOrderStatus.WMS_ASSIGNED],
+      {
+        status: AgentOrderStatus.PICKING,
+      },
+    );
   }
 
   async completeWms(id: string, userId: string) {
@@ -319,7 +370,9 @@ export class AgentOrdersService {
       AgentOrderStatus.PICKING,
     ];
     if (!completable.includes(order.status)) {
-      throw new BadRequestException('Only assigned or in-progress orders can be completed in WMS');
+      throw new BadRequestException(
+        'Only assigned or in-progress orders can be completed in WMS',
+      );
     }
 
     const now = new Date();
@@ -355,7 +408,9 @@ export class AgentOrdersService {
   async cancel(id: string, userId: string) {
     const order = await this.findOne(id);
     if (order.status === AgentOrderStatus.DOCUMENT_CREATED) {
-      throw new BadRequestException('Agent order with created document cannot be cancelled');
+      throw new BadRequestException(
+        'Agent order with created document cannot be cancelled',
+      );
     }
 
     await this.prisma.wmsTask.updateMany({
@@ -385,16 +440,26 @@ export class AgentOrdersService {
     );
   }
 
-  async createSalesInvoice(id: string, dto: CreateAgentSalesInvoiceDto, userId: string) {
+  async createSalesInvoice(
+    id: string,
+    dto: CreateAgentSalesInvoiceDto,
+    userId: string,
+  ) {
     const order = await this.findOne(id);
     if (!SALES_ORDER_TYPES.includes(order.orderType)) {
-      throw new BadRequestException('Only sales/exchange agent orders can create sales invoices');
+      throw new BadRequestException(
+        'Only sales/exchange agent orders can create sales invoices',
+      );
     }
     if (order.status !== AgentOrderStatus.READY_FOR_DOCUMENT) {
-      throw new BadRequestException('Agent order must be ready for document creation');
+      throw new BadRequestException(
+        'Agent order must be ready for document creation',
+      );
     }
     if (order.salesInvoiceId) {
-      throw new BadRequestException('Sales invoice was already created for this agent order');
+      throw new BadRequestException(
+        'Sales invoice was already created for this agent order',
+      );
     }
 
     const invoice = await this.salesInvoicesService.create(
@@ -404,7 +469,9 @@ export class AgentOrdersService {
         warehouseId: order.warehouseId,
         paymentMethodId: dto.paymentMethodId,
         docDate: dto.docDate ?? this.isoDate(order.docDate),
-        dueDate: dto.dueDate ?? (order.dueDate ? this.isoDate(order.dueDate) : undefined),
+        dueDate:
+          dto.dueDate ??
+          (order.dueDate ? this.isoDate(order.dueDate) : undefined),
         notes:
           nullableText(dto.notes) ??
           `Created from agent order ${order.orderNo}${order.customerObject ? ` / ${order.customerObject.name}` : ''}`,
@@ -421,6 +488,33 @@ export class AgentOrdersService {
     );
 
     const wms = await this.prepareInvoiceWms(invoice.id, userId);
+    let salesInvoice = invoice;
+    let posted = false;
+    let postWarning: string | null = null;
+
+    if (dto.postImmediately) {
+      if (!wms.ready) {
+        postWarning = wms.warning ?? 'WMS preparation failed';
+      } else {
+        try {
+          await this.customerCreditApprovalGateService.assertPostAllowed(
+            invoice.id,
+            userId,
+          );
+          salesInvoice = await this.salesInvoicesService.post(
+            invoice.id,
+            userId,
+          );
+          posted = true;
+        } catch (error) {
+          postWarning =
+            error instanceof Error
+              ? error.message
+              : 'Sales invoice posting failed';
+        }
+      }
+    }
+
     const updated = await this.prisma.agentOrder.update({
       where: { id },
       data: {
@@ -434,26 +528,42 @@ export class AgentOrdersService {
       salesInvoiceId: invoice.id,
       docNo: invoice.docNo,
       wms,
+      posted,
+      postWarning,
     });
-    return { order: updated, salesInvoice: invoice, wms };
+    return { order: updated, salesInvoice, wms, posted, postWarning };
   }
 
-  async createSalesReturn(id: string, dto: CreateAgentSalesReturnDto, userId: string) {
+  async createSalesReturn(
+    id: string,
+    dto: CreateAgentSalesReturnDto,
+    userId: string,
+  ) {
     const order = await this.findOne(id);
     if (!RETURN_ORDER_TYPES.includes(order.orderType)) {
-      throw new BadRequestException('Only return agent orders can create sales returns');
+      throw new BadRequestException(
+        'Only return agent orders can create sales returns',
+      );
     }
     if (order.status !== AgentOrderStatus.READY_FOR_DOCUMENT) {
-      throw new BadRequestException('Agent order must be ready for document creation');
+      throw new BadRequestException(
+        'Agent order must be ready for document creation',
+      );
     }
     if (order.salesReturnId) {
-      throw new BadRequestException('Sales return was already created for this agent order');
+      throw new BadRequestException(
+        'Sales return was already created for this agent order',
+      );
     }
     if (!order.sourceSalesInvoiceId) {
-      throw new BadRequestException('Source sales invoice is required before creating a sales return');
+      throw new BadRequestException(
+        'Source sales invoice is required before creating a sales return',
+      );
     }
     if (order.lines.some((line: any) => !line.salesInvoiceLineId)) {
-      throw new BadRequestException('Every return line must be linked to a source sales invoice line');
+      throw new BadRequestException(
+        'Every return line must be linked to a source sales invoice line',
+      );
     }
 
     const salesReturn = await this.salesReturnsService.create(
@@ -463,7 +573,9 @@ export class AgentOrdersService {
         customerId: order.customerId,
         docDate: dto.docDate ?? this.isoDate(order.docDate),
         reason: nullableText(dto.reason) ?? `Agent return ${order.orderNo}`,
-        notes: nullableText(dto.notes) ?? `Created from agent order ${order.orderNo}`,
+        notes:
+          nullableText(dto.notes) ??
+          `Created from agent order ${order.orderNo}`,
         lines: order.lines.map((line: any) => ({
           salesInvoiceLineId: line.salesInvoiceLineId,
           itemId: line.itemId,
@@ -501,7 +613,9 @@ export class AgentOrdersService {
               OR: [
                 { code: { contains: search, mode: 'insensitive' } },
                 { name: { contains: search, mode: 'insensitive' } },
-                { customer: { name: { contains: search, mode: 'insensitive' } } },
+                {
+                  customer: { name: { contains: search, mode: 'insensitive' } },
+                },
               ],
             }
           : {}),
@@ -536,8 +650,14 @@ export class AgentOrdersService {
     return created;
   }
 
-  async updateCustomerObject(id: string, dto: UpdateCustomerObjectDto, userId: string) {
-    const existing = await this.prisma.customerObject.findUnique({ where: { id } });
+  async updateCustomerObject(
+    id: string,
+    dto: UpdateCustomerObjectDto,
+    userId: string,
+  ) {
+    const existing = await this.prisma.customerObject.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException('Customer object not found');
 
     const updated = await this.prisma.customerObject.update({
@@ -545,9 +665,13 @@ export class AgentOrdersService {
       data: {
         code: dto.code?.trim(),
         name: dto.name?.trim(),
-        address: dto.address === undefined ? undefined : nullableText(dto.address),
+        address:
+          dto.address === undefined ? undefined : nullableText(dto.address),
         city: dto.city === undefined ? undefined : nullableText(dto.city),
-        contactName: dto.contactName === undefined ? undefined : nullableText(dto.contactName),
+        contactName:
+          dto.contactName === undefined
+            ? undefined
+            : nullableText(dto.contactName),
         phone: dto.phone === undefined ? undefined : nullableText(dto.phone),
         isActive: dto.isActive,
         notes: dto.notes === undefined ? undefined : nullableText(dto.notes),
@@ -567,7 +691,9 @@ export class AgentOrdersService {
   async findReturnSources(query: AgentOrderQueryDto = {}) {
     const search = query.search?.trim();
     const where: Prisma.SalesInvoiceWhereInput = {
-      status: { in: [DocumentStatus.POSTED, DocumentStatus.PARTIALLY_RETURNED] },
+      status: {
+        in: [DocumentStatus.POSTED, DocumentStatus.PARTIALLY_RETURNED],
+      },
       ...(query.customerId ? { customerId: query.customerId } : {}),
       ...(search
         ? {
@@ -613,7 +739,9 @@ export class AgentOrdersService {
   ) {
     const order = await this.findOne(id);
     if (!allowed.includes(order.status)) {
-      throw new BadRequestException(`Agent order cannot perform ${action} from status ${order.status}`);
+      throw new BadRequestException(
+        `Agent order cannot perform ${action} from status ${order.status}`,
+      );
     }
 
     const updated = await this.prisma.agentOrder.update({
@@ -625,28 +753,44 @@ export class AgentOrdersService {
     return updated;
   }
 
-  private async validateOrderInput(dto: CreateAgentOrderDto, tx: Tx | PrismaService) {
-    if (dto.dueDate && new Date(dto.dueDate).getTime() < new Date(dto.docDate).getTime()) {
-      throw new BadRequestException('Due date cannot be earlier than document date');
+  private async validateOrderInput(
+    dto: CreateAgentOrderDto,
+    tx: Tx | PrismaService,
+  ) {
+    if (
+      dto.dueDate &&
+      new Date(dto.dueDate).getTime() < new Date(dto.docDate).getTime()
+    ) {
+      throw new BadRequestException(
+        'Due date cannot be earlier than document date',
+      );
     }
 
-    if (dto.orderType === AgentOrderType.RETURN_ORDER && !dto.sourceSalesInvoiceId) {
-      throw new BadRequestException('Return orders must be linked to a posted sales invoice');
+    if (
+      dto.orderType === AgentOrderType.RETURN_ORDER &&
+      !dto.sourceSalesInvoiceId
+    ) {
+      throw new BadRequestException(
+        'Return orders must be linked to a posted sales invoice',
+      );
     }
 
-    const [customer, warehouse, customerObject, sourceInvoice] = await Promise.all([
-      this.ensureCustomer(dto.customerId, tx),
-      this.ensureWarehouse(dto.warehouseId, tx),
-      dto.customerObjectId
-        ? tx.customerObject.findUnique({ where: { id: dto.customerObjectId } })
-        : Promise.resolve(null),
-      dto.sourceSalesInvoiceId
-        ? tx.salesInvoice.findUnique({
-            where: { id: dto.sourceSalesInvoiceId },
-            include: { lines: true },
-          })
-        : Promise.resolve(null),
-    ]);
+    const [customer, warehouse, customerObject, sourceInvoice] =
+      await Promise.all([
+        this.ensureCustomer(dto.customerId, tx),
+        this.ensureWarehouse(dto.warehouseId, tx),
+        dto.customerObjectId
+          ? tx.customerObject.findUnique({
+              where: { id: dto.customerObjectId },
+            })
+          : Promise.resolve(null),
+        dto.sourceSalesInvoiceId
+          ? tx.salesInvoice.findUnique({
+              where: { id: dto.sourceSalesInvoiceId },
+              include: { lines: true },
+            })
+          : Promise.resolve(null),
+      ]);
 
     if (!customer || !warehouse) return;
 
@@ -655,20 +799,27 @@ export class AgentOrdersService {
         throw new BadRequestException('Customer object not found or inactive');
       }
       if (customerObject.customerId !== dto.customerId) {
-        throw new BadRequestException('Customer object must belong to the selected customer');
+        throw new BadRequestException(
+          'Customer object must belong to the selected customer',
+        );
       }
     }
 
     if (dto.sourceSalesInvoiceId) {
-      if (!sourceInvoice) throw new BadRequestException('Source sales invoice not found');
+      if (!sourceInvoice)
+        throw new BadRequestException('Source sales invoice not found');
       if (sourceInvoice.customerId !== dto.customerId) {
-        throw new BadRequestException('Source sales invoice must belong to the selected customer');
+        throw new BadRequestException(
+          'Source sales invoice must belong to the selected customer',
+        );
       }
       if (
         sourceInvoice.status !== DocumentStatus.POSTED &&
         sourceInvoice.status !== DocumentStatus.PARTIALLY_RETURNED
       ) {
-        throw new BadRequestException('Source sales invoice must be posted or partially returned');
+        throw new BadRequestException(
+          'Source sales invoice must be posted or partially returned',
+        );
       }
     }
 
@@ -689,7 +840,9 @@ export class AgentOrdersService {
       .filter((id): id is string => Boolean(id));
     if (sourceLineIds.length) {
       if (!sourceInvoice) {
-        throw new BadRequestException('Source sales invoice is required when return lines are linked');
+        throw new BadRequestException(
+          'Source sales invoice is required when return lines are linked',
+        );
       }
       const sourceLineMap = new Map<string, any>(
         sourceInvoice.lines.map((line: any) => [line.id, line]),
@@ -698,10 +851,14 @@ export class AgentOrdersService {
         if (!line.salesInvoiceLineId) continue;
         const sourceLine = sourceLineMap.get(line.salesInvoiceLineId);
         if (!sourceLine) {
-          throw new BadRequestException('Return line does not belong to the selected sales invoice');
+          throw new BadRequestException(
+            'Return line does not belong to the selected sales invoice',
+          );
         }
         if (sourceLine.itemId !== line.itemId) {
-          throw new BadRequestException('Return line item must match the source sales invoice line');
+          throw new BadRequestException(
+            'Return line item must match the source sales invoice line',
+          );
         }
       }
     }
@@ -709,7 +866,9 @@ export class AgentOrdersService {
     if (dto.orderType === AgentOrderType.RETURN_ORDER) {
       const missing = dto.lines.find((line) => !line.salesInvoiceLineId);
       if (missing) {
-        throw new BadRequestException('Return order lines must reference source sales invoice lines');
+        throw new BadRequestException(
+          'Return order lines must reference source sales invoice lines',
+        );
       }
     }
   }
@@ -765,7 +924,9 @@ export class AgentOrdersService {
   }
 
   private taskTypeForOrder(orderType: AgentOrderType) {
-    return RETURN_ORDER_TYPES.includes(orderType) ? WmsTaskType.RECEIVE : WmsTaskType.PICK;
+    return RETURN_ORDER_TYPES.includes(orderType)
+      ? WmsTaskType.RECEIVE
+      : WmsTaskType.PICK;
   }
 
   private async prepareInvoiceWms(salesInvoiceId: string, userId: string) {
@@ -775,7 +936,8 @@ export class AgentOrdersService {
       await this.wmsService.packSalesInvoice(salesInvoiceId, userId);
       return { ready: true };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'WMS preparation failed';
+      const message =
+        error instanceof Error ? error.message : 'WMS preparation failed';
       return { ready: false, warning: message };
     }
   }
@@ -803,7 +965,9 @@ export class AgentOrdersService {
       customer: true,
       customerObject: true,
       warehouse: true,
-      sourceSalesInvoice: { include: { lines: withLines ? { include: { item: true } } : false } },
+      sourceSalesInvoice: {
+        include: { lines: withLines ? { include: { item: true } } : false },
+      },
       salesInvoice: true,
       salesReturn: true,
       assignedPicker: { select: { id: true, fullName: true, email: true } },
@@ -820,7 +984,12 @@ export class AgentOrdersService {
     };
   }
 
-  private audit(entityId: string, userId: string, action: string, metadata?: unknown) {
+  private audit(
+    entityId: string,
+    userId: string,
+    action: string,
+    metadata?: unknown,
+  ) {
     return this.auditLogs.log({
       userId,
       entityType: 'agent_orders',

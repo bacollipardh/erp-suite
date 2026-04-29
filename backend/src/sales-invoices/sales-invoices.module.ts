@@ -9,9 +9,15 @@ import { CustomerCreditApprovalGateService } from './customer-credit-approval-ga
 import { WmsModule } from '../wms/wms.module';
 
 @Module({
-  imports: [StockModule, FinanceAccountsModule, FinancialPeriodsModule, AccountingModule, WmsModule],
+  imports: [
+    StockModule,
+    FinanceAccountsModule,
+    FinancialPeriodsModule,
+    AccountingModule,
+    WmsModule,
+  ],
   controllers: [SalesInvoicesController],
   providers: [SalesInvoicesService, CustomerCreditApprovalGateService],
-  exports: [SalesInvoicesService],
+  exports: [SalesInvoicesService, CustomerCreditApprovalGateService],
 })
 export class SalesInvoicesModule {}

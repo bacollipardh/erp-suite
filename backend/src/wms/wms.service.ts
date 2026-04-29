@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   DocumentStatus,
   WmsInventoryStatus,
@@ -12,7 +16,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
 import { WmsQueryDto } from './dto/wms-query.dto';
-import { CreateWmsLocationDto, UpdateWmsLocationDto } from './dto/wms-location.dto';
+import {
+  CreateWmsLocationDto,
+  UpdateWmsLocationDto,
+} from './dto/wms-location.dto';
 import {
   WmsCountDto,
   WmsCycleCountPlanDto,
@@ -38,7 +45,9 @@ type SalesInvoiceForWms = {
   }>;
 };
 
-function numberValue(value: number | string | { toString(): string } | null | undefined) {
+function numberValue(
+  value: number | string | { toString(): string } | null | undefined,
+) {
   return Number(value ?? 0);
 }
 
@@ -49,7 +58,9 @@ function roundQty(value: number) {
 function dateOnly(value?: string | null) {
   if (!value) return null;
   const date = new Date(value);
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
 }
 
 function nullableText(value?: string | null) {
@@ -59,7 +70,9 @@ function nullableText(value?: string | null) {
 
 function todayUtcDate() {
   const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
 }
 
 @Injectable()
@@ -74,7 +87,9 @@ export class WmsService {
     const where = {
       ...(query.warehouseId ? { warehouseId: query.warehouseId } : {}),
       ...(query.status ? { status: query.status as WmsLocationStatus } : {}),
-      ...(query.locationType ? { locationType: query.locationType as WmsLocationType } : {}),
+      ...(query.locationType
+        ? { locationType: query.locationType as WmsLocationType }
+        : {}),
       ...(search
         ? {
             OR: [
@@ -85,7 +100,11 @@ export class WmsService {
               { rack: { contains: search, mode: 'insensitive' as const } },
               { shelf: { contains: search, mode: 'insensitive' as const } },
               { bin: { contains: search, mode: 'insensitive' as const } },
-              { warehouse: { name: { contains: search, mode: 'insensitive' as const } } },
+              {
+                warehouse: {
+                  name: { contains: search, mode: 'insensitive' as const },
+                },
+              },
             ],
           }
         : {}),
@@ -107,8 +126,14 @@ export class WmsService {
 
   async createLocation(dto: CreateWmsLocationDto) {
     await this.ensureWarehouse(dto.warehouseId);
-    const locationType = this.resolveLocationType(dto.locationType, WmsLocationType.STORAGE);
-    const status = this.resolveLocationStatus(dto.status, WmsLocationStatus.ACTIVE);
+    const locationType = this.resolveLocationType(
+      dto.locationType,
+      WmsLocationType.STORAGE,
+    );
+    const status = this.resolveLocationStatus(
+      dto.status,
+      WmsLocationStatus.ACTIVE,
+    );
 
     return this.prisma.wmsLocation.create({
       data: {
@@ -132,14 +157,17 @@ export class WmsService {
   }
 
   async updateLocation(id: string, dto: UpdateWmsLocationDto) {
-    const existing = await this.prisma.wmsLocation.findUnique({ where: { id } });
+    const existing = await this.prisma.wmsLocation.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException('WMS location not found');
 
     return this.prisma.wmsLocation.update({
       where: { id },
       data: {
         code: dto.code?.trim(),
-        barcode: dto.barcode === undefined ? undefined : nullableText(dto.barcode),
+        barcode:
+          dto.barcode === undefined ? undefined : nullableText(dto.barcode),
         zone: dto.zone?.trim(),
         aisle: dto.aisle === undefined ? undefined : nullableText(dto.aisle),
         rack: dto.rack === undefined ? undefined : nullableText(dto.rack),
@@ -171,7 +199,9 @@ export class WmsService {
       ...(query.warehouseId ? { warehouseId: query.warehouseId } : {}),
       ...(query.locationId ? { locationId: query.locationId } : {}),
       ...(query.itemId ? { itemId: query.itemId } : {}),
-      ...(query.status ? { inventoryStatus: query.status as WmsInventoryStatus } : {}),
+      ...(query.status
+        ? { inventoryStatus: query.status as WmsInventoryStatus }
+        : {}),
       ...(query.lotCode ? { lotCode: query.lotCode } : {}),
       ...(query.serialNo ? { serialNo: query.serialNo } : {}),
       ...(search
@@ -179,11 +209,31 @@ export class WmsService {
             OR: [
               { lotCode: { contains: search, mode: 'insensitive' as const } },
               { serialNo: { contains: search, mode: 'insensitive' as const } },
-              { item: { name: { contains: search, mode: 'insensitive' as const } } },
-              { item: { code: { contains: search, mode: 'insensitive' as const } } },
-              { item: { barcode: { contains: search, mode: 'insensitive' as const } } },
-              { location: { code: { contains: search, mode: 'insensitive' as const } } },
-              { location: { barcode: { contains: search, mode: 'insensitive' as const } } },
+              {
+                item: {
+                  name: { contains: search, mode: 'insensitive' as const },
+                },
+              },
+              {
+                item: {
+                  code: { contains: search, mode: 'insensitive' as const },
+                },
+              },
+              {
+                item: {
+                  barcode: { contains: search, mode: 'insensitive' as const },
+                },
+              },
+              {
+                location: {
+                  code: { contains: search, mode: 'insensitive' as const },
+                },
+              },
+              {
+                location: {
+                  barcode: { contains: search, mode: 'insensitive' as const },
+                },
+              },
             ],
           }
         : {}),
@@ -236,17 +286,30 @@ export class WmsService {
       ...(query.itemId ? { itemId: query.itemId } : {}),
       ...(query.locationId
         ? {
-            OR: [{ fromLocationId: query.locationId }, { toLocationId: query.locationId }],
+            OR: [
+              { fromLocationId: query.locationId },
+              { toLocationId: query.locationId },
+            ],
           }
         : {}),
       ...(search
         ? {
             OR: [
-              { referenceNo: { contains: search, mode: 'insensitive' as const } },
+              {
+                referenceNo: { contains: search, mode: 'insensitive' as const },
+              },
               { lotCode: { contains: search, mode: 'insensitive' as const } },
               { serialNo: { contains: search, mode: 'insensitive' as const } },
-              { item: { name: { contains: search, mode: 'insensitive' as const } } },
-              { item: { code: { contains: search, mode: 'insensitive' as const } } },
+              {
+                item: {
+                  name: { contains: search, mode: 'insensitive' as const },
+                },
+              },
+              {
+                item: {
+                  code: { contains: search, mode: 'insensitive' as const },
+                },
+              },
             ],
           }
         : {}),
@@ -283,11 +346,21 @@ export class WmsService {
       ...(search
         ? {
             OR: [
-              { referenceNo: { contains: search, mode: 'insensitive' as const } },
+              {
+                referenceNo: { contains: search, mode: 'insensitive' as const },
+              },
               { lotCode: { contains: search, mode: 'insensitive' as const } },
               { serialNo: { contains: search, mode: 'insensitive' as const } },
-              { item: { name: { contains: search, mode: 'insensitive' as const } } },
-              { item: { code: { contains: search, mode: 'insensitive' as const } } },
+              {
+                item: {
+                  name: { contains: search, mode: 'insensitive' as const },
+                },
+              },
+              {
+                item: {
+                  code: { contains: search, mode: 'insensitive' as const },
+                },
+              },
             ],
           }
         : {}),
@@ -302,7 +375,11 @@ export class WmsService {
           sourceLocation: true,
           destinationLocation: true,
         },
-        orderBy: [{ status: 'asc' }, { priority: 'asc' }, { createdAt: 'desc' }],
+        orderBy: [
+          { status: 'asc' },
+          { priority: 'asc' },
+          { createdAt: 'desc' },
+        ],
         skip,
         take,
       }),
@@ -328,11 +405,33 @@ export class WmsService {
             OR: [
               { lotCode: { contains: search, mode: 'insensitive' as const } },
               { serialNo: { contains: search, mode: 'insensitive' as const } },
-              { item: { name: { contains: search, mode: 'insensitive' as const } } },
-              { item: { code: { contains: search, mode: 'insensitive' as const } } },
-              { location: { code: { contains: search, mode: 'insensitive' as const } } },
-              { salesInvoice: { docNo: { contains: search, mode: 'insensitive' as const } } },
-              { salesInvoice: { customer: { name: { contains: search, mode: 'insensitive' as const } } } },
+              {
+                item: {
+                  name: { contains: search, mode: 'insensitive' as const },
+                },
+              },
+              {
+                item: {
+                  code: { contains: search, mode: 'insensitive' as const },
+                },
+              },
+              {
+                location: {
+                  code: { contains: search, mode: 'insensitive' as const },
+                },
+              },
+              {
+                salesInvoice: {
+                  docNo: { contains: search, mode: 'insensitive' as const },
+                },
+              },
+              {
+                salesInvoice: {
+                  customer: {
+                    name: { contains: search, mode: 'insensitive' as const },
+                  },
+                },
+              },
             ],
           }
         : {}),
@@ -370,7 +469,9 @@ export class WmsService {
       ...(query.locationId ? { locationId: query.locationId } : {}),
       ...(query.itemId ? { itemId: query.itemId } : {}),
       expiryDate: { not: null, lte: cutoff },
-      ...(query.status ? { inventoryStatus: query.status as WmsInventoryStatus } : {}),
+      ...(query.status
+        ? { inventoryStatus: query.status as WmsInventoryStatus }
+        : {}),
     };
 
     const [items, total, summaryRows] = await this.prisma.$transaction([
@@ -384,7 +485,12 @@ export class WmsService {
       this.prisma.wmsStock.count({ where }),
       this.prisma.wmsStock.findMany({
         where,
-        select: { qtyOnHand: true, reservedQty: true, pickedQty: true, inventoryStatus: true },
+        select: {
+          qtyOnHand: true,
+          reservedQty: true,
+          pickedQty: true,
+          inventoryStatus: true,
+        },
       }),
     ]);
 
@@ -392,9 +498,18 @@ export class WmsService {
       ...toPaginatedResponse({ items, total, page, limit }),
       summary: {
         rows: summaryRows.length,
-        qtyOnHand: roundQty(summaryRows.reduce((sum, row) => sum + numberValue(row.qtyOnHand), 0)),
-        reservedQty: roundQty(summaryRows.reduce((sum, row) => sum + numberValue(row.reservedQty), 0)),
-        pickedQty: roundQty(summaryRows.reduce((sum, row) => sum + numberValue(row.pickedQty), 0)),
+        qtyOnHand: roundQty(
+          summaryRows.reduce((sum, row) => sum + numberValue(row.qtyOnHand), 0),
+        ),
+        reservedQty: roundQty(
+          summaryRows.reduce(
+            (sum, row) => sum + numberValue(row.reservedQty),
+            0,
+          ),
+        ),
+        pickedQty: roundQty(
+          summaryRows.reduce((sum, row) => sum + numberValue(row.pickedQty), 0),
+        ),
         days,
       },
     };
@@ -402,7 +517,9 @@ export class WmsService {
 
   async receive(dto: WmsReceiveDto, userId: string) {
     const qty = Number(dto.qty);
-    const serialNumbers = (dto.serialNumbers ?? []).map((entry) => entry.trim()).filter(Boolean);
+    const serialNumbers = (dto.serialNumbers ?? [])
+      .map((entry) => entry.trim())
+      .filter(Boolean);
     if (!serialNumbers.length && (!Number.isFinite(qty) || qty <= 0)) {
       throw new BadRequestException('Quantity must be greater than zero');
     }
@@ -494,8 +611,16 @@ export class WmsService {
       movementType: WmsMovementType.PUTAWAY,
       taskType: WmsTaskType.PUTAWAY,
       referencePrefix: 'PUT',
-      sourceLocationTypes: [WmsLocationType.RECEIVING, WmsLocationType.RETURNS, WmsLocationType.QUARANTINE],
-      destinationLocationTypes: [WmsLocationType.STORAGE, WmsLocationType.PICKING, WmsLocationType.QUARANTINE],
+      sourceLocationTypes: [
+        WmsLocationType.RECEIVING,
+        WmsLocationType.RETURNS,
+        WmsLocationType.QUARANTINE,
+      ],
+      destinationLocationTypes: [
+        WmsLocationType.STORAGE,
+        WmsLocationType.PICKING,
+        WmsLocationType.QUARANTINE,
+      ],
     });
   }
 
@@ -531,13 +656,19 @@ export class WmsService {
         inventoryStatus: WmsInventoryStatus.AVAILABLE,
       });
       const currentQty = numberValue(stock?.qtyOnHand);
-      const reservedPicked = numberValue(stock?.reservedQty) + numberValue(stock?.pickedQty);
+      const reservedPicked =
+        numberValue(stock?.reservedQty) + numberValue(stock?.pickedQty);
       if (countedQty < reservedPicked) {
-        throw new BadRequestException('Counted quantity cannot be lower than reserved or picked stock');
+        throw new BadRequestException(
+          'Counted quantity cannot be lower than reserved or picked stock',
+        );
       }
 
       if (stock) {
-        await tx.wmsStock.update({ where: { id: stock.id }, data: { qtyOnHand: countedQty } });
+        await tx.wmsStock.update({
+          where: { id: stock.id },
+          data: { qtyOnHand: countedQty },
+        });
       } else if (countedQty > 0) {
         await this.increaseStock(tx, {
           warehouseId: location.warehouseId,
@@ -585,13 +716,21 @@ export class WmsService {
         },
       });
 
-      return { referenceNo, previousQty: currentQty, countedQty, difference: roundQty(countedQty - currentQty) };
+      return {
+        referenceNo,
+        previousQty: currentQty,
+        countedQty,
+        difference: roundQty(countedQty - currentQty),
+      };
     });
   }
 
   async changeInventoryStatus(dto: WmsStatusDto, userId: string) {
     const location = await this.getActiveLocation(dto.locationId);
-    const status = this.resolveInventoryStatus(dto.inventoryStatus, WmsInventoryStatus.AVAILABLE);
+    const status = this.resolveInventoryStatus(
+      dto.inventoryStatus,
+      WmsInventoryStatus.AVAILABLE,
+    );
     const lotCode = nullableText(dto.lotCode);
     const serialNo = nullableText(dto.serialNo);
     const expiryDate = dateOnly(dto.expiryDate);
@@ -603,8 +742,13 @@ export class WmsService {
       expiryDate,
     });
     if (!stock) throw new NotFoundException('WMS stock not found');
-    if (numberValue(stock.reservedQty) > 0 || numberValue(stock.pickedQty) > 0) {
-      throw new BadRequestException('Reserved or picked stock cannot change QC status');
+    if (
+      numberValue(stock.reservedQty) > 0 ||
+      numberValue(stock.pickedQty) > 0
+    ) {
+      throw new BadRequestException(
+        'Reserved or picked stock cannot change QC status',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -637,17 +781,23 @@ export class WmsService {
   async planSalesPick(salesInvoiceId: string, userId: string) {
     const invoice = await this.loadSalesInvoiceForWms(salesInvoiceId);
     if (invoice.status !== DocumentStatus.DRAFT) {
-      throw new BadRequestException('Picking can be planned only for draft sales invoices');
+      throw new BadRequestException(
+        'Picking can be planned only for draft sales invoices',
+      );
     }
 
     const existing = await this.prisma.wmsReservation.count({
       where: {
         salesInvoiceId,
-        status: { in: [WmsReservationStatus.RESERVED, WmsReservationStatus.PICKED] },
+        status: {
+          in: [WmsReservationStatus.RESERVED, WmsReservationStatus.PICKED],
+        },
       },
     });
     if (existing > 0) {
-      throw new BadRequestException('This invoice already has active WMS reservations');
+      throw new BadRequestException(
+        'This invoice already has active WMS reservations',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -660,9 +810,13 @@ export class WmsService {
           qtyNeeded,
         });
 
-        const allocatedTotal = roundQty(allocations.reduce((sum, row) => sum + row.qty, 0));
+        const allocatedTotal = roundQty(
+          allocations.reduce((sum, row) => sum + row.qty, 0),
+        );
         if (allocatedTotal < qtyNeeded) {
-          throw new BadRequestException(`WMS stock is not available for item ${line.itemId}`);
+          throw new BadRequestException(
+            `WMS stock is not available for item ${line.itemId}`,
+          );
         }
 
         for (const allocation of allocations) {
@@ -730,7 +884,9 @@ export class WmsService {
       where: { salesInvoiceId, status: WmsReservationStatus.RESERVED },
     });
     if (!reservations.length) {
-      throw new BadRequestException('No reserved WMS stock found for this invoice');
+      throw new BadRequestException(
+        'No reserved WMS stock found for this invoice',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -743,8 +899,13 @@ export class WmsService {
           expiryDate: reservation.expiryDate,
           inventoryStatus: WmsInventoryStatus.AVAILABLE,
         });
-        if (!stock || numberValue(stock.reservedQty) < numberValue(reservation.qtyReserved)) {
-          throw new BadRequestException('Reserved WMS stock is no longer available');
+        if (
+          !stock ||
+          numberValue(stock.reservedQty) < numberValue(reservation.qtyReserved)
+        ) {
+          throw new BadRequestException(
+            'Reserved WMS stock is no longer available',
+          );
         }
         await tx.wmsStock.update({
           where: { id: stock.id },
@@ -788,7 +949,11 @@ export class WmsService {
       });
 
       const packTaskCount = await tx.wmsTask.count({
-        where: { sourceType: 'SALES_INVOICE', sourceId: salesInvoiceId, taskType: WmsTaskType.PACK },
+        where: {
+          sourceType: 'SALES_INVOICE',
+          sourceId: salesInvoiceId,
+          taskType: WmsTaskType.PACK,
+        },
       });
       if (packTaskCount === 0) {
         await tx.wmsTask.create({
@@ -805,14 +970,23 @@ export class WmsService {
         });
       }
 
-      return { salesInvoiceId, docNo: invoice.docNo, picked: reservations.length };
+      return {
+        salesInvoiceId,
+        docNo: invoice.docNo,
+        picked: reservations.length,
+      };
     });
   }
 
   async releaseSalesPick(salesInvoiceId: string, userId: string) {
     const invoice = await this.loadSalesInvoiceForWms(salesInvoiceId);
     const reservations = await this.prisma.wmsReservation.findMany({
-      where: { salesInvoiceId, status: { in: [WmsReservationStatus.RESERVED, WmsReservationStatus.PICKED] } },
+      where: {
+        salesInvoiceId,
+        status: {
+          in: [WmsReservationStatus.RESERVED, WmsReservationStatus.PICKED],
+        },
+      },
     });
 
     return this.prisma.$transaction(async (tx) => {
@@ -859,7 +1033,11 @@ export class WmsService {
       }
 
       await tx.wmsTask.updateMany({
-        where: { sourceType: 'SALES_INVOICE', sourceId: salesInvoiceId, status: WmsTaskStatus.PENDING },
+        where: {
+          sourceType: 'SALES_INVOICE',
+          sourceId: salesInvoiceId,
+          status: WmsTaskStatus.PENDING,
+        },
         data: { status: WmsTaskStatus.CANCELLED },
       });
 
@@ -871,28 +1049,62 @@ export class WmsService {
     const invoice = await this.loadSalesInvoiceForWms(salesInvoiceId);
     await this.assertSalesInvoicePicked(invoice);
 
-    const existing = await this.prisma.wmsTask.findFirst({
-      where: {
-        sourceType: 'SALES_INVOICE',
-        sourceId: salesInvoiceId,
-        taskType: WmsTaskType.PACK,
-        status: WmsTaskStatus.DONE,
-      },
-    });
-    if (existing) return { salesInvoiceId, docNo: invoice.docNo, packed: true };
+    await this.prisma.$transaction(async (tx) => {
+      const doneTask = await tx.wmsTask.findFirst({
+        where: {
+          sourceType: 'SALES_INVOICE',
+          sourceId: salesInvoiceId,
+          taskType: WmsTaskType.PACK,
+          status: WmsTaskStatus.DONE,
+        },
+      });
 
-    await this.prisma.wmsTask.create({
-      data: {
-        warehouseId: invoice.warehouseId,
-        taskType: WmsTaskType.PACK,
-        status: WmsTaskStatus.DONE,
-        sourceType: 'SALES_INVOICE',
-        sourceId: invoice.id,
-        referenceNo: invoice.docNo,
-        notes: 'Packed for shipment',
-        createdById: userId,
-        completedAt: new Date(),
-      },
+      if (doneTask) {
+        await tx.wmsTask.updateMany({
+          where: {
+            sourceType: 'SALES_INVOICE',
+            sourceId: salesInvoiceId,
+            taskType: WmsTaskType.PACK,
+            status: { in: [WmsTaskStatus.PENDING, WmsTaskStatus.IN_PROGRESS] },
+          },
+          data: {
+            status: WmsTaskStatus.CANCELLED,
+            notes: 'Closed because packing was already completed',
+            completedAt: new Date(),
+          },
+        });
+        return;
+      }
+
+      const updated = await tx.wmsTask.updateMany({
+        where: {
+          sourceType: 'SALES_INVOICE',
+          sourceId: salesInvoiceId,
+          taskType: WmsTaskType.PACK,
+          status: { in: [WmsTaskStatus.PENDING, WmsTaskStatus.IN_PROGRESS] },
+        },
+        data: {
+          status: WmsTaskStatus.DONE,
+          notes: 'Packed for shipment',
+          completedAt: new Date(),
+        },
+      });
+
+      if (updated.count > 0) return;
+
+      await tx.wmsTask.create({
+        data: {
+          warehouseId: invoice.warehouseId,
+          taskType: WmsTaskType.PACK,
+          status: WmsTaskStatus.DONE,
+          sourceType: 'SALES_INVOICE',
+          sourceId: invoice.id,
+          referenceNo: invoice.docNo,
+          notes: 'Packed for shipment',
+          createdById: userId,
+          completedAt: new Date(),
+        },
+      });
     });
 
     return { salesInvoiceId, docNo: invoice.docNo, packed: true };
@@ -948,7 +1160,12 @@ export class WmsService {
   }
 
   async startTask(id: string, dto: WmsTaskActionDto, userId: string) {
-    return this.updateTaskStatus(id, WmsTaskStatus.IN_PROGRESS, userId, dto ?? {});
+    return this.updateTaskStatus(
+      id,
+      WmsTaskStatus.IN_PROGRESS,
+      userId,
+      dto ?? {},
+    );
   }
 
   async completeTask(id: string, dto: WmsTaskActionDto, userId: string) {
@@ -956,7 +1173,12 @@ export class WmsService {
   }
 
   async cancelTask(id: string, dto: WmsTaskActionDto, userId: string) {
-    return this.updateTaskStatus(id, WmsTaskStatus.CANCELLED, userId, dto ?? {});
+    return this.updateTaskStatus(
+      id,
+      WmsTaskStatus.CANCELLED,
+      userId,
+      dto ?? {},
+    );
   }
 
   async shortTask(id: string, dto: WmsTaskActionDto, userId: string) {
@@ -1018,7 +1240,9 @@ export class WmsService {
     return {
       referenceNo,
       rows: rows.length,
-      qtyOnHand: roundQty(rows.reduce((sum, row) => sum + numberValue(row.qtyOnHand), 0)),
+      qtyOnHand: roundQty(
+        rows.reduce((sum, row) => sum + numberValue(row.qtyOnHand), 0),
+      ),
     };
   }
 
@@ -1039,9 +1263,16 @@ export class WmsService {
     }
   }
 
-  async shipSalesInvoiceTx(tx: Tx, invoice: SalesInvoiceForWms, userId: string) {
+  async shipSalesInvoiceTx(
+    tx: Tx,
+    invoice: SalesInvoiceForWms,
+    userId: string,
+  ) {
     const reservations = await tx.wmsReservation.findMany({
-      where: { salesInvoiceId: invoice.id, status: WmsReservationStatus.PICKED },
+      where: {
+        salesInvoiceId: invoice.id,
+        status: WmsReservationStatus.PICKED,
+      },
     });
     for (const reservation of reservations) {
       const qty = numberValue(reservation.qtyPicked);
@@ -1053,8 +1284,14 @@ export class WmsService {
         expiryDate: reservation.expiryDate,
         inventoryStatus: WmsInventoryStatus.AVAILABLE,
       });
-      if (!stock || numberValue(stock.pickedQty) < qty || numberValue(stock.qtyOnHand) < qty) {
-        throw new BadRequestException('Picked WMS stock is not available for shipping');
+      if (
+        !stock ||
+        numberValue(stock.pickedQty) < qty ||
+        numberValue(stock.qtyOnHand) < qty
+      ) {
+        throw new BadRequestException(
+          'Picked WMS stock is not available for shipping',
+        );
       }
 
       await tx.wmsStock.update({
@@ -1140,12 +1377,18 @@ export class WmsService {
 
   private async assertSalesInvoicePicked(invoice: SalesInvoiceForWms) {
     const reservations = await this.prisma.wmsReservation.findMany({
-      where: { salesInvoiceId: invoice.id, status: WmsReservationStatus.PICKED },
+      where: {
+        salesInvoiceId: invoice.id,
+        status: WmsReservationStatus.PICKED,
+      },
     });
     for (const line of invoice.lines) {
       const pickedQty = reservations
         .filter((reservation) => reservation.salesInvoiceLineId === line.id)
-        .reduce((sum, reservation) => sum + numberValue(reservation.qtyPicked), 0);
+        .reduce(
+          (sum, reservation) => sum + numberValue(reservation.qtyPicked),
+          0,
+        );
       if (roundQty(pickedQty) < numberValue(line.qty)) {
         throw new BadRequestException(
           `Sales invoice ${invoice.docNo} cannot be posted before WMS picking is completed`,
@@ -1162,7 +1405,10 @@ export class WmsService {
   ) {
     const task = await this.prisma.wmsTask.findUnique({ where: { id } });
     if (!task) throw new NotFoundException('WMS task not found');
-    if (task.status === WmsTaskStatus.DONE || task.status === WmsTaskStatus.CANCELLED) {
+    if (
+      task.status === WmsTaskStatus.DONE ||
+      task.status === WmsTaskStatus.CANCELLED
+    ) {
       throw new BadRequestException('Closed WMS tasks cannot be changed');
     }
 
@@ -1170,7 +1416,8 @@ export class WmsService {
       where: { id },
       data: {
         status,
-        assignedToId: status === WmsTaskStatus.IN_PROGRESS ? userId : task.assignedToId,
+        assignedToId:
+          status === WmsTaskStatus.IN_PROGRESS ? userId : task.assignedToId,
         notes: nullableText(dto.notes) ?? task.notes,
         completedAt:
           status === WmsTaskStatus.DONE ||
@@ -1200,9 +1447,12 @@ export class WmsService {
     },
   ) {
     const qty = Number(dto.serialNo ? 1 : dto.qty);
-    if (!Number.isFinite(qty) || qty <= 0) throw new BadRequestException('Quantity is required');
+    if (!Number.isFinite(qty) || qty <= 0)
+      throw new BadRequestException('Quantity is required');
     if (dto.fromLocationId === dto.toLocationId) {
-      throw new BadRequestException('Source and destination locations must be different');
+      throw new BadRequestException(
+        'Source and destination locations must be different',
+      );
     }
 
     const [fromLocation, toLocation] = await Promise.all([
@@ -1210,22 +1460,33 @@ export class WmsService {
       this.getActiveLocation(dto.toLocationId),
     ]);
     if (fromLocation.warehouseId !== toLocation.warehouseId) {
-      throw new BadRequestException('Locations must belong to the same warehouse');
+      throw new BadRequestException(
+        'Locations must belong to the same warehouse',
+      );
     }
-    if (config.sourceLocationTypes && !config.sourceLocationTypes.includes(fromLocation.locationType)) {
-      throw new BadRequestException('Source location type is not valid for this WMS workflow');
+    if (
+      config.sourceLocationTypes &&
+      !config.sourceLocationTypes.includes(fromLocation.locationType)
+    ) {
+      throw new BadRequestException(
+        'Source location type is not valid for this WMS workflow',
+      );
     }
     if (
       config.destinationLocationTypes &&
       !config.destinationLocationTypes.includes(toLocation.locationType)
     ) {
-      throw new BadRequestException('Destination location type is not valid for this WMS workflow');
+      throw new BadRequestException(
+        'Destination location type is not valid for this WMS workflow',
+      );
     }
 
     const lotCode = nullableText(dto.lotCode);
     const serialNo = nullableText(dto.serialNo);
     const expiryDate = dateOnly(dto.expiryDate);
-    const referenceNo = nullableText(dto.referenceNo) ?? `${config.referencePrefix}-${Date.now()}`;
+    const referenceNo =
+      nullableText(dto.referenceNo) ??
+      `${config.referencePrefix}-${Date.now()}`;
 
     return this.prisma.$transaction(async (tx) => {
       if (serialNo) {
@@ -1240,7 +1501,10 @@ export class WmsService {
         this.assertAvailable(source, qty);
         await tx.wmsStock.update({
           where: { id: source.id },
-          data: { locationId: toLocation.id, warehouseId: toLocation.warehouseId },
+          data: {
+            locationId: toLocation.id,
+            warehouseId: toLocation.warehouseId,
+          },
         });
       } else {
         const source = await this.decreaseStock(tx, {
@@ -1316,15 +1580,22 @@ export class WmsService {
   }
 
   private async getActiveLocation(id: string) {
-    const location = await this.prisma.wmsLocation.findUnique({ where: { id } });
+    const location = await this.prisma.wmsLocation.findUnique({
+      where: { id },
+    });
     if (!location) throw new NotFoundException('WMS location not found');
-    if (location.status !== WmsLocationStatus.ACTIVE && location.status !== WmsLocationStatus.QUARANTINE) {
+    if (
+      location.status !== WmsLocationStatus.ACTIVE &&
+      location.status !== WmsLocationStatus.QUARANTINE
+    ) {
       throw new BadRequestException('WMS location is not active');
     }
     return location;
   }
 
-  private async loadSalesInvoiceForWms(id: string): Promise<SalesInvoiceForWms> {
+  private async loadSalesInvoiceForWms(
+    id: string,
+  ): Promise<SalesInvoiceForWms> {
     const invoice = await this.prisma.salesInvoice.findUnique({
       where: { id },
       include: { lines: true },
@@ -1345,7 +1616,9 @@ export class WmsService {
         qtyOnHand: { gt: 0 },
         location: {
           status: WmsLocationStatus.ACTIVE,
-          locationType: { in: [WmsLocationType.PICKING, WmsLocationType.STORAGE] },
+          locationType: {
+            in: [WmsLocationType.PICKING, WmsLocationType.STORAGE],
+          },
         },
         OR: [{ expiryDate: null }, { expiryDate: { gte: todayUtcDate() } }],
       },
@@ -1362,7 +1635,9 @@ export class WmsService {
     const allocations: Array<{ stock: any; qty: number }> = [];
     for (const stock of sorted) {
       const available = roundQty(
-        numberValue(stock.qtyOnHand) - numberValue(stock.reservedQty) - numberValue(stock.pickedQty),
+        numberValue(stock.qtyOnHand) -
+          numberValue(stock.reservedQty) -
+          numberValue(stock.pickedQty),
       );
       if (available <= 0) continue;
       const qty = Math.min(available, remaining);
@@ -1391,7 +1666,9 @@ export class WmsService {
         lotCode: params.lotCode ?? null,
         serialNo: params.serialNo ?? null,
         expiryDate: params.expiryDate ? new Date(params.expiryDate) : null,
-        ...(params.inventoryStatus ? { inventoryStatus: params.inventoryStatus } : {}),
+        ...(params.inventoryStatus
+          ? { inventoryStatus: params.inventoryStatus }
+          : {}),
       },
     });
   }
@@ -1457,9 +1734,12 @@ export class WmsService {
   private assertAvailable(stock: any, qty: number) {
     if (!stock) throw new NotFoundException('WMS stock not found');
     const available = roundQty(
-      numberValue(stock.qtyOnHand) - numberValue(stock.reservedQty) - numberValue(stock.pickedQty),
+      numberValue(stock.qtyOnHand) -
+        numberValue(stock.reservedQty) -
+        numberValue(stock.pickedQty),
     );
-    if (available < qty) throw new BadRequestException('Insufficient available WMS stock');
+    if (available < qty)
+      throw new BadRequestException('Insufficient available WMS stock');
   }
 
   private async createMovement(
@@ -1515,7 +1795,8 @@ export class WmsService {
       qtyOnHand += numberValue(row.qtyOnHand);
       reservedQty += numberValue(row.reservedQty);
       pickedQty += numberValue(row.pickedQty);
-      acc[row.inventoryStatus] = (acc[row.inventoryStatus] ?? 0) + numberValue(row.qtyOnHand);
+      acc[row.inventoryStatus] =
+        (acc[row.inventoryStatus] ?? 0) + numberValue(row.qtyOnHand);
       return acc;
     }, {});
     return {
@@ -1530,7 +1811,10 @@ export class WmsService {
     };
   }
 
-  private resolveLocationType(value: string | undefined, fallback: WmsLocationType) {
+  private resolveLocationType(
+    value: string | undefined,
+    fallback: WmsLocationType,
+  ) {
     if (!value) return fallback;
     if (!Object.values(WmsLocationType).includes(value as WmsLocationType)) {
       throw new BadRequestException('Invalid WMS location type');
@@ -1538,17 +1822,27 @@ export class WmsService {
     return value as WmsLocationType;
   }
 
-  private resolveLocationStatus(value: string | undefined, fallback: WmsLocationStatus) {
+  private resolveLocationStatus(
+    value: string | undefined,
+    fallback: WmsLocationStatus,
+  ) {
     if (!value) return fallback;
-    if (!Object.values(WmsLocationStatus).includes(value as WmsLocationStatus)) {
+    if (
+      !Object.values(WmsLocationStatus).includes(value as WmsLocationStatus)
+    ) {
       throw new BadRequestException('Invalid WMS location status');
     }
     return value as WmsLocationStatus;
   }
 
-  private resolveInventoryStatus(value: string | undefined, fallback: WmsInventoryStatus) {
+  private resolveInventoryStatus(
+    value: string | undefined,
+    fallback: WmsInventoryStatus,
+  ) {
     if (!value) return fallback;
-    if (!Object.values(WmsInventoryStatus).includes(value as WmsInventoryStatus)) {
+    if (
+      !Object.values(WmsInventoryStatus).includes(value as WmsInventoryStatus)
+    ) {
       throw new BadRequestException('Invalid WMS inventory status');
     }
     return value as WmsInventoryStatus;

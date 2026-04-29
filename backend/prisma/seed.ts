@@ -768,8 +768,14 @@ async function upsertDemoAgentOrder(params: {
     docDate: seedDate(new Date().getUTCFullYear(), 4, 28),
     dueDate: seedDate(new Date().getUTCFullYear(), 5, 5),
     priority: 3,
+    sourceSalesInvoiceId: null,
+    salesInvoiceId: null,
+    salesReturnId: null,
     assignedPickerId: params.assignedPickerId ?? null,
     assignedAt: params.assignedPickerId ? new Date() : null,
+    pickedAt: null,
+    receivedAt: null,
+    readyAt: null,
     notes: 'Demo order per testim Agent -> WMS -> Fature.',
     createdById: params.createdById,
   };
@@ -785,6 +791,12 @@ async function upsertDemoAgentOrder(params: {
   }));
 
   if (existing) {
+    await prisma.wmsTask.deleteMany({
+      where: {
+        sourceType: 'AGENT_ORDER',
+        sourceId: existing.id,
+      },
+    });
     await prisma.agentOrderLine.deleteMany({
       where: { agentOrderId: existing.id },
     });

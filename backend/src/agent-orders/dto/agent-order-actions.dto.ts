@@ -1,4 +1,10 @@
-import { IsDateString, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 
 export class AssignAgentOrderDto {
   @IsUUID()
@@ -28,6 +34,10 @@ export class CreateAgentSalesInvoiceDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  postImmediately?: boolean;
 }
 
 export class CreateAgentSalesReturnDto {

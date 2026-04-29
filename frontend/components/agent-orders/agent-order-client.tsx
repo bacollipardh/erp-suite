@@ -63,12 +63,26 @@ function parseApiError(error: unknown) {
   return 'Veprimi deshtoi.';
 }
 
-function Message({ error, message }: { error?: string | null; message?: string | null }) {
+function Message({
+  error,
+  message,
+}: {
+  error?: string | null;
+  message?: string | null;
+}) {
   if (error) {
-    return <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>;
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        {error}
+      </div>
+    );
   }
   if (message) {
-    return <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div>;
+    return (
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+        {message}
+      </div>
+    );
   }
   return null;
 }
@@ -88,7 +102,12 @@ export function AgentOrderForm({
   customers: Option[];
   customerObjects: Array<Option & { customerId: string; isActive?: boolean }>;
   warehouses: Option[];
-  items: Array<Option & { standardSalesPrice?: number | string | null; taxRate?: { rate?: number | string | null } | null }>;
+  items: Array<
+    Option & {
+      standardSalesPrice?: number | string | null;
+      taxRate?: { rate?: number | string | null } | null;
+    }
+  >;
   returnSources: ReturnSource[];
   data?: any;
 }) {
@@ -118,15 +137,26 @@ export function AgentOrderForm({
           taxPercent: Number(line.taxPercent ?? 0),
           notes: line.notes ?? '',
         }))
-      : [{ itemId: '', qty: 1, unitPrice: 0, discountPercent: 0, taxPercent: 18 }],
+      : [
+          {
+            itemId: '',
+            qty: 1,
+            unitPrice: 0,
+            discountPercent: 0,
+            taxPercent: 18,
+          },
+        ],
   );
 
   const visibleObjects = customerObjects.filter(
     (entry) => !form.customerId || entry.customerId === form.customerId,
   );
-  const source = returnSources.find((entry) => entry.id === form.sourceSalesInvoiceId);
+  const source = returnSources.find(
+    (entry) => entry.id === form.sourceSalesInvoiceId,
+  );
   const sourceLines = source?.lines ?? [];
-  const isReturn = form.orderType === 'RETURN_ORDER' || form.orderType === 'OPEN_RETURN_ORDER';
+  const isReturn =
+    form.orderType === 'RETURN_ORDER' || form.orderType === 'OPEN_RETURN_ORDER';
 
   const totals = useMemo(() => {
     return lines.reduce(
@@ -146,7 +176,9 @@ export function AgentOrderForm({
   }, [lines]);
 
   function updateLine(index: number, patch: Partial<AgentLine>) {
-    setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+    setLines((current) =>
+      current.map((line, i) => (i === index ? { ...line, ...patch } : line)),
+    );
   }
 
   function chooseItem(index: number, itemId: string) {
@@ -184,7 +216,9 @@ export function AgentOrderForm({
       setError('Order kthimi duhet te lidhet me fature burim.');
       return;
     }
-    const badLine = lines.findIndex((line) => !line.itemId || Number(line.qty) <= 0);
+    const badLine = lines.findIndex(
+      (line) => !line.itemId || Number(line.qty) <= 0,
+    );
     if (badLine !== -1) {
       setError(`Rreshti ${badLine + 1}: zgjidh artikullin dhe sasine.`);
       return;
@@ -228,51 +262,85 @@ export function AgentOrderForm({
     <form onSubmit={submit} className="space-y-4">
       <Message error={error} />
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Detajet e order-it</h2>
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Detajet e order-it
+        </h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <select
             value={form.orderType}
-            onChange={(event) => setForm({ ...form, orderType: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, orderType: event.target.value })
+            }
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           >
-            {ORDER_TYPES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+            {ORDER_TYPES.map((entry) => (
+              <option key={entry.value} value={entry.value}>
+                {entry.label}
+              </option>
+            ))}
           </select>
           <select
             value={form.customerId}
-            onChange={(event) => setForm({ ...form, customerId: event.target.value, customerObjectId: '' })}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                customerId: event.target.value,
+                customerObjectId: '',
+              })
+            }
             required
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           >
             <option value="">Bleresi</option>
-            {customers.map((entry) => <option key={entry.id} value={entry.id}>{optionLabel(entry)}</option>)}
+            {customers.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {optionLabel(entry)}
+              </option>
+            ))}
           </select>
           <select
             value={form.customerObjectId}
-            onChange={(event) => setForm({ ...form, customerObjectId: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, customerObjectId: event.target.value })
+            }
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           >
             <option value="">Objekti</option>
-            {visibleObjects.map((entry) => <option key={entry.id} value={entry.id}>{optionLabel(entry)}</option>)}
+            {visibleObjects.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {optionLabel(entry)}
+              </option>
+            ))}
           </select>
           <select
             value={form.warehouseId}
-            onChange={(event) => setForm({ ...form, warehouseId: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, warehouseId: event.target.value })
+            }
             required
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           >
             <option value="">Magazina</option>
-            {warehouses.map((entry) => <option key={entry.id} value={entry.id}>{optionLabel(entry)}</option>)}
+            {warehouses.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {optionLabel(entry)}
+              </option>
+            ))}
           </select>
           <input
             type="date"
             value={form.docDate}
-            onChange={(event) => setForm({ ...form, docDate: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, docDate: event.target.value })
+            }
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
           <input
             type="date"
             value={form.dueDate}
-            onChange={(event) => setForm({ ...form, dueDate: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, dueDate: event.target.value })
+            }
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
           <input
@@ -280,19 +348,26 @@ export function AgentOrderForm({
             min={1}
             max={10}
             value={form.priority}
-            onChange={(event) => setForm({ ...form, priority: Number(event.target.value) })}
+            onChange={(event) =>
+              setForm({ ...form, priority: Number(event.target.value) })
+            }
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
             placeholder="Prioriteti"
           />
           {isReturn ? (
             <select
               value={form.sourceSalesInvoiceId}
-              onChange={(event) => setForm({ ...form, sourceSalesInvoiceId: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, sourceSalesInvoiceId: event.target.value })
+              }
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2"
             >
               <option value="">Fatura burim</option>
               {returnSources
-                .filter((entry) => !form.customerId || entry.customerId === form.customerId)
+                .filter(
+                  (entry) =>
+                    !form.customerId || entry.customerId === form.customerId,
+                )
                 .map((entry) => (
                   <option key={entry.id} value={entry.id}>
                     {entry.docNo} - {entry.customer?.name ?? '-'}
@@ -302,7 +377,9 @@ export function AgentOrderForm({
           ) : null}
           <input
             value={form.notes}
-            onChange={(event) => setForm({ ...form, notes: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, notes: event.target.value })
+            }
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2"
             placeholder="Shenime"
           />
@@ -311,10 +388,23 @@ export function AgentOrderForm({
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rreshtat</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Rreshtat
+          </h2>
           <button
             type="button"
-            onClick={() => setLines([...lines, { itemId: '', qty: 1, unitPrice: 0, discountPercent: 0, taxPercent: 18 }])}
+            onClick={() =>
+              setLines([
+                ...lines,
+                {
+                  itemId: '',
+                  qty: 1,
+                  unitPrice: 0,
+                  discountPercent: 0,
+                  taxPercent: 18,
+                },
+              ])
+            }
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700"
           >
             Shto rresht
@@ -322,17 +412,23 @@ export function AgentOrderForm({
         </div>
         <div className="space-y-3 p-4">
           {lines.map((line, index) => (
-            <div key={index} className="grid grid-cols-1 gap-2 rounded-lg border border-slate-100 p-3 md:grid-cols-12">
+            <div
+              key={index}
+              className="grid grid-cols-1 gap-2 rounded-lg border border-slate-100 p-3 md:grid-cols-12"
+            >
               {isReturn ? (
                 <select
                   value={line.salesInvoiceLineId ?? ''}
-                  onChange={(event) => chooseSourceLine(index, event.target.value)}
+                  onChange={(event) =>
+                    chooseSourceLine(index, event.target.value)
+                  }
                   className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-3"
                 >
                   <option value="">Rreshti burim</option>
                   {sourceLines.map((entry) => (
                     <option key={entry.id} value={entry.id}>
-                      {entry.item?.code ?? ''} {entry.item?.name ?? entry.itemId} / {Number(entry.qty)}
+                      {entry.item?.code ?? ''}{' '}
+                      {entry.item?.name ?? entry.itemId} / {Number(entry.qty)}
                     </option>
                   ))}
                 </select>
@@ -345,11 +441,17 @@ export function AgentOrderForm({
                 className={`rounded-lg border border-slate-300 px-3 py-2 text-sm ${isReturn ? 'md:col-span-3' : 'md:col-span-4'}`}
               >
                 <option value="">Artikulli</option>
-                {items.map((entry) => <option key={entry.id} value={entry.id}>{optionLabel(entry)}</option>)}
+                {items.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {optionLabel(entry)}
+                  </option>
+                ))}
               </select>
               <input
                 value={line.description ?? ''}
-                onChange={(event) => updateLine(index, { description: event.target.value })}
+                onChange={(event) =>
+                  updateLine(index, { description: event.target.value })
+                }
                 placeholder="Pershkrimi"
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2"
               />
@@ -358,7 +460,9 @@ export function AgentOrderForm({
                 step="0.001"
                 min="0.001"
                 value={line.qty}
-                onChange={(event) => updateLine(index, { qty: Number(event.target.value) })}
+                onChange={(event) =>
+                  updateLine(index, { qty: Number(event.target.value) })
+                }
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-1"
               />
               <input
@@ -366,7 +470,9 @@ export function AgentOrderForm({
                 step="0.01"
                 min="0"
                 value={line.unitPrice}
-                onChange={(event) => updateLine(index, { unitPrice: Number(event.target.value) })}
+                onChange={(event) =>
+                  updateLine(index, { unitPrice: Number(event.target.value) })
+                }
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-1"
               />
               <input
@@ -375,7 +481,11 @@ export function AgentOrderForm({
                 min="0"
                 max="100"
                 value={line.discountPercent}
-                onChange={(event) => updateLine(index, { discountPercent: Number(event.target.value) })}
+                onChange={(event) =>
+                  updateLine(index, {
+                    discountPercent: Number(event.target.value),
+                  })
+                }
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-1"
               />
               <input
@@ -384,7 +494,9 @@ export function AgentOrderForm({
                 min="0"
                 max="100"
                 value={line.taxPercent}
-                onChange={(event) => updateLine(index, { taxPercent: Number(event.target.value) })}
+                onChange={(event) =>
+                  updateLine(index, { taxPercent: Number(event.target.value) })
+                }
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-1"
               />
               <button
@@ -401,13 +513,22 @@ export function AgentOrderForm({
         <div className="flex flex-wrap items-center justify-end gap-4 border-t border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-600">
           <span>Net: {totals.net.toFixed(2)}</span>
           <span>TVSH: {totals.tax.toFixed(2)}</span>
-          <span className="font-semibold text-slate-900">Total: {totals.total.toFixed(2)}</span>
+          <span className="font-semibold text-slate-900">
+            Total: {totals.total.toFixed(2)}
+          </span>
         </div>
       </div>
 
       <div className="flex justify-end">
-        <button disabled={busy} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-          {busy ? 'Duke ruajtur...' : data?.id ? 'Perditeso order-in' : 'Krijo order'}
+        <button
+          disabled={busy}
+          className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {busy
+            ? 'Duke ruajtur...'
+            : data?.id
+              ? 'Perditeso order-in'
+              : 'Krijo order'}
         </button>
       </div>
     </form>
@@ -434,36 +555,62 @@ export function AgentOrderActions({ order }: { order: any }) {
 
   const actions = [
     { key: 'submit', label: 'Dorezo', show: order.status === 'DRAFT' },
-    { key: 'approve', label: 'Aprovo', show: order.status === 'DRAFT' || order.status === 'SUBMITTED' },
+    {
+      key: 'approve',
+      label: 'Aprovo',
+      show: order.status === 'DRAFT' || order.status === 'SUBMITTED',
+    },
     { key: 'start', label: 'Start WMS', show: order.status === 'WMS_ASSIGNED' },
-    { key: 'complete-wms', label: 'Perfundo WMS', show: order.status === 'WMS_ASSIGNED' || order.status === 'PICKING' },
-    { key: 'cancel', label: 'Anulo', show: !['DOCUMENT_CREATED', 'CANCELLED'].includes(order.status) },
+    {
+      key: 'complete-wms',
+      label: 'Perfundo WMS',
+      show: order.status === 'WMS_ASSIGNED' || order.status === 'PICKING',
+    },
+    {
+      key: 'cancel',
+      label: 'Anulo',
+      show: !['DOCUMENT_CREATED', 'CANCELLED'].includes(order.status),
+    },
   ];
+  const canAssignOrder = ['SUBMITTED', 'APPROVED'].includes(order.status);
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
-        {actions.filter((entry) => entry.show).map((entry) => (
-          <button
-            key={entry.key}
-            type="button"
-            onClick={() => run(entry.key)}
-            disabled={Boolean(busy)}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-50"
+        {actions
+          .filter((entry) => entry.show)
+          .map((entry) => (
+            <button
+              key={entry.key}
+              type="button"
+              onClick={() => run(entry.key)}
+              disabled={Boolean(busy)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-50"
+            >
+              {busy === entry.key ? '...' : entry.label}
+            </button>
+          ))}
+        {canAssignOrder ? (
+          <a
+            href={`/agjenti/orders/${order.id}/assign`}
+            className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white"
           >
-            {busy === entry.key ? '...' : entry.label}
-          </button>
-        ))}
-        <a href={`/agjenti/orders/${order.id}/assign`} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white">
-          Cakto picker
-        </a>
+            Cakto picker
+          </a>
+        ) : null}
       </div>
       <Message error={error} />
     </div>
   );
 }
 
-export function AgentOrderAssignForm({ order, pickers }: { order: any; pickers: Option[] }) {
+export function AgentOrderAssignForm({
+  order,
+  pickers,
+}: {
+  order: any;
+  pickers: Option[];
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -488,20 +635,39 @@ export function AgentOrderAssignForm({ order, pickers }: { order: any; pickers: 
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <form
+      onSubmit={submit}
+      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+    >
       <div className="flex items-center gap-2 text-sm">
         <span className="font-semibold text-slate-900">{order.orderNo}</span>
         <StatusBadge value={order.status} />
       </div>
       <Message error={error} />
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <select name="assignedPickerId" defaultValue={order.assignedPickerId ?? ''} required className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        <select
+          name="assignedPickerId"
+          defaultValue={order.assignedPickerId ?? ''}
+          required
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        >
           <option value="">Picker / receiver</option>
-          {pickers.map((entry) => <option key={entry.id} value={entry.id}>{optionLabel(entry)}</option>)}
+          {pickers.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {optionLabel(entry)}
+            </option>
+          ))}
         </select>
-        <input name="notes" placeholder="Shenime per WMS" className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2" />
+        <input
+          name="notes"
+          placeholder="Shenime per WMS"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2"
+        />
       </div>
-      <button disabled={busy} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+      <button
+        disabled={busy}
+        className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+      >
         {busy ? 'Duke caktuar...' : 'Cakto WMS'}
       </button>
     </form>
@@ -523,7 +689,9 @@ export function AgentOrderDocumentActions({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const isReturn = order.orderType === 'RETURN_ORDER' || order.orderType === 'OPEN_RETURN_ORDER';
+  const isReturn =
+    order.orderType === 'RETURN_ORDER' ||
+    order.orderType === 'OPEN_RETURN_ORDER';
   const series = isReturn ? returnSeries : invoiceSeries;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -534,18 +702,29 @@ export function AgentOrderDocumentActions({
     const data = new FormData(event.currentTarget);
     const endpoint = isReturn ? 'create-sales-return' : 'create-sales-invoice';
     try {
-      const result: any = await api.post(`agent-orders/${order.id}/${endpoint}`, {
-        seriesId: data.get('seriesId'),
-        paymentMethodId: data.get('paymentMethodId') || undefined,
-        docDate: data.get('docDate') || undefined,
-        dueDate: data.get('dueDate') || undefined,
-        reason: data.get('reason') || undefined,
-        notes: data.get('notes') || undefined,
-      });
+      const result: any = await api.post(
+        `agent-orders/${order.id}/${endpoint}`,
+        {
+          seriesId: data.get('seriesId'),
+          paymentMethodId: data.get('paymentMethodId') || undefined,
+          postImmediately: !isReturn && data.get('postImmediately') === 'on',
+          docDate: data.get('docDate') || undefined,
+          dueDate: data.get('dueDate') || undefined,
+          reason: data.get('reason') || undefined,
+          notes: data.get('notes') || undefined,
+        },
+      );
       if (isReturn) {
         router.push(`/sales-returns/${result.salesReturn.id}`);
       } else {
-        setMessage(result.wms?.ready ? 'Fatura u krijua dhe WMS u pergatit.' : result.wms?.warning ?? '');
+        setMessage(
+          result.posted
+            ? 'Fatura u krijua, WMS u pergatit dhe fatura u postua.'
+            : (result.postWarning ??
+                (result.wms?.ready
+                  ? 'Fatura u krijua dhe WMS u pergatit.'
+                  : (result.wms?.warning ?? ''))),
+        );
         router.push(`/sales-invoices/${result.salesInvoice.id}`);
       }
       router.refresh();
@@ -559,28 +738,85 @@ export function AgentOrderDocumentActions({
   if (order.status !== 'READY_FOR_DOCUMENT') return null;
 
   return (
-    <form onSubmit={submit} className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h2 className="text-sm font-semibold text-slate-900">{isReturn ? 'Krijo kthim shitje' : 'Krijo fature shitje'}</h2>
+    <form
+      onSubmit={submit}
+      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+    >
+      <h2 className="text-sm font-semibold text-slate-900">
+        {isReturn ? 'Krijo kthim shitje' : 'Krijo fature shitje'}
+      </h2>
       <Message error={error} message={message} />
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-        <select name="seriesId" required className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        <select
+          name="seriesId"
+          required
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        >
           <option value="">Seria</option>
-          {series.map((entry: any) => <option key={entry.id} value={entry.id}>{entry.prefix ?? entry.code ?? entry.name}</option>)}
+          {series.map((entry: any) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.prefix ?? entry.code ?? entry.name}
+            </option>
+          ))}
         </select>
         {!isReturn ? (
-          <select name="paymentMethodId" className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <select
+            name="paymentMethodId"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          >
             <option value="">Metoda pageses</option>
-            {paymentMethods.map((entry) => <option key={entry.id} value={entry.id}>{optionLabel(entry)}</option>)}
+            {paymentMethods.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {optionLabel(entry)}
+              </option>
+            ))}
           </select>
         ) : (
-          <input name="reason" placeholder="Arsyeja" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          <input
+            name="reason"
+            placeholder="Arsyeja"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
         )}
-        <input name="docDate" type="date" defaultValue={today()} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-        {!isReturn ? <input name="dueDate" type="date" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" /> : null}
-        <input name="notes" placeholder="Shenime" className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-4" />
+        <input
+          name="docDate"
+          type="date"
+          defaultValue={today()}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+        {!isReturn ? (
+          <input
+            name="dueDate"
+            type="date"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+        ) : null}
+        {!isReturn ? (
+          <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
+            <input
+              name="postImmediately"
+              type="checkbox"
+              defaultChecked
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Posto menjehere
+          </label>
+        ) : null}
+        <input
+          name="notes"
+          placeholder="Shenime"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-4"
+        />
       </div>
-      <button disabled={busy} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-        {busy ? 'Duke krijuar...' : isReturn ? 'Krijo kthimin' : 'Krijo faturen'}
+      <button
+        disabled={busy}
+        className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+      >
+        {busy
+          ? 'Duke krijuar...'
+          : isReturn
+            ? 'Krijo kthimin'
+            : 'Krijo / posto faturen'}
       </button>
     </form>
   );
@@ -619,22 +855,66 @@ export function CustomerObjectForm({ customers }: { customers: Option[] }) {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <form
+      onSubmit={submit}
+      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+    >
       <Message error={error} message={message} />
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <select name="customerId" required className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+        <select
+          name="customerId"
+          required
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        >
           <option value="">Bleresi</option>
-          {customers.map((entry) => <option key={entry.id} value={entry.id}>{optionLabel(entry)}</option>)}
+          {customers.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {optionLabel(entry)}
+            </option>
+          ))}
         </select>
-        <input name="code" required placeholder="Kodi objektit" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-        <input name="name" required placeholder="Emri objektit" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-        <input name="address" placeholder="Adresa" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-        <input name="city" placeholder="Qyteti" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-        <input name="contactName" placeholder="Kontakt" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-        <input name="phone" placeholder="Telefoni" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-        <input name="notes" placeholder="Shenime" className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2" />
+        <input
+          name="code"
+          required
+          placeholder="Kodi objektit"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+        <input
+          name="name"
+          required
+          placeholder="Emri objektit"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+        <input
+          name="address"
+          placeholder="Adresa"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+        <input
+          name="city"
+          placeholder="Qyteti"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+        <input
+          name="contactName"
+          placeholder="Kontakt"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+        <input
+          name="phone"
+          placeholder="Telefoni"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+        <input
+          name="notes"
+          placeholder="Shenime"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2"
+        />
       </div>
-      <button disabled={busy} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+      <button
+        disabled={busy}
+        className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+      >
         {busy ? 'Duke ruajtur...' : 'Krijo objekt'}
       </button>
     </form>

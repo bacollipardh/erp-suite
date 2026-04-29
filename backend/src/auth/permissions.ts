@@ -1,6 +1,12 @@
 export const AUTH_COOKIE_NAME = 'erp_token';
 
-export const ROLE_CODES = ['ADMIN', 'MANAGER', 'SALES', 'PURCHASE'] as const;
+export const ROLE_CODES = [
+  'ADMIN',
+  'MANAGER',
+  'SALES',
+  'PURCHASE',
+  'WMS',
+] as const;
 
 export type RoleCode = (typeof ROLE_CODES)[number];
 
@@ -181,6 +187,25 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleCode, Permission[]> = {
     PERMISSIONS.purchaseInvoicesRead,
     PERMISSIONS.purchaseInvoicesManage,
     PERMISSIONS.purchaseInvoicesPay,
+    PERMISSIONS.pdfRead,
+  ],
+  WMS: [
+    PERMISSIONS.dashboard,
+    PERMISSIONS.warehousesRead,
+    PERMISSIONS.documentSeriesRead,
+    PERMISSIONS.paymentMethodsRead,
+    PERMISSIONS.itemsRead,
+    PERMISSIONS.customersRead,
+    PERMISSIONS.stockRead,
+    PERMISSIONS.wmsRead,
+    PERMISSIONS.wmsManage,
+    PERMISSIONS.wmsReceive,
+    PERMISSIONS.wmsMove,
+    PERMISSIONS.wmsPick,
+    PERMISSIONS.wmsCount,
+    PERMISSIONS.agentOrdersRead,
+    PERMISSIONS.agentOrdersAssign,
+    PERMISSIONS.salesInvoicesRead,
     PERMISSIONS.pdfRead,
   ],
 };

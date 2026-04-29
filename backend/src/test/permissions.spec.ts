@@ -1,4 +1,8 @@
-import { PERMISSIONS, getPermissionsForRole, hasPermissions } from '../auth/permissions';
+import {
+  PERMISSIONS,
+  getPermissionsForRole,
+  hasPermissions,
+} from '../auth/permissions';
 
 describe('Permission matrix', () => {
   it('grants every permission to ADMIN', () => {
@@ -7,7 +11,9 @@ describe('Permission matrix', () => {
     expect(permissions).toContain(PERMISSIONS.rolesManage);
     expect(permissions).toContain(PERMISSIONS.stockTransfer);
     expect(permissions).toContain(PERMISSIONS.fiscalize);
-    expect(hasPermissions('ADMIN', [PERMISSIONS.rolesManage, PERMISSIONS.fiscalize])).toBe(true);
+    expect(
+      hasPermissions('ADMIN', [PERMISSIONS.rolesManage, PERMISSIONS.fiscalize]),
+    ).toBe(true);
   });
 
   it('allows MANAGER to operate stock but not manage roles', () => {
@@ -22,7 +28,12 @@ describe('Permission matrix', () => {
     expect(permissions).toContain(PERMISSIONS.accountingRead);
     expect(permissions).toContain(PERMISSIONS.reportsAccounting);
     expect(permissions).not.toContain(PERMISSIONS.rolesManage);
-    expect(hasPermissions('MANAGER', [PERMISSIONS.stockAdjust, PERMISSIONS.stockTransfer])).toBe(true);
+    expect(
+      hasPermissions('MANAGER', [
+        PERMISSIONS.stockAdjust,
+        PERMISSIONS.stockTransfer,
+      ]),
+    ).toBe(true);
     expect(hasPermissions('MANAGER', [PERMISSIONS.rolesManage])).toBe(false);
   });
 
@@ -40,6 +51,21 @@ describe('Permission matrix', () => {
     expect(permissions).not.toContain(PERMISSIONS.wmsManage);
     expect(permissions).not.toContain(PERMISSIONS.accountingRead);
     expect(permissions).not.toContain(PERMISSIONS.reportsAccounting);
+  });
+
+  it('allows WMS users to handle warehouse execution without finance access', () => {
+    const permissions = getPermissionsForRole('WMS');
+
+    expect(permissions).toContain(PERMISSIONS.wmsRead);
+    expect(permissions).toContain(PERMISSIONS.wmsPick);
+    expect(permissions).toContain(PERMISSIONS.wmsMove);
+    expect(permissions).toContain(PERMISSIONS.wmsReceive);
+    expect(permissions).toContain(PERMISSIONS.agentOrdersRead);
+    expect(permissions).toContain(PERMISSIONS.agentOrdersAssign);
+    expect(permissions).toContain(PERMISSIONS.salesInvoicesRead);
+    expect(permissions).not.toContain(PERMISSIONS.salesInvoicesManage);
+    expect(permissions).not.toContain(PERMISSIONS.financeAccountsManage);
+    expect(permissions).not.toContain(PERMISSIONS.accountingManage);
   });
 
   it('returns no permissions for unknown roles', () => {
