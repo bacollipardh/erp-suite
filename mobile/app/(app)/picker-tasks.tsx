@@ -18,7 +18,20 @@ import { formatDateTime, formatQty } from '../../src/lib/format';
 import type { WmsTask } from '../../src/types';
 import { useAuth } from '../../src/providers/auth-provider';
 
-const FILTERS = ['MY_OPEN', 'ALL_OPEN', 'DONE', 'BLOCKED'];
+const FILTERS = ['MY_OPEN', 'ALL_OPEN', 'DONE', 'SHORT', 'BLOCKED'];
+
+function workflowHint(task: WmsTask) {
+  if (task.taskType === 'PICK') {
+    return 'Nis task-un, pastaj konfirmo picking-un që rezervimet të kalojnë në picked dhe të krijohet pack step.';
+  }
+  if (task.taskType === 'PACK') {
+    return 'Pas picking-ut, konfirmo packing-un që dokumenti të jetë gati për postim/shipping.';
+  }
+  if (task.taskType === 'SHIP') {
+    return 'Task informues i shipping-ut. Zakonisht mbyllet nga postimi i faturës ose bypass-i i shitjes.';
+  }
+  return 'Task operativ WMS me status dhe gjurmë të plotë audit.';
+}
 
 export default function PickerTasksScreen() {
   const router = useRouter();
@@ -27,6 +40,7 @@ export default function PickerTasksScreen() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('MY_OPEN');
 
@@ -67,6 +81,7 @@ export default function PickerTasksScreen() {
       );
     }
     if (filter === 'DONE') return tasks.filter((task) => task.status === 'DONE');
+    if (filter === 'SHORT') return tasks.filter((task) => task.status === 'SHORT');
     return tasks.filter((task) => task.status === 'BLOCKED');
   }, [filter, tasks, user?.id]);
 
@@ -76,15 +91,67 @@ export default function PickerTasksScreen() {
   ) {
     setActionLoading(`${taskId}:${action}`);
     setError(null);
+    setSuccess(null);
     try {
       await apiRequest(apiUrl, `/wms/tasks/${taskId}/${action}`, {
         method: 'POST',
         token,
         body: {},
       });
+      setSuccess(
+        action === 'start'
+          ? 'Task-u u nis me sukses.'
+          : action === 'complete'
+            ? 'Task-u u mbyll me sukses.'
+            : action === 'short'
+              ? 'Task-u u kalua në SHORT.'
+              : 'Task-u u anulua.',
+      );
       await load();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Action failed');
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function runWorkflowAction(
+    task: WmsTask,
+    action: 'confirm-pick' | 'release-pick' | 'confirm-pack',
+  ) {
+    if (!task.sourceId || task.sourceType !== 'SALES_INVOICE') {
+      setError('Ky task nuk është i lidhur me një sales invoice workflow.');
+      return;
+    }
+    setActionLoading(`${task.id}:${action}`);
+    setError(null);
+    setSuccess(null);
+    try {
+      if (action === 'confirm-pick') {
+        await apiRequest(apiUrl, `/wms/picking/sales-invoices/${task.sourceId}/confirm`, {
+          method: 'POST',
+          token,
+          body: {},
+        });
+        setSuccess('Picking u konfirmua. Pack step tani duhet të jetë gati.');
+      } else if (action === 'release-pick') {
+        await apiRequest(apiUrl, `/wms/picking/sales-invoices/${task.sourceId}/release`, {
+          method: 'POST',
+          token,
+          body: {},
+        });
+        setSuccess('Rezervimet e picking-ut u liruan.');
+      } else {
+        await apiRequest(apiUrl, `/wms/packing/sales-invoices/${task.sourceId}/pack`, {
+          method: 'POST',
+          token,
+          body: {},
+        });
+        setSuccess('Packing u konfirmua. Dokumenti është gati për postim/shipping.');
+      }
+      await load();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Workflow action failed');
     } finally {
       setActionLoading(null);
     }
@@ -98,6 +165,12 @@ export default function PickerTasksScreen() {
       />
 
       <SessionActions onHome={() => router.push('/home')} onLogout={() => void logout()} />
+
+      {success ? (
+        <SectionCard title="U krye">
+          <Text style={{ color: '#0F9D58' }}>{success}</Text>
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Kërko dhe filtro">
         <Input
@@ -127,6 +200,8 @@ export default function PickerTasksScreen() {
                     ? 'Të Hapura'
                     : entry === 'DONE'
                       ? 'Kryer'
+                      : entry === 'SHORT'
+                        ? 'Short'
                       : 'Blocked'}
               </Text>
             </Pressable>
@@ -159,6 +234,9 @@ export default function PickerTasksScreen() {
               <Text style={{ color: '#64748B', fontSize: 12 }}>
                 Krijuar: {formatDateTime(task.createdAt)}
               </Text>
+              <Text style={{ color: '#64748B', fontSize: 12 }}>
+                {workflowHint(task)}
+              </Text>
 
               <View style={{ gap: 8 }}>
                 {task.status === 'PENDING' ? (
@@ -168,7 +246,31 @@ export default function PickerTasksScreen() {
                     onPress={() => void runTaskAction(task.id, 'start')}
                   />
                 ) : null}
-                {task.status === 'IN_PROGRESS' ? (
+                {task.taskType === 'PICK' && task.sourceType === 'SALES_INVOICE' && ['PENDING', 'IN_PROGRESS', 'BLOCKED'].includes(task.status) ? (
+                  <>
+                    <Button
+                      label="Konfirmo Picking"
+                      variant="secondary"
+                      loading={actionLoading === `${task.id}:confirm-pick`}
+                      onPress={() => void runWorkflowAction(task, 'confirm-pick')}
+                    />
+                    <Button
+                      label="Liro Rezervimet"
+                      variant="ghost"
+                      loading={actionLoading === `${task.id}:release-pick`}
+                      onPress={() => void runWorkflowAction(task, 'release-pick')}
+                    />
+                  </>
+                ) : null}
+                {task.taskType === 'PACK' && task.sourceType === 'SALES_INVOICE' && ['PENDING', 'IN_PROGRESS', 'BLOCKED'].includes(task.status) ? (
+                  <Button
+                    label="Konfirmo Packing"
+                    variant="secondary"
+                    loading={actionLoading === `${task.id}:confirm-pack`}
+                    onPress={() => void runWorkflowAction(task, 'confirm-pack')}
+                  />
+                ) : null}
+                {task.taskType !== 'PICK' && task.taskType !== 'PACK' && task.status === 'IN_PROGRESS' ? (
                   <>
                     <Button
                       label="Complete Task"
@@ -183,6 +285,15 @@ export default function PickerTasksScreen() {
                       onPress={() => void runTaskAction(task.id, 'short')}
                     />
                   </>
+                ) : null}
+                {['PICK', 'PACK'].includes(task.taskType) &&
+                ['PENDING', 'IN_PROGRESS', 'BLOCKED'].includes(task.status) ? (
+                  <Button
+                    label="Shëno si Short"
+                    variant="ghost"
+                    loading={actionLoading === `${task.id}:short`}
+                    onPress={() => void runTaskAction(task.id, 'short')}
+                  />
                 ) : null}
                 {['PENDING', 'IN_PROGRESS'].includes(task.status) ? (
                   <Button

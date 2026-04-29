@@ -943,7 +943,7 @@ export class WmsService {
           sourceType: 'SALES_INVOICE',
           sourceId: salesInvoiceId,
           taskType: WmsTaskType.PICK,
-          status: WmsTaskStatus.PENDING,
+          status: { in: [WmsTaskStatus.PENDING, WmsTaskStatus.IN_PROGRESS] },
         },
         data: { status: WmsTaskStatus.DONE, completedAt: new Date() },
       });
@@ -1036,9 +1036,15 @@ export class WmsService {
         where: {
           sourceType: 'SALES_INVOICE',
           sourceId: salesInvoiceId,
-          status: WmsTaskStatus.PENDING,
+          status: {
+            in: [
+              WmsTaskStatus.PENDING,
+              WmsTaskStatus.IN_PROGRESS,
+              WmsTaskStatus.BLOCKED,
+            ],
+          },
         },
-        data: { status: WmsTaskStatus.CANCELLED },
+        data: { status: WmsTaskStatus.CANCELLED, completedAt: new Date() },
       });
 
       return { salesInvoiceId, released: reservations.length };
