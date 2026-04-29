@@ -43,7 +43,7 @@ export type AgentOrder = {
   salesReturnId?: string | null;
   salesInvoice?: { id: string; docNo: string; status: string } | null;
   salesReturn?: { id: string; docNo: string; status: string } | null;
-  lines: AgentOrderLine[];
+  lines?: AgentOrderLine[];
   tasks?: WmsTask[];
 };
 

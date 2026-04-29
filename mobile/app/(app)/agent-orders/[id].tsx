@@ -150,6 +150,7 @@ export default function AgentOrderDetailsScreen() {
     );
   }
 
+  const lines = Array.isArray(order.lines) ? order.lines : [];
   const seriesOptions = isReturnOrder ? returnSeries : invoiceSeries;
 
   return (
@@ -388,8 +389,8 @@ export default function AgentOrderDetailsScreen() {
         </SectionCard>
       ) : null}
 
-      <SectionCard title="Rreshtat" subtitle={`${order.lines.length} rreshta në order`}>
-        {order.lines.map((line) => (
+      <SectionCard title="Rreshtat" subtitle={`${lines.length} rreshta në order`}>
+        {lines.map((line) => (
           <View
             key={line.id}
             style={{

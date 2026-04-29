@@ -95,6 +95,10 @@ export default function AgentOrdersScreen() {
 
       {!loading && !error
         ? orders.map((order) => (
+            (() => {
+              const lines = Array.isArray(order.lines) ? order.lines : [];
+              const totalQty = lines.reduce((sum, line) => sum + Number(line.qty ?? 0), 0);
+              return (
             <Link key={order.id} href={`/agent-orders/${order.id}` as any} asChild>
               <Pressable
                 style={{
@@ -129,16 +133,15 @@ export default function AgentOrdersScreen() {
                   {order.orderType} | Prioriteti {order.priority}
                 </Text>
                 <Text style={{ color: '#334155' }}>
-                  {order.lines.length} rreshta | Sasia totale{' '}
-                  {formatQty(
-                    order.lines.reduce((sum, line) => sum + Number(line.qty ?? 0), 0),
-                  )}
+                  {lines.length} rreshta | Sasia totale {formatQty(totalQty)}
                 </Text>
                 <Text style={{ color: '#64748B', fontSize: 12 }}>
                   Data: {formatDateTime(order.docDate ?? null)}
                 </Text>
               </Pressable>
             </Link>
+              );
+            })()
           ))
         : null}
     </Screen>
