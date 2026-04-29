@@ -1,4 +1,4 @@
-import { Link, useFocusEffect } from 'expo-router';
+import { Link, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import {
@@ -19,6 +19,7 @@ import { useAuth } from '../../src/providers/auth-provider';
 const FILTERS = ['ALL', 'DRAFT', 'SUBMITTED', 'APPROVED', 'WMS_ASSIGNED', 'PICKING', 'READY_FOR_DOCUMENT', 'DOCUMENT_CREATED'];
 
 export default function AgentOrdersScreen() {
+  const router = useRouter();
   const { apiUrl, token } = useAuth();
   const [orders, setOrders] = useState<AgentOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +60,22 @@ export default function AgentOrdersScreen() {
         title="Agent Orders"
         subtitle="Lista operative e orders të agjentit me statusin e WMS dhe dokumentit."
       />
+
+      <SectionCard title="Veprim i Ri" subtitle="Krijo porosi të re nga telefoni.">
+        <Pressable
+          onPress={() => router.push('/agent-orders/new')}
+          style={{
+            backgroundColor: '#2553EB',
+            borderRadius: 14,
+            paddingVertical: 14,
+            paddingHorizontal: 16,
+          }}
+        >
+          <Text style={{ color: '#FFFFFF', fontWeight: '700', textAlign: 'center' }}>
+            Krijo Order të Ri
+          </Text>
+        </Pressable>
+      </SectionCard>
 
       <SectionCard title="Kërko dhe filtro">
         <Input

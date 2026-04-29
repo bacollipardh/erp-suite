@@ -73,6 +73,7 @@ export default function AgentDashboardScreen() {
             title="Shkurtore"
             subtitle="Hyr direkt te lista operative ose te skaneri."
           >
+            <Button label="Krijo Order të Ri" onPress={() => router.push('/agent-orders/new')} />
             <Button label="Hap Agent Orders" onPress={() => router.push('/agent-orders')} />
             <Button label="Hap Scanner" variant="secondary" onPress={() => router.push('/scanner')} />
           </SectionCard>

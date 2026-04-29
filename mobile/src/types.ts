@@ -23,6 +23,59 @@ export type AgentOrderLine = {
   } | null;
 };
 
+export type Customer = {
+  id: string;
+  code?: string | null;
+  name: string;
+  isActive?: boolean;
+};
+
+export type CustomerObject = {
+  id: string;
+  customerId: string;
+  code?: string | null;
+  name: string;
+  isActive?: boolean;
+};
+
+export type Warehouse = {
+  id: string;
+  code?: string | null;
+  name: string;
+  isActive?: boolean;
+};
+
+export type Item = {
+  id: string;
+  code?: string | null;
+  barcode?: string | null;
+  name: string;
+  standardSalesPrice?: number | string | null;
+  taxRate?: {
+    id?: string;
+    code?: string | null;
+    ratePercent?: number | string | null;
+    rate?: number | string | null;
+  } | null;
+  isActive?: boolean;
+};
+
+export type ReturnSource = {
+  id: string;
+  docNo: string;
+  customerId: string;
+  customer?: { id?: string; name?: string | null } | null;
+  warehouse?: { id?: string; name?: string | null } | null;
+  lines: Array<{
+    id: string;
+    itemId: string;
+    qty: number | string;
+    unitPrice: number | string;
+    taxPercent: number | string;
+    item?: { code?: string | null; name?: string | null } | null;
+  }>;
+};
+
 export type AgentOrder = {
   id: string;
   orderNo: string;
