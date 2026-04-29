@@ -138,7 +138,38 @@ export class AgentOrdersService {
       orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
     });
 
-    return { ...order, tasks };
+    const [orderTimeline, taskTimeline, customerSnapshot] = await Promise.all([
+      this.auditLogs.findEntityLogs({
+        entityType: 'agent_orders',
+        entityId: id,
+        limit: 40,
+      }),
+      tasks.length
+        ? this.prisma.auditLog.findMany({
+            where: {
+              entityType: 'wms_tasks',
+              entityId: { in: tasks.map((task) => task.id) },
+            },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                },
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 80,
+          })
+        : Promise.resolve([]),
+      this.buildCustomerSnapshot(order.customerId),
+    ]);
+
+    const documentReadiness = this.buildDocumentReadiness(order, tasks);
+    const timeline = this.buildOrderTimeline(orderTimeline, taskTimeline, tasks);
+
+    return { ...order, tasks, customerSnapshot, documentReadiness, timeline };
   }
 
   async create(dto: CreateAgentOrderDto, userId: string) {
@@ -438,6 +469,60 @@ export class AgentOrdersService {
       ],
       { status: AgentOrderStatus.CANCELLED },
     );
+  }
+
+  async clone(id: string, userId: string) {
+    const source = await this.prisma.agentOrder.findUnique({
+      where: { id },
+      include: this.orderInclude(true),
+    });
+    if (!source) throw new NotFoundException('Agent order not found');
+
+    const cloned = await this.prisma.$transaction(async (tx) => {
+      const orderNo = await this.nextOrderNo(tx);
+      return tx.agentOrder.create({
+        data: {
+          orderNo,
+          orderType: source.orderType,
+          customerId: source.customerId,
+          customerObjectId: source.customerObjectId ?? null,
+          warehouseId: source.warehouseId,
+          sourceSalesInvoiceId: source.sourceSalesInvoiceId ?? null,
+          docDate: new Date(),
+          dueDate: source.dueDate ?? null,
+          priority: source.priority,
+          notes: nullableText(source.notes)
+            ? `Copy of ${source.orderNo}\n${source.notes}`
+            : `Copy of ${source.orderNo}`,
+          createdById: userId,
+          lines: {
+            create: source.lines.map((line: any, index: number) => ({
+              lineNo: index + 1,
+              itemId: line.itemId,
+              salesInvoiceLineId: line.salesInvoiceLineId ?? null,
+              description: line.description ?? null,
+              qty: line.qty,
+              unitPrice: line.unitPrice,
+              discountPercent: line.discountPercent,
+              taxPercent: line.taxPercent,
+              notes: line.notes ?? null,
+            })),
+          },
+        },
+        include: this.orderInclude(true),
+      });
+    });
+
+    await this.audit(cloned.id, userId, 'CLONE_CREATE', {
+      sourceOrderId: source.id,
+      sourceOrderNo: source.orderNo,
+    });
+    await this.audit(source.id, userId, 'CLONED_TO_NEW_ORDER', {
+      clonedOrderId: cloned.id,
+      clonedOrderNo: cloned.orderNo,
+    });
+
+    return cloned;
   }
 
   async createSalesInvoice(
@@ -940,6 +1025,174 @@ export class AgentOrdersService {
         error instanceof Error ? error.message : 'WMS preparation failed';
       return { ready: false, warning: message };
     }
+  }
+
+  private async buildCustomerSnapshot(customerId: string) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        phone: true,
+        email: true,
+        creditLimit: true,
+      },
+    });
+    if (!customer) return null;
+
+    const [invoices, objectCount] = await Promise.all([
+      this.prisma.salesInvoice.findMany({
+        where: {
+          customerId,
+          status: {
+            in: [
+              DocumentStatus.POSTED,
+              DocumentStatus.PARTIALLY_RETURNED,
+              DocumentStatus.FULLY_RETURNED,
+            ],
+          },
+        },
+        select: {
+          id: true,
+          docNo: true,
+          docDate: true,
+          dueDate: true,
+          grandTotal: true,
+          amountPaid: true,
+          createdAt: true,
+        },
+        orderBy: [{ docDate: 'desc' }, { createdAt: 'desc' }],
+      }),
+      this.prisma.customerObject.count({ where: { customerId, isActive: true } }),
+    ]);
+
+    const todayTime = new Date().getTime();
+    const totalSales = invoices.reduce(
+      (sum, invoice) => sum + Number(invoice.grandTotal ?? 0),
+      0,
+    );
+    const totalPaid = invoices.reduce(
+      (sum, invoice) => sum + Number(invoice.amountPaid ?? 0),
+      0,
+    );
+    const outstandingAmount = Math.max(0, totalSales - totalPaid);
+    const creditLimit = Number(customer.creditLimit ?? 0);
+    const creditUsagePercent =
+      creditLimit > 0 ? Math.round((outstandingAmount / creditLimit) * 1000) / 10 : 0;
+    const openInvoices = invoices.filter(
+      (invoice) => Number(invoice.amountPaid ?? 0) < Number(invoice.grandTotal ?? 0),
+    );
+    const overdueInvoices = openInvoices.filter(
+      (invoice) =>
+        invoice.dueDate && new Date(invoice.dueDate).getTime() < todayTime,
+    );
+    const lastInvoice = invoices[0] ?? null;
+
+    return {
+      ...customer,
+      creditLimit,
+      creditUsagePercent,
+      postedInvoiceCount: invoices.length,
+      openInvoicesCount: openInvoices.length,
+      overdueInvoicesCount: overdueInvoices.length,
+      outstandingAmount,
+      totalSales,
+      totalPaid,
+      objectCount,
+      lastInvoice: lastInvoice
+        ? {
+            ...lastInvoice,
+            outstandingAmount: Math.max(
+              0,
+              Number(lastInvoice.grandTotal ?? 0) - Number(lastInvoice.amountPaid ?? 0),
+            ),
+          }
+        : null,
+    };
+  }
+
+  private buildDocumentReadiness(order: any, tasks: any[]) {
+    const openTasks = tasks.filter((task) =>
+      [WmsTaskStatus.PENDING, WmsTaskStatus.IN_PROGRESS, WmsTaskStatus.BLOCKED].includes(task.status),
+    );
+    const blockedTasks = tasks.filter((task) => task.status === WmsTaskStatus.BLOCKED);
+    const shortTasks = tasks.filter((task) => task.status === WmsTaskStatus.SHORT);
+    const doneTasks = tasks.filter((task) => task.status === WmsTaskStatus.DONE);
+
+    const warnings: string[] = [];
+    if (!order.assignedPickerId && order.status !== AgentOrderStatus.DRAFT) {
+      warnings.push('Picker nuk është caktuar ende.');
+    }
+    if (blockedTasks.length > 0) {
+      warnings.push(`${blockedTasks.length} task(e) janë të bllokuara dhe kërkojnë vendim supervisor.`);
+    }
+    if (shortTasks.length > 0) {
+      warnings.push(`${shortTasks.length} task(e) janë në short dhe duan trajtim para dokumentit.`);
+    }
+    if (
+      order.status === AgentOrderStatus.READY_FOR_DOCUMENT &&
+      (blockedTasks.length > 0 || shortTasks.length > 0)
+    ) {
+      warnings.push('Order-i është READY_FOR_DOCUMENT, por ka exception-e operative aktive.');
+    }
+
+    const nextActions: string[] = [];
+    if (order.status === AgentOrderStatus.DRAFT) nextActions.push('Submit order-in për aprovim.');
+    if ([AgentOrderStatus.DRAFT, AgentOrderStatus.SUBMITTED].includes(order.status)) {
+      nextActions.push('Aprovo order-in para caktimit të picker-it.');
+    }
+    if ([AgentOrderStatus.SUBMITTED, AgentOrderStatus.APPROVED].includes(order.status)) {
+      nextActions.push('Cakto picker-in dhe krijo task-et WMS.');
+    }
+    if (order.status === AgentOrderStatus.WMS_ASSIGNED) {
+      nextActions.push('Nise WMS picking/receiving nga picker app.');
+    }
+    if (order.status === AgentOrderStatus.PICKING) {
+      nextActions.push('Mbylli task-et operative dhe finalizo WMS-in.');
+    }
+    if (order.status === AgentOrderStatus.READY_FOR_DOCUMENT) {
+      nextActions.push('Krijo dokumentin final nga mobile ose web.');
+    }
+
+    return {
+      openTasks: openTasks.length,
+      blockedTasks: blockedTasks.length,
+      shortTasks: shortTasks.length,
+      doneTasks: doneTasks.length,
+      hasAssignedPicker: Boolean(order.assignedPickerId),
+      canCreateDocument:
+        order.status === AgentOrderStatus.READY_FOR_DOCUMENT &&
+        blockedTasks.length === 0 &&
+        shortTasks.length === 0,
+      warnings,
+      nextActions,
+    };
+  }
+
+  private buildOrderTimeline(orderTimeline: any[], taskTimeline: any[], tasks: any[]) {
+    const taskMap = new Map(tasks.map((task) => [task.id, task]));
+    return [...orderTimeline, ...taskTimeline]
+      .map((entry) => {
+        const task = entry.entityType === 'wms_tasks' ? taskMap.get(entry.entityId) : null;
+        return {
+          id: entry.id,
+          scope: entry.entityType === 'wms_tasks' ? 'TASK' : 'ORDER',
+          action: entry.action,
+          createdAt: entry.createdAt,
+          metadata: entry.metadata,
+          user: entry.user,
+          taskId: task?.id ?? null,
+          taskType: task?.taskType ?? null,
+          taskStatus: task?.status ?? null,
+          itemCode: task?.item?.code ?? null,
+          referenceNo: task?.referenceNo ?? null,
+        };
+      })
+      .sort(
+        (left, right) =>
+          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+      );
   }
 
   private resolveOrderType(value: string) {

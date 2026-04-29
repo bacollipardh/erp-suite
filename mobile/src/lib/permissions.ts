@@ -7,14 +7,17 @@ export type SessionUser = {
 };
 
 export const PERMISSIONS = {
+  dashboard: 'dashboard:read',
   agentOrdersRead: 'agent-orders:read',
   agentOrdersManage: 'agent-orders:manage',
   agentOrdersAssign: 'agent-orders:assign',
+  reportsReceivables: 'reports:receivables',
   wmsRead: 'wms:read',
   wmsManage: 'wms:manage',
   wmsPick: 'wms:pick',
   salesInvoicesManage: 'sales-invoices:manage',
   salesReturnsManage: 'sales-returns:manage',
+  auditLogsRead: 'audit-logs:read',
 } as const;
 
 export function hasPermission(

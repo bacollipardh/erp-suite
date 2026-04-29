@@ -31,6 +31,7 @@ import {
   WmsStatusDto,
   WmsTaskActionDto,
   WmsTaskPickConfirmDto,
+  WmsTaskReassignDto,
   WmsTaskShortDto,
 } from './dto/wms-operations.dto';
 
@@ -1774,6 +1775,64 @@ export class WmsService {
       remainingQty: nextQty,
       resultingStatus: nextStatus,
       notes,
+    });
+
+    return updatedTask;
+  }
+
+  async reassignTask(id: string, dto: WmsTaskReassignDto, userId: string) {
+    const task = await this.prisma.wmsTask.findUnique({ where: { id } });
+    if (!task) throw new NotFoundException('WMS task not found');
+    if (
+      task.status === WmsTaskStatus.DONE ||
+      task.status === WmsTaskStatus.CANCELLED
+    ) {
+      throw new BadRequestException('Closed WMS tasks cannot be reassigned');
+    }
+
+    const assignee = await this.prisma.user.findUnique({
+      where: { id: dto.assignedToId },
+      select: { id: true, fullName: true, email: true, isActive: true },
+    });
+    if (!assignee?.isActive) {
+      throw new BadRequestException('Assignee user not found or inactive');
+    }
+
+    const updatedTask = await this.prisma.$transaction(async (tx) => {
+      const nextTask = await tx.wmsTask.update({
+        where: { id },
+        data: {
+          assignedToId: dto.assignedToId,
+          notes: this.combineTaskNotes(
+            task.notes,
+            nullableText(dto.notes)
+              ? `Reassigned to ${assignee.fullName} | ${nullableText(dto.notes)}`
+              : `Reassigned to ${assignee.fullName}`,
+          ),
+        },
+        include: {
+          warehouse: true,
+          item: true,
+          sourceLocation: true,
+          destinationLocation: true,
+        },
+      });
+
+      if (task.sourceType === 'AGENT_ORDER' && task.sourceId) {
+        await tx.agentOrder.update({
+          where: { id: task.sourceId },
+          data: { assignedPickerId: dto.assignedToId },
+        });
+      }
+
+      return nextTask;
+    });
+
+    await this.logTaskAudit(id, userId, 'REASSIGN', {
+      previousAssignedToId: task.assignedToId,
+      assignedToId: dto.assignedToId,
+      assigneeName: assignee.fullName,
+      notes: nullableText(dto.notes),
     });
 
     return updatedTask;

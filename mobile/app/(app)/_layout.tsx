@@ -20,6 +20,7 @@ export default function ProtectedLayout() {
       <Stack.Screen name="agent" options={{ title: 'Agjenti' }} />
       <Stack.Screen name="agent-orders" options={{ title: 'Agent Orders' }} />
       <Stack.Screen name="agent-orders/new" options={{ title: 'Order i Ri' }} />
+      <Stack.Screen name="agent-orders/[id]" options={{ title: 'Detajet e Order-it' }} />
       <Stack.Screen name="picker" options={{ title: 'Picker' }} />
       <Stack.Screen name="picker-tasks" options={{ title: 'Detyrat WMS' }} />
       <Stack.Screen name="picker-tasks/[id]" options={{ title: 'Workflow Picker' }} />

@@ -214,3 +214,8 @@ export class WmsTaskShortDto extends WmsTaskActionDto {
   @IsString()
   reasonCode?: string;
 }
+
+export class WmsTaskReassignDto extends WmsTaskActionDto {
+  @IsUUID()
+  assignedToId: string;
+}

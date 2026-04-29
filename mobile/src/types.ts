@@ -98,6 +98,55 @@ export type AgentOrder = {
   salesReturn?: { id: string; docNo: string; status: string } | null;
   lines?: AgentOrderLine[];
   tasks?: WmsTask[];
+  customerSnapshot?: {
+    id: string;
+    code?: string | null;
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+    creditLimit?: number | string | null;
+    creditUsagePercent?: number | string | null;
+    postedInvoiceCount?: number;
+    openInvoicesCount?: number;
+    overdueInvoicesCount?: number;
+    outstandingAmount?: number | string | null;
+    totalSales?: number | string | null;
+    totalPaid?: number | string | null;
+    objectCount?: number;
+    lastInvoice?: {
+      id: string;
+      docNo: string;
+      docDate?: string | null;
+      outstandingAmount?: number | string | null;
+    } | null;
+  } | null;
+  documentReadiness?: {
+    openTasks: number;
+    blockedTasks: number;
+    shortTasks: number;
+    doneTasks: number;
+    hasAssignedPicker: boolean;
+    canCreateDocument: boolean;
+    warnings: string[];
+    nextActions: string[];
+  } | null;
+  timeline?: Array<{
+    id: string;
+    scope: 'ORDER' | 'TASK' | string;
+    action: string;
+    createdAt?: string;
+    metadata?: Record<string, unknown> | null;
+    user?: {
+      id?: string;
+      fullName?: string | null;
+      email?: string | null;
+    } | null;
+    taskId?: string | null;
+    taskType?: string | null;
+    taskStatus?: string | null;
+    itemCode?: string | null;
+    referenceNo?: string | null;
+  }>;
 };
 
 export type PickerOption = {

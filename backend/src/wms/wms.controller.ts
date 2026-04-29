@@ -13,6 +13,7 @@ import {
   WmsStatusDto,
   WmsTaskActionDto,
   WmsTaskPickConfirmDto,
+  WmsTaskReassignDto,
   WmsTaskShortDto,
 } from './dto/wms-operations.dto';
 import { WmsQueryDto } from './dto/wms-query.dto';
@@ -152,6 +153,12 @@ export class WmsController {
   @RequirePermissions(PERMISSIONS.wmsManage)
   shortTask(@Param('id') id: string, @Body() dto: WmsTaskShortDto, @CurrentUser() user: JwtPayload) {
     return this.wmsService.shortTask(id, dto, user.sub);
+  }
+
+  @Post('tasks/:id/reassign')
+  @RequirePermissions(PERMISSIONS.wmsManage)
+  reassignTask(@Param('id') id: string, @Body() dto: WmsTaskReassignDto, @CurrentUser() user: JwtPayload) {
+    return this.wmsService.reassignTask(id, dto, user.sub);
   }
 
   @Post('tasks/:id/pick-confirm')

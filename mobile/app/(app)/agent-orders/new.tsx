@@ -16,6 +16,13 @@ import {
 } from '../../../src/components/ui';
 import { apiList, apiRequest } from '../../../src/lib/api';
 import { formatNumber } from '../../../src/lib/format';
+import {
+  enqueueAgentOrderDraft,
+  listQueuedAgentOrders,
+  removeQueuedAgentOrder,
+  replaceQueuedAgentOrders,
+  type QueuedAgentOrderDraft,
+} from '../../../src/lib/offline-queue';
 import type {
   AgentOrder,
   Customer,
@@ -83,6 +90,8 @@ export default function AgentOrderNewScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [queuedDrafts, setQueuedDrafts] = useState<QueuedAgentOrderDraft[]>([]);
+  const [syncingQueue, setSyncingQueue] = useState(false);
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerObjects, setCustomerObjects] = useState<CustomerObject[]>([]);
@@ -210,6 +219,7 @@ export default function AgentOrderNewScreen() {
       setWarehouses(nextWarehouses);
       setItems(nextItems);
       setReturnSources(nextReturnSources);
+      setQueuedDrafts(await listQueuedAgentOrders());
     } catch (nextError) {
       setError(parseApiError(nextError));
     } finally {
@@ -250,6 +260,88 @@ export default function AgentOrderNewScreen() {
     });
   }
 
+  function buildPayload() {
+    return {
+      orderType,
+      customerId,
+      customerObjectId: customerObjectId || undefined,
+      warehouseId,
+      sourceSalesInvoiceId: sourceSalesInvoiceId || undefined,
+      docDate,
+      dueDate: dueDate || undefined,
+      priority: Number(priority || 5),
+      notes: notes || undefined,
+      lines: lines.map((line) => ({
+        itemId: line.itemId,
+        salesInvoiceLineId: line.salesInvoiceLineId || undefined,
+        description: line.description || undefined,
+        qty: Number(line.qty),
+        unitPrice: Number(line.unitPrice),
+        discountPercent: Number(line.discountPercent || 0),
+        taxPercent: Number(line.taxPercent || 0),
+        notes: line.notes || undefined,
+      })),
+    };
+  }
+
+  async function saveDraftLocally() {
+    if (!customerId || !warehouseId || !lines.some((line) => line.itemId)) {
+      setError('Plotëso klientin, magazinën dhe së paku një rresht para ruajtjes lokale.');
+      return;
+    }
+
+    const selectedCustomer = customers.find((entry) => entry.id === customerId);
+    const selectedWarehouse = warehouses.find((entry) => entry.id === warehouseId);
+    const queued = await enqueueAgentOrderDraft({
+      summary: {
+        customerName: selectedCustomer?.name,
+        warehouseName: selectedWarehouse?.name,
+        orderType,
+        lineCount: lines.length,
+        totalAmount: totals.total,
+      },
+      payload: buildPayload(),
+    });
+    setQueuedDrafts((current) => [queued, ...current].slice(0, 25));
+    setSuccess('Draft-i u ruajt lokalisht dhe pret sync.');
+  }
+
+  async function syncQueuedDrafts() {
+    if (!queuedDrafts.length) {
+      setSuccess('Nuk ka draft-e në queue.');
+      return;
+    }
+    setSyncingQueue(true);
+    setError(null);
+    try {
+      const remaining: QueuedAgentOrderDraft[] = [];
+      let synced = 0;
+      for (const entry of queuedDrafts) {
+        try {
+          await apiRequest<AgentOrder>(apiUrl, '/agent-orders', {
+            method: 'POST',
+            token,
+            body: entry.payload,
+          });
+          synced += 1;
+        } catch {
+          remaining.push(entry);
+        }
+      }
+      await replaceQueuedAgentOrders(remaining);
+      setQueuedDrafts(remaining);
+      setSuccess(
+        remaining.length
+          ? `${synced} draft(e) u sinkronizuan. ${remaining.length} mbetën në queue.`
+          : `${synced} draft(e) u sinkronizuan me sukses.`,
+      );
+    } catch (nextError) {
+      setError(parseApiError(nextError));
+    } finally {
+      setSyncingQueue(false);
+    }
+  }
+
   async function submit() {
     setError(null);
     setSuccess(null);
@@ -284,33 +376,13 @@ export default function AgentOrderNewScreen() {
       const created = await apiRequest<AgentOrder>(apiUrl, '/agent-orders', {
         method: 'POST',
         token,
-        body: {
-          orderType,
-          customerId,
-          customerObjectId: customerObjectId || undefined,
-          warehouseId,
-          sourceSalesInvoiceId: sourceSalesInvoiceId || undefined,
-          docDate,
-          dueDate: dueDate || undefined,
-          priority: Number(priority || 5),
-          notes: notes || undefined,
-          lines: lines.map((line) => ({
-            itemId: line.itemId,
-            salesInvoiceLineId: line.salesInvoiceLineId || undefined,
-            description: line.description || undefined,
-            qty: Number(line.qty),
-            unitPrice: Number(line.unitPrice),
-            discountPercent: Number(line.discountPercent || 0),
-            taxPercent: Number(line.taxPercent || 0),
-            notes: line.notes || undefined,
-          })),
-        },
+        body: buildPayload(),
       });
 
       setSuccess('Order-i u krijua me sukses.');
       router.replace(`/agent-orders/${created.id}` as any);
     } catch (nextError) {
-      setError(parseApiError(nextError));
+      setError(`${parseApiError(nextError)} Ruaje lokalisht nëse je pa lidhje dhe sinkronizoje më vonë.`);
     } finally {
       setSaving(false);
     }
@@ -339,6 +411,55 @@ export default function AgentOrderNewScreen() {
           <Text style={{ color: '#0F9D58' }}>{success}</Text>
         </SectionCard>
       ) : null}
+
+      <SectionCard title="Queue Lokale" subtitle="Ruaj draft-et në telefon dhe dërgoji kur lidhja është stabile.">
+        <View style={uiStyles.wrapRow}>
+          <Button label="Ruaj Draft Lokal" variant="secondary" onPress={() => void saveDraftLocally()} />
+          <Button
+            label={`Sinkronizo Queue (${queuedDrafts.length})`}
+            loading={syncingQueue}
+            onPress={() => void syncQueuedDrafts()}
+          />
+        </View>
+        {queuedDrafts.length ? (
+          <View style={{ gap: 8 }}>
+            {queuedDrafts.slice(0, 5).map((entry) => (
+              <View
+                key={entry.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#D8E0EA',
+                  borderRadius: 14,
+                  padding: 12,
+                  gap: 6,
+                }}
+              >
+                <Text style={{ fontWeight: '700', color: '#0F172A' }}>
+                  {entry.summary.customerName ?? 'Klient i panjohur'} | {entry.summary.orderType}
+                </Text>
+                <Text style={{ color: '#475569' }}>
+                  {entry.summary.warehouseName ?? '-'} | {entry.summary.lineCount} rreshta | {formatNumber(entry.summary.totalAmount ?? 0)} EUR
+                </Text>
+                <Text style={{ color: '#64748B', fontSize: 12 }}>
+                  {entry.createdAt}
+                </Text>
+                <Button
+                  label="Hiqe Draft-in"
+                  variant="ghost"
+                  onPress={() =>
+                    void (async () => {
+                      await removeQueuedAgentOrder(entry.id);
+                      setQueuedDrafts(await listQueuedAgentOrders());
+                    })()
+                  }
+                />
+              </View>
+            ))}
+          </View>
+        ) : (
+          <EmptyState title="Nuk ka draft-e lokale" hint="Kur je pa internet ose s’do ta humbasësh punën, ruaje order-in këtu." />
+        )}
+      </SectionCard>
 
       <SectionCard title="Lloji i Order-it" subtitle="Zgjidh workflow-in që po hap agjenti.">
         <View style={uiStyles.wrapRow}>

@@ -133,4 +133,10 @@ export class AgentOrdersController {
   ) {
     return this.service.createSalesReturn(id, dto, user.sub);
   }
+
+  @Post(':id/clone')
+  @RequirePermissions(PERMISSIONS.agentOrdersManage)
+  clone(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.clone(id, user.sub);
+  }
 }

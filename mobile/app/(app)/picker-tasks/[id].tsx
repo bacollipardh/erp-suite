@@ -19,7 +19,8 @@ import {
 } from '../../../src/components/ui';
 import { apiRequest } from '../../../src/lib/api';
 import { formatDateOnly, formatDateTime, formatQty, sentenceStatus } from '../../../src/lib/format';
-import type { WmsTask } from '../../../src/types';
+import { hasPermission, PERMISSIONS } from '../../../src/lib/permissions';
+import type { PickerOption, WmsTask } from '../../../src/types';
 import { useAuth } from '../../../src/providers/auth-provider';
 
 type ScanTarget = 'location' | 'item' | null;
@@ -54,7 +55,7 @@ function summarizeAudit(metadata?: Record<string, unknown> | null) {
 export default function PickerTaskWorkflowScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { apiUrl, token, logout } = useAuth();
+  const { apiUrl, token, logout, user } = useAuth();
   const [permission, requestPermission] = useCameraPermissions();
   const [task, setTask] = useState<WmsTask | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,6 +73,10 @@ export default function PickerTaskWorkflowScreen() {
   const [notes, setNotes] = useState('');
   const [scanTarget, setScanTarget] = useState<ScanTarget>(null);
   const [suggestedLocations, setSuggestedLocations] = useState<LocationSuggestion[]>([]);
+  const [pickers, setPickers] = useState<PickerOption[]>([]);
+  const [selectedPickerId, setSelectedPickerId] = useState('');
+
+  const canManageTask = hasPermission(user, PERMISSIONS.wmsManage);
 
   const load = useCallback(async () => {
     if (!token || !id) return;
@@ -79,7 +84,12 @@ export default function PickerTaskWorkflowScreen() {
     setError(null);
     try {
       const nextTask = await apiRequest<WmsTask>(apiUrl, `/wms/tasks/${id}`, { token });
+      const nextPickers = canManageTask
+        ? await apiRequest<PickerOption[]>(apiUrl, '/agent-orders/pickers', { token })
+        : [];
       setTask(nextTask);
+      setPickers(nextPickers);
+      setSelectedPickerId((current) => current || nextTask.assignedToId || nextPickers[0]?.id || '');
       setQty(String(Number(nextTask.qty ?? 0)));
       setShortQty(String(Number(nextTask.qty ?? 0)));
       setLocationCode((current) => current || nextTask.sourceLocation?.code || '');
@@ -120,7 +130,7 @@ export default function PickerTaskWorkflowScreen() {
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, id, token]);
+  }, [apiUrl, canManageTask, id, token]);
 
   useFocusEffect(
     useCallback(() => {
@@ -249,6 +259,75 @@ export default function PickerTaskWorkflowScreen() {
           <Text style={{ color: '#334155' }}>
             Task të hapura: {task.agentOrderWorkflow.openTasks} | Task të kryera: {task.agentOrderWorkflow.doneTasks}
           </Text>
+        </SectionCard>
+      ) : null}
+
+      {canManageTask ? (
+        <SectionCard title="Supervisor / Exception" subtitle="Reassign, rifillo task të bllokuar ose mbylle me vendim operativ.">
+          <Label>Ricaktimi</Label>
+          <View style={uiStyles.wrapRow}>
+            {pickers.map((picker) => (
+              <Button
+                key={picker.id}
+                label={picker.fullName}
+                variant={selectedPickerId === picker.id ? 'secondary' : 'ghost'}
+                onPress={() => setSelectedPickerId(picker.id)}
+              />
+            ))}
+          </View>
+          <Button
+            label="Ricakto Task-un"
+            variant="secondary"
+            loading={busy === 'reassign'}
+            disabled={!selectedPickerId}
+            onPress={() =>
+              void runAction('reassign', async () => {
+                await apiRequest(apiUrl, `/wms/tasks/${task.id}/reassign`, {
+                  method: 'POST',
+                  token,
+                  body: {
+                    assignedToId: selectedPickerId,
+                    notes: notes || undefined,
+                  },
+                });
+                setSuccess('Task-u u ricaktua me sukses.');
+              })
+            }
+          />
+          {task.status === 'BLOCKED' ? (
+            <View style={uiStyles.wrapRow}>
+              <Button
+                label="Rifillo Task-un"
+                variant="ghost"
+                loading={busy === 'reopen-blocked'}
+                onPress={() =>
+                  void runAction('reopen-blocked', async () => {
+                    await apiRequest(apiUrl, `/wms/tasks/${task.id}/start`, {
+                      method: 'POST',
+                      token,
+                      body: { notes: notes || 'Reopened by supervisor' },
+                    });
+                    setSuccess('Task-u u kthye në IN_PROGRESS.');
+                  })
+                }
+              />
+              <Button
+                label="Mbylle si Complete"
+                variant="ghost"
+                loading={busy === 'force-complete'}
+                onPress={() =>
+                  void runAction('force-complete', async () => {
+                    await apiRequest(apiUrl, `/wms/tasks/${task.id}/complete`, {
+                      method: 'POST',
+                      token,
+                      body: { notes: notes || 'Force completed by supervisor' },
+                    });
+                    setSuccess('Task-u u mbyll nga supervisor-i.');
+                  })
+                }
+              />
+            </View>
+          ) : null}
         </SectionCard>
       ) : null}
 

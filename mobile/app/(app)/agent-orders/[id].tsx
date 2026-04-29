@@ -1,4 +1,4 @@
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import {
@@ -8,14 +8,16 @@ import {
   Input,
   Label,
   LoadingState,
+  MetricTile,
   Screen,
   SectionCard,
+  SessionActions,
   StatusBadge,
   TopTitle,
   uiStyles,
 } from '../../../src/components/ui';
 import { apiList, apiRequest } from '../../../src/lib/api';
-import { formatDateTime, formatNumber, formatQty } from '../../../src/lib/format';
+import { formatDateOnly, formatDateTime, formatNumber, formatQty, sentenceStatus } from '../../../src/lib/format';
 import {
   hasPermission,
   PERMISSIONS,
@@ -29,8 +31,9 @@ import type {
 import { useAuth } from '../../../src/providers/auth-provider';
 
 export default function AgentOrderDetailsScreen() {
+  const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { apiUrl, token, user } = useAuth();
+  const { apiUrl, token, user, logout } = useAuth();
   const [order, setOrder] = useState<AgentOrder | null>(null);
   const [pickers, setPickers] = useState<PickerOption[]>([]);
   const [series, setSeries] = useState<DocumentSeries[]>([]);
@@ -160,6 +163,8 @@ export default function AgentOrderDetailsScreen() {
         subtitle={`${order.customer?.name ?? '-'}${order.customerObject?.name ? ` / ${order.customerObject.name}` : ''}`}
       />
 
+      <SessionActions onHome={() => router.push('/home')} onLogout={() => void logout()} />
+
       {error ? <ErrorState message={error} /> : null}
 
       <SectionCard title="Gjendja Operative" subtitle={order.warehouse?.name ?? '-'}>
@@ -177,14 +182,94 @@ export default function AgentOrderDetailsScreen() {
             <Text>{order.assignedPicker?.fullName ?? '-'}</Text>
           </View>
         </View>
+        <View style={uiStyles.wrapRow}>
+          <MetricTile label="Rreshta" value={lines.length} />
+          <MetricTile label="Task WMS" value={order.tasks?.length ?? 0} />
+          <MetricTile label="Dokument" value={order.salesInvoice?.docNo ?? order.salesReturn?.docNo ?? '-'} />
+        </View>
         <Text style={{ color: '#64748B' }}>
           Dokument: {formatDateTime(order.docDate ?? null)}
         </Text>
+        {order.dueDate ? (
+          <Text style={{ color: '#64748B' }}>
+            Afati: {formatDateOnly(order.dueDate)}
+          </Text>
+        ) : null}
       </SectionCard>
+
+      {order.customerSnapshot ? (
+        <SectionCard title="Snapshot i Klientit" subtitle="Gjendja financiare dhe komerciale në momentin e këtij order-i.">
+          <View style={uiStyles.wrapRow}>
+            <MetricTile label="Outstanding" value={`${formatNumber(order.customerSnapshot.outstandingAmount ?? 0)} EUR`} />
+            <MetricTile label="Credit Limit" value={`${formatNumber(order.customerSnapshot.creditLimit ?? 0)} EUR`} />
+            <MetricTile label="Credit Usage" value={`${formatNumber(order.customerSnapshot.creditUsagePercent ?? 0, 1)}%`} />
+            <MetricTile label="Fatura Hapura" value={order.customerSnapshot.openInvoicesCount ?? 0} />
+          </View>
+          <View style={uiStyles.wrapRow}>
+            <MetricTile label="Overdue" value={order.customerSnapshot.overdueInvoicesCount ?? 0} />
+            <MetricTile label="Objekte" value={order.customerSnapshot.objectCount ?? 0} />
+            <MetricTile label="Fatura të Postuara" value={order.customerSnapshot.postedInvoiceCount ?? 0} />
+          </View>
+          {order.customerSnapshot.lastInvoice ? (
+            <Text style={{ color: '#475569' }}>
+              Fatura e fundit: {order.customerSnapshot.lastInvoice.docNo} | {formatDateOnly(order.customerSnapshot.lastInvoice.docDate)} | Outstanding {formatNumber(order.customerSnapshot.lastInvoice.outstandingAmount ?? 0)} EUR
+            </Text>
+          ) : null}
+        </SectionCard>
+      ) : null}
+
+      {order.documentReadiness ? (
+        <SectionCard title="Gatishmëria për Dokument" subtitle="A është order-i i pastër për faturim/kthim dhe çfarë mbetet operative.">
+          <View style={uiStyles.wrapRow}>
+            <MetricTile label="Open Tasks" value={order.documentReadiness.openTasks} />
+            <MetricTile label="Blocked" value={order.documentReadiness.blockedTasks} />
+            <MetricTile label="Short" value={order.documentReadiness.shortTasks} />
+            <MetricTile label="Done" value={order.documentReadiness.doneTasks} />
+          </View>
+          <Text style={{ color: order.documentReadiness.canCreateDocument ? '#0F9D58' : '#D97706', fontWeight: '700' }}>
+            {order.documentReadiness.canCreateDocument
+              ? 'Ky order është gati për dokument pa exception operative.'
+              : 'Order-i ende ka hapa ose exception që duhen parë.'}
+          </Text>
+          {order.documentReadiness.warnings.length ? (
+            <View style={uiStyles.gap8}>
+              {order.documentReadiness.warnings.map((warning, index) => (
+                <Text key={`${warning}-${index}`} style={{ color: '#B45309' }}>
+                  - {warning}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+          {order.documentReadiness.nextActions.length ? (
+            <View style={uiStyles.gap8}>
+              {order.documentReadiness.nextActions.map((entry, index) => (
+                <Text key={`${entry}-${index}`} style={{ color: '#334155' }}>
+                  - {entry}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+        </SectionCard>
+      ) : null}
 
       {canManage ? (
         <SectionCard title="Veprime të Shpejta" subtitle="Kalimet kryesore të workflow-it të agjentit.">
           <View style={uiStyles.gap8}>
+            <Button
+              label="Kopjo si Order i Ri"
+              variant="ghost"
+              loading={actionLoading === 'clone'}
+              onPress={() =>
+                void runAction('clone', async () => {
+                  const created = await apiRequest<AgentOrder>(apiUrl, `/agent-orders/${order.id}/clone`, {
+                    method: 'POST',
+                    token,
+                    body: {},
+                  });
+                  router.push(`/agent-orders/${created.id}` as any);
+                })
+              }
+            />
             {order.status === 'DRAFT' ? (
               <Button
                 label="Submit Order"
@@ -437,10 +522,54 @@ export default function AgentOrderDetailsScreen() {
               <Text style={{ color: '#64748B' }}>
                 {task.sourceLocation?.code ?? '-'} → {task.destinationLocation?.code ?? '-'}
               </Text>
+              <View style={uiStyles.wrapRow}>
+                <Button
+                  label="Hap Task-un"
+                  variant="secondary"
+                  onPress={() => router.push(`/picker-tasks/${task.id}` as any)}
+                />
+              </View>
             </View>
           ))
         ) : (
           <EmptyState title="Nuk ka task-e WMS ende" />
+        )}
+      </SectionCard>
+
+      <SectionCard title="Timeline" subtitle="Krijimi, caktimi, WMS veprimet dhe dokumentimi mblidhen këtu në rend kohor.">
+        {order.timeline?.length ? (
+          order.timeline.map((entry) => (
+            <View
+              key={entry.id}
+              style={{
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+                borderRadius: 14,
+                padding: 12,
+                gap: 6,
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+                <StatusBadge value={entry.action} />
+                <Text style={{ color: '#64748B', fontSize: 12 }}>
+                  {formatDateTime(entry.createdAt)}
+                </Text>
+              </View>
+              <Text style={{ color: '#334155', fontWeight: '600' }}>
+                {entry.scope === 'TASK'
+                  ? `${entry.taskType ?? 'Task'} | ${entry.referenceNo ?? '-'}`
+                  : 'Agent Order'}
+              </Text>
+              <Text style={{ color: '#475569' }}>
+                {entry.user?.fullName ?? entry.user?.email ?? 'Operator i paidentifikuar'}
+              </Text>
+              <Text style={{ color: '#64748B' }}>
+                {entry.taskStatus ? `Statusi task-ut: ${sentenceStatus(entry.taskStatus)}` : sentenceStatus(entry.action)}
+              </Text>
+            </View>
+          ))
+        ) : (
+          <EmptyState title="Nuk ka timeline ende" />
         )}
       </SectionCard>
     </Screen>
