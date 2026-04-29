@@ -125,6 +125,7 @@ export type PaymentMethod = {
 
 export type WmsTask = {
   id: string;
+  itemId?: string | null;
   taskType: string;
   status: string;
   qty: number | string;

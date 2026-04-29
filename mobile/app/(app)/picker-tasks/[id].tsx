@@ -22,6 +22,10 @@ import type { WmsTask } from '../../../src/types';
 import { useAuth } from '../../../src/providers/auth-provider';
 
 type ScanTarget = 'location' | 'item' | null;
+type LocationSuggestion = {
+  code: string;
+  barcode?: string | null;
+};
 
 export default function PickerTaskWorkflowScreen() {
   const router = useRouter();
@@ -38,21 +42,42 @@ export default function PickerTaskWorkflowScreen() {
   const [qty, setQty] = useState('');
   const [notes, setNotes] = useState('');
   const [scanTarget, setScanTarget] = useState<ScanTarget>(null);
+  const [suggestedLocations, setSuggestedLocations] = useState<LocationSuggestion[]>([]);
 
   const load = useCallback(async () => {
     if (!token || !id) return;
     setLoading(true);
     setError(null);
     try {
-      const nextTask = await apiRequest<WmsTask>(apiUrl, `/wms/tasks/${id}`, {
-        token,
-      });
+      const nextTask = await apiRequest<WmsTask>(apiUrl, `/wms/tasks/${id}`, { token });
       setTask(nextTask);
       setQty(String(Number(nextTask.qty ?? 0)));
       setLocationCode((current) => current || nextTask.sourceLocation?.code || '');
       setItemCode(
         (current) => current || nextTask.item?.barcode || nextTask.item?.code || '',
       );
+
+      if (nextTask.itemId) {
+        const balances = await apiRequest<{
+          items?: Array<{
+            location?: { code?: string | null; barcode?: string | null } | null;
+          }>;
+        }>(apiUrl, '/wms/balances', {
+          token,
+          query: { itemId: nextTask.itemId, limit: 8 },
+        });
+        const nextSuggestions = (balances.items ?? [])
+          .map((entry) => entry.location)
+          .filter((entry): entry is { code?: string | null; barcode?: string | null } => Boolean(entry?.code))
+          .map((entry) => ({ code: entry.code!, barcode: entry.barcode ?? null }))
+          .filter(
+            (entry, index, all) =>
+              all.findIndex((candidate) => candidate.code === entry.code) === index,
+          );
+        setSuggestedLocations(nextSuggestions);
+      } else {
+        setSuggestedLocations([]);
+      }
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Load failed');
     } finally {
@@ -181,11 +206,30 @@ export default function PickerTaskWorkflowScreen() {
               placeholder={task.sourceLocation?.barcode ?? task.sourceLocation?.code ?? 'Scan lokacionin'}
             />
             <View style={uiStyles.wrapRow}>
-              <Button
-                label="Përdor lokacionin e pritur"
-                variant="ghost"
-                onPress={() => setLocationCode(task.sourceLocation?.barcode ?? task.sourceLocation?.code ?? '')}
-              />
+              {task.sourceLocation?.code ? (
+                <Button
+                  label={`Kodi: ${task.sourceLocation.code}`}
+                  variant="ghost"
+                  onPress={() => setLocationCode(task.sourceLocation?.code ?? '')}
+                />
+              ) : null}
+              {task.sourceLocation?.barcode ? (
+                <Button
+                  label={`Barkodi: ${task.sourceLocation.barcode}`}
+                  variant="ghost"
+                  onPress={() => setLocationCode(task.sourceLocation?.barcode ?? '')}
+                />
+              ) : null}
+              {!task.sourceLocation?.code && suggestedLocations.length
+                ? suggestedLocations.map((entry) => (
+                    <Button
+                      key={entry.code}
+                      label={entry.code}
+                      variant="ghost"
+                      onPress={() => setLocationCode(entry.code)}
+                    />
+                  ))
+                : null}
               <Button
                 label="Scan Lokacion"
                 variant="secondary"
@@ -200,11 +244,20 @@ export default function PickerTaskWorkflowScreen() {
               placeholder={task.item?.barcode ?? task.item?.code ?? 'Scan artikullin'}
             />
             <View style={uiStyles.wrapRow}>
-              <Button
-                label="Përdor artikullin e pritur"
-                variant="ghost"
-                onPress={() => setItemCode(task.item?.barcode ?? task.item?.code ?? '')}
-              />
+              {task.item?.code ? (
+                <Button
+                  label={`Kodi: ${task.item.code}`}
+                  variant="ghost"
+                  onPress={() => setItemCode(task.item?.code ?? '')}
+                />
+              ) : null}
+              {task.item?.barcode ? (
+                <Button
+                  label={`Barkodi: ${task.item.barcode}`}
+                  variant="ghost"
+                  onPress={() => setItemCode(task.item?.barcode ?? '')}
+                />
+              ) : null}
               <Button
                 label="Scan Artikull"
                 variant="secondary"
