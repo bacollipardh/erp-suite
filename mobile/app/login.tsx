@@ -74,9 +74,9 @@ export default function LoginScreen() {
                 onChangeText={setApiUrl}
                 autoCapitalize="none"
                 autoCorrect={false}
-                placeholder="http://10.0.2.2:3000"
+                placeholder="http://10.10.69.9:3000 ose http://10.10.69.9:3000/api"
               />
-              <Text style={styles.hint}>Do përdoret: {normalizedUrl}</Text>
+              <Text style={styles.hint}>Do përdoret automatikisht: {normalizedUrl}</Text>
             </View>
             <View>
               <Label>Email</Label>
@@ -138,6 +138,9 @@ export default function LoginScreen() {
           </Text>
           <Text style={styles.tip}>
             Telefon real: `http://IP-E-KOMPJUTERIT:3000`
+          </Text>
+          <Text style={styles.tip}>
+            App-i ia shton vetë `/api` në fund nëse nuk e shkruan.
           </Text>
         </SectionCard>
       </KeyboardAvoidingView>

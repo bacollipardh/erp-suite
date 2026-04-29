@@ -33,6 +33,15 @@ Shembuj:
 
 Backend-i duhet të jetë i ngritur nga repo kryesor, p.sh. me Docker.
 
+Shënim:
+
+- backend-i NestJS i këtij projekti përdor `globalPrefix('api')`
+- pra endpoint-et reale janë si `http://IP:3000/api/auth/login`
+- në aplikacion mund të shkruash:
+  - `http://IP:3000`
+  - ose `http://IP:3000/api`
+- app-i do ta normalizojë vetë te baza me `/api`
+
 ## Struktura
 
 - `app/` - routes të Expo Router

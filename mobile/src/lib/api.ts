@@ -21,10 +21,23 @@ function buildQueryString(
 function normalizeBaseUrl(baseUrl: string) {
   const trimmed = baseUrl.trim().replace(/\/+$/, '');
   if (!trimmed) return '';
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    return trimmed;
+  const withProtocol =
+    trimmed.startsWith('http://') || trimmed.startsWith('https://')
+      ? trimmed
+      : `http://${trimmed}`;
+
+  try {
+    const url = new URL(withProtocol);
+    const pathname = url.pathname.replace(/\/+$/, '');
+    if (!pathname || pathname === '/') {
+      url.pathname = '/api';
+    } else if (!pathname.endsWith('/api')) {
+      url.pathname = `${pathname}/api`;
+    }
+    return url.toString().replace(/\/+$/, '');
+  } catch {
+    return withProtocol;
   }
-  return `http://${trimmed}`;
 }
 
 export function resolveApiUrl(input?: string | null) {
