@@ -204,6 +204,26 @@ export function TopTitle({
   );
 }
 
+export function SessionActions({
+  onHome,
+  onLogout,
+  homeLabel = 'Kthehu te Home',
+}: {
+  onHome: () => void;
+  onLogout: () => void;
+  homeLabel?: string;
+}) {
+  return (
+    <SectionCard
+      title="Navigim i Shpejtë"
+      subtitle="Kalo te faqja kryesore ose dil nga sesioni aktual."
+    >
+      <Button label={homeLabel} variant="secondary" onPress={onHome} />
+      <Button label="Dil nga Sesioni" variant="ghost" onPress={onLogout} />
+    </SectionCard>
+  );
+}
+
 export const uiStyles = StyleSheet.create({
   row: {
     flexDirection: 'row',

@@ -7,6 +7,7 @@ import {
   LoadingState,
   MetricTile,
   Screen,
+  SessionActions,
   SectionCard,
   TopTitle,
   uiStyles,
@@ -17,7 +18,7 @@ import { useAuth } from '../../src/providers/auth-provider';
 
 export default function PickerDashboardScreen() {
   const router = useRouter();
-  const { apiUrl, token, user } = useAuth();
+  const { apiUrl, token, user, logout } = useAuth();
   const [tasks, setTasks] = useState<WmsTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +56,8 @@ export default function PickerDashboardScreen() {
         title="Picker Dashboard"
         subtitle="Detyrat e mia, picking aktiv dhe qasja e shpejtë te scanner-i."
       />
+
+      <SessionActions onHome={() => router.push('/home')} onLogout={() => void logout()} />
 
       {loading ? <LoadingState /> : null}
       {error ? <ErrorState message={error} onRetry={() => void load()} /> : null}

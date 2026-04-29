@@ -9,6 +9,7 @@ import {
   Label,
   LoadingState,
   Screen,
+  SessionActions,
   SectionCard,
   TopTitle,
   uiStyles,
@@ -77,7 +78,7 @@ function optionTitle(parts: Array<string | null | undefined>) {
 
 export default function AgentOrderNewScreen() {
   const router = useRouter();
-  const { apiUrl, token } = useAuth();
+  const { apiUrl, token, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -329,6 +330,8 @@ export default function AgentOrderNewScreen() {
         title="Order i Ri"
         subtitle="Krijo porosi të re të agjentit direkt nga telefoni."
       />
+
+      <SessionActions onHome={() => router.push('/home')} onLogout={() => void logout()} />
 
       {error ? <ErrorState message={error} onRetry={() => void load()} /> : null}
       {success ? (

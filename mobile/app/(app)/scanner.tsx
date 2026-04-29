@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import React, { useCallback, useState } from 'react';
 import { Text, View } from 'react-native';
@@ -8,6 +9,7 @@ import {
   Input,
   LoadingState,
   Screen,
+  SessionActions,
   SectionCard,
   TopTitle,
 } from '../../src/components/ui';
@@ -17,7 +19,8 @@ import type { ScanPayload } from '../../src/types';
 import { useAuth } from '../../src/providers/auth-provider';
 
 export default function ScannerScreen() {
-  const { apiUrl, token } = useAuth();
+  const router = useRouter();
+  const { apiUrl, token, logout } = useAuth();
   const [permission, requestPermission] = useCameraPermissions();
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState('');
@@ -52,6 +55,8 @@ export default function ScannerScreen() {
         title="Scanner"
         subtitle="Skanon barkode artikulli, lokacioni, loti ose seriali dhe e pyet direkt WMS-in."
       />
+
+      <SessionActions onHome={() => router.push('/home')} onLogout={() => void logout()} />
 
       <SectionCard title="Kërkim Manual">
         <Input

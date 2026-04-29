@@ -6,6 +6,7 @@ import {
   LoadingState,
   MetricTile,
   Screen,
+  SessionActions,
   SectionCard,
   TopTitle,
   Button,
@@ -17,7 +18,7 @@ import { useAuth } from '../../src/providers/auth-provider';
 
 export default function AgentDashboardScreen() {
   const router = useRouter();
-  const { apiUrl, token, user } = useAuth();
+  const { apiUrl, token, user, logout } = useAuth();
   const [orders, setOrders] = useState<AgentOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +57,8 @@ export default function AgentDashboardScreen() {
         title={`Mirë se erdhe, ${user?.fullName?.split(' ')[0] ?? 'Agjent'}`}
         subtitle="Pamje e shpejtë e orders operative dhe gatishmërisë për dokument."
       />
+
+      <SessionActions onHome={() => router.push('/home')} onLogout={() => void logout()} />
 
       {loading ? <LoadingState /> : null}
       {error ? <ErrorState message={error} onRetry={() => void load()} /> : null}

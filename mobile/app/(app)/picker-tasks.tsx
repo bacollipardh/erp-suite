@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import {
@@ -8,6 +8,7 @@ import {
   Input,
   LoadingState,
   Screen,
+  SessionActions,
   SectionCard,
   StatusBadge,
   TopTitle,
@@ -20,7 +21,8 @@ import { useAuth } from '../../src/providers/auth-provider';
 const FILTERS = ['MY_OPEN', 'ALL_OPEN', 'DONE', 'BLOCKED'];
 
 export default function PickerTasksScreen() {
-  const { apiUrl, token, user } = useAuth();
+  const router = useRouter();
+  const { apiUrl, token, user, logout } = useAuth();
   const [tasks, setTasks] = useState<WmsTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -94,6 +96,8 @@ export default function PickerTasksScreen() {
         title="Detyrat WMS"
         subtitle="Pamje mobile për picker-in me start, complete dhe short handling."
       />
+
+      <SessionActions onHome={() => router.push('/home')} onLogout={() => void logout()} />
 
       <SectionCard title="Kërko dhe filtro">
         <Input

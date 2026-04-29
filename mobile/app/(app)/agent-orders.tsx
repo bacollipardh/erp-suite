@@ -7,6 +7,7 @@ import {
   Input,
   LoadingState,
   Screen,
+  SessionActions,
   SectionCard,
   StatusBadge,
   TopTitle,
@@ -20,7 +21,7 @@ const FILTERS = ['ALL', 'DRAFT', 'SUBMITTED', 'APPROVED', 'WMS_ASSIGNED', 'PICKI
 
 export default function AgentOrdersScreen() {
   const router = useRouter();
-  const { apiUrl, token } = useAuth();
+  const { apiUrl, token, logout } = useAuth();
   const [orders, setOrders] = useState<AgentOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +61,8 @@ export default function AgentOrdersScreen() {
         title="Agent Orders"
         subtitle="Lista operative e orders të agjentit me statusin e WMS dhe dokumentit."
       />
+
+      <SessionActions onHome={() => router.push('/home')} onLogout={() => void logout()} />
 
       <SectionCard title="Veprim i Ri" subtitle="Krijo porosi të re nga telefoni.">
         <Pressable
