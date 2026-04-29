@@ -197,5 +197,20 @@ export class WmsTaskPickConfirmDto {
 
   @IsOptional()
   @IsString()
+  expiryDate?: string;
+
+  @IsOptional()
+  @IsString()
   notes?: string;
+}
+
+export class WmsTaskShortDto extends WmsTaskActionDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(0.001)
+  shortQty?: number;
+
+  @IsOptional()
+  @IsString()
+  reasonCode?: string;
 }

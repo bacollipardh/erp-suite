@@ -161,7 +161,7 @@ export default function PickerTasksScreen() {
     <Screen scroll>
       <TopTitle
         title="Detyrat WMS"
-        subtitle="Pamje mobile për picker-in me start, complete dhe short handling."
+        subtitle="Pamje mobile për picker-in me workflow të plotë: start, pick, short me arsye, pack dhe audit."
       />
 
       <SessionActions onHome={() => router.push('/home')} onLogout={() => void logout()} />
@@ -276,15 +276,6 @@ export default function PickerTasksScreen() {
                       onPress={() => void runTaskAction(task.id, 'short')}
                     />
                   </>
-                ) : null}
-                {['PICK', 'PACK'].includes(task.taskType) &&
-                ['PENDING', 'IN_PROGRESS', 'BLOCKED'].includes(task.status) ? (
-                  <Button
-                    label="Shëno si Short"
-                    variant="ghost"
-                    loading={actionLoading === `${task.id}:short`}
-                    onPress={() => void runTaskAction(task.id, 'short')}
-                  />
                 ) : null}
                 {['PENDING', 'IN_PROGRESS'].includes(task.status) ? (
                   <Button

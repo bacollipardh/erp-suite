@@ -11,6 +11,17 @@ export function formatDateTime(value?: string | null) {
   }).format(date);
 }
 
+export function formatDateOnly(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('sq-AL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
+}
+
 export function formatNumber(value?: number | string | null, digits = 2) {
   return Number(value ?? 0).toLocaleString('sq-AL', {
     minimumFractionDigits: digits,

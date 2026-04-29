@@ -9,6 +9,7 @@ import {
   Input,
   Label,
   LoadingState,
+  MetricTile,
   Screen,
   SectionCard,
   SessionActions,
@@ -17,7 +18,7 @@ import {
   uiStyles,
 } from '../../../src/components/ui';
 import { apiRequest } from '../../../src/lib/api';
-import { formatDateTime, formatQty } from '../../../src/lib/format';
+import { formatDateOnly, formatDateTime, formatQty, sentenceStatus } from '../../../src/lib/format';
 import type { WmsTask } from '../../../src/types';
 import { useAuth } from '../../../src/providers/auth-provider';
 
@@ -26,6 +27,29 @@ type LocationSuggestion = {
   code: string;
   barcode?: string | null;
 };
+
+const SHORT_REASONS = [
+  'NO_STOCK',
+  'DAMAGED',
+  'EXPIRED',
+  'LOT_MISMATCH',
+  'SERIAL_MISMATCH',
+  'LOCATION_MISMATCH',
+  'OTHER',
+];
+
+function summarizeAudit(metadata?: Record<string, unknown> | null) {
+  if (!metadata) return null;
+  const parts: string[] = [];
+  if (metadata.pickedQty) parts.push(`Pick ${metadata.pickedQty}`);
+  if (metadata.shortQty) parts.push(`Short ${metadata.shortQty}`);
+  if (metadata.locationCode) parts.push(`Lokacioni ${String(metadata.locationCode)}`);
+  if (metadata.itemCode) parts.push(`Artikulli ${String(metadata.itemCode)}`);
+  if (metadata.reasonCode) parts.push(`Arsye ${String(metadata.reasonCode)}`);
+  if (metadata.resultingStatus) parts.push(`Statusi ${String(metadata.resultingStatus)}`);
+  if (metadata.notes) parts.push(String(metadata.notes));
+  return parts.join(' | ') || null;
+}
 
 export default function PickerTaskWorkflowScreen() {
   const router = useRouter();
@@ -40,6 +64,11 @@ export default function PickerTaskWorkflowScreen() {
   const [locationCode, setLocationCode] = useState('');
   const [itemCode, setItemCode] = useState('');
   const [qty, setQty] = useState('');
+  const [lotCode, setLotCode] = useState('');
+  const [serialNo, setSerialNo] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [shortQty, setShortQty] = useState('');
+  const [shortReason, setShortReason] = useState('NO_STOCK');
   const [notes, setNotes] = useState('');
   const [scanTarget, setScanTarget] = useState<ScanTarget>(null);
   const [suggestedLocations, setSuggestedLocations] = useState<LocationSuggestion[]>([]);
@@ -52,9 +81,17 @@ export default function PickerTaskWorkflowScreen() {
       const nextTask = await apiRequest<WmsTask>(apiUrl, `/wms/tasks/${id}`, { token });
       setTask(nextTask);
       setQty(String(Number(nextTask.qty ?? 0)));
+      setShortQty(String(Number(nextTask.qty ?? 0)));
       setLocationCode((current) => current || nextTask.sourceLocation?.code || '');
       setItemCode(
         (current) => current || nextTask.item?.barcode || nextTask.item?.code || '',
+      );
+      setLotCode((current) => current || nextTask.lotCode || '');
+      setSerialNo((current) => current || nextTask.serialNo || '');
+      setExpiryDate(
+        (current) =>
+          current ||
+          (nextTask.expiryDate ? new Date(nextTask.expiryDate).toISOString().slice(0, 10) : ''),
       );
 
       if (nextTask.itemId) {
@@ -137,12 +174,14 @@ export default function PickerTaskWorkflowScreen() {
     task.sourceType === 'AGENT_ORDER' &&
     task.sourceId &&
     Number(task.agentOrderWorkflow?.openTasks ?? 0) === 0;
+  const requiresTracking = Boolean(task.lotCode || task.serialNo || task.expiryDate);
+  const taskIsOpen = !['DONE', 'CANCELLED', 'SHORT'].includes(task.status);
 
   return (
     <Screen scroll>
       <TopTitle
         title={`${task.taskType} | ${task.referenceNo ?? '-'}`}
-        subtitle="Workflow i picker-it me scan, qty confirm dhe finalizim fature."
+        subtitle="Workflow i picker-it me scan, partial pick, short handling dhe audit të plotë."
       />
 
       <SessionActions onHome={() => router.push('/home')} onLogout={() => void logout()} />
@@ -153,6 +192,21 @@ export default function PickerTaskWorkflowScreen() {
         </SectionCard>
       ) : null}
       {error ? <ErrorState message={error} onRetry={() => void load()} /> : null}
+
+      {task.progress ? (
+        <SectionCard title="Progresi i Task-ut" subtitle="Sa është trajtuar, sa ka mbetur dhe gjurma e fundit e punës.">
+          <View style={uiStyles.wrapRow}>
+            <MetricTile label="Planifikuar" value={formatQty(task.progress.initialQty)} />
+            <MetricTile label="Picked" value={formatQty(task.progress.pickedQty)} />
+            <MetricTile label="Short" value={formatQty(task.progress.shortQty)} />
+            <MetricTile label="Mbetur" value={formatQty(task.progress.remainingQty)} />
+          </View>
+          <Text style={{ color: '#334155' }}>
+            Përfundim: {task.progress.completionPercent}% | Veprimi i fundit:{' '}
+            {sentenceStatus(task.progress.latestAction)}
+          </Text>
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Detajet e Task-ut" subtitle={task.warehouse?.name ?? '-'}>
         <View style={uiStyles.wrapRow}>
@@ -171,6 +225,9 @@ export default function PickerTaskWorkflowScreen() {
         </Text>
         {task.lotCode ? <Text style={{ color: '#64748B' }}>Lot: {task.lotCode}</Text> : null}
         {task.serialNo ? <Text style={{ color: '#64748B' }}>Serial: {task.serialNo}</Text> : null}
+        {task.expiryDate ? (
+          <Text style={{ color: '#64748B' }}>Skadenca: {formatDateOnly(task.expiryDate)}</Text>
+        ) : null}
         <Text style={{ color: '#64748B', fontSize: 12 }}>
           Krijuar: {formatDateTime(task.createdAt)}
         </Text>
@@ -195,8 +252,7 @@ export default function PickerTaskWorkflowScreen() {
         </SectionCard>
       ) : null}
 
-      {task.taskType === 'PICK' &&
-      !['DONE', 'CANCELLED', 'SHORT'].includes(task.status) ? (
+      {task.taskType === 'PICK' && taskIsOpen ? (
         <>
           <SectionCard title="Scan ose Shkruaj" subtitle="Verifiko lokacionin dhe artikullin para konfirmimit.">
             <Label>Kodi i lokacionit</Label>
@@ -273,6 +329,64 @@ export default function PickerTaskWorkflowScreen() {
               placeholder={String(Number(task.qty ?? 0))}
             />
 
+            {requiresTracking ? (
+              <>
+                <Label>Lot kodi</Label>
+                <Input
+                  value={lotCode}
+                  onChangeText={setLotCode}
+                  placeholder={task.lotCode ?? 'Lot kodi'}
+                />
+                <View style={uiStyles.wrapRow}>
+                  {task.lotCode ? (
+                    <Button
+                      label={`Lot: ${task.lotCode}`}
+                      variant="ghost"
+                      onPress={() => setLotCode(task.lotCode ?? '')}
+                    />
+                  ) : null}
+                </View>
+
+                <Label>Serial number</Label>
+                <Input
+                  value={serialNo}
+                  onChangeText={setSerialNo}
+                  placeholder={task.serialNo ?? 'Serial number'}
+                />
+                <View style={uiStyles.wrapRow}>
+                  {task.serialNo ? (
+                    <Button
+                      label={`Serial: ${task.serialNo}`}
+                      variant="ghost"
+                      onPress={() => setSerialNo(task.serialNo ?? '')}
+                    />
+                  ) : null}
+                </View>
+
+                <Label>Data e skadencës</Label>
+                <Input
+                  value={expiryDate}
+                  onChangeText={setExpiryDate}
+                  placeholder="YYYY-MM-DD"
+                />
+                <View style={uiStyles.wrapRow}>
+                  {task.expiryDate ? (
+                    <Button
+                      label={`Skadenca: ${new Date(task.expiryDate).toISOString().slice(0, 10)}`}
+                      variant="ghost"
+                      onPress={() =>
+                        setExpiryDate(
+                          task.expiryDate
+                            ? new Date(task.expiryDate).toISOString().slice(0, 10)
+                            : '',
+                        )
+                      }
+                    />
+                  ) : null}
+                </View>
+              </>
+            ) : null}
+
             <Label>Shënime</Label>
             <Input
               value={notes}
@@ -293,8 +407,9 @@ export default function PickerTaskWorkflowScreen() {
                       locationCode,
                       itemCode,
                       qty: Number(qty || 0),
-                      lotCode: task.lotCode ?? undefined,
-                      serialNo: task.serialNo ?? undefined,
+                      lotCode: lotCode || undefined,
+                      serialNo: serialNo || undefined,
+                      expiryDate: expiryDate || undefined,
                       notes: notes || undefined,
                     },
                   });
@@ -331,6 +446,47 @@ export default function PickerTaskWorkflowScreen() {
             </SectionCard>
           ) : null}
 
+          <SectionCard title="Short / Exception" subtitle="Regjistro mungesën me sasi dhe arsye të qartë. Nëse sasia është më e vogël se mbetja, task-u mbetet blocked për veprim të mëtejshëm.">
+            <Label>Sasia në short</Label>
+            <Input
+              value={shortQty}
+              onChangeText={setShortQty}
+              keyboardType="numeric"
+              placeholder={String(Number(task.qty ?? 0))}
+            />
+
+            <Label>Arsyeja</Label>
+            <View style={uiStyles.wrapRow}>
+              {SHORT_REASONS.map((entry) => (
+                <Button
+                  key={entry}
+                  label={entry}
+                  variant={shortReason === entry ? 'secondary' : 'ghost'}
+                  onPress={() => setShortReason(entry)}
+                />
+              ))}
+            </View>
+
+            <Button
+              label="Regjistro Short"
+              variant="ghost"
+              loading={busy === 'short-task'}
+              onPress={() =>
+                void runAction('short-task', async () => {
+                  await apiRequest(apiUrl, `/wms/tasks/${task.id}/short`, {
+                    method: 'POST',
+                    token,
+                    body: {
+                      shortQty: Number(shortQty || 0),
+                      reasonCode: shortReason,
+                      notes: notes || undefined,
+                    },
+                  });
+                  setSuccess('Short-i u regjistrua dhe task-u u përditësua.');
+                })
+              }
+            />
+          </SectionCard>
         </>
       ) : null}
 
@@ -374,7 +530,7 @@ export default function PickerTaskWorkflowScreen() {
         </SectionCard>
       ) : null}
 
-      {task.taskType === 'PACK' && !['DONE', 'CANCELLED', 'SHORT'].includes(task.status) ? (
+      {task.taskType === 'PACK' && taskIsOpen ? (
         <SectionCard title="Packing" subtitle="Pas finalizimit të picking-ut, konfirmo paketimin.">
           <Button
             label="Konfirmo Packing"
@@ -390,6 +546,71 @@ export default function PickerTaskWorkflowScreen() {
               })
             }
           />
+          <Label>Arsye short / exception</Label>
+          <View style={uiStyles.wrapRow}>
+            {SHORT_REASONS.map((entry) => (
+              <Button
+                key={entry}
+                label={entry}
+                variant={shortReason === entry ? 'secondary' : 'ghost'}
+                onPress={() => setShortReason(entry)}
+              />
+            ))}
+          </View>
+          <Input
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Shënim për packing exception"
+            multiline
+          />
+          <Button
+            label="Shëno PACK si Short"
+            variant="ghost"
+            loading={busy === 'short-pack'}
+            onPress={() =>
+              void runAction('short-pack', async () => {
+                await apiRequest(apiUrl, `/wms/tasks/${task.id}/short`, {
+                  method: 'POST',
+                  token,
+                  body: {
+                    reasonCode: shortReason,
+                    notes: notes || undefined,
+                  },
+                });
+                setSuccess('Pack task u kalua në short me arsye.');
+              })
+            }
+          />
+        </SectionCard>
+      ) : null}
+
+      {task.auditTrail?.length ? (
+        <SectionCard title="Histori veprimesh" subtitle="Çdo start, pick, short dhe pack ruhet këtu për kontroll operativ.">
+          {task.auditTrail.map((entry) => (
+            <View
+              key={entry.id}
+              style={{
+                borderWidth: 1,
+                borderColor: '#D8E0EA',
+                borderRadius: 14,
+                padding: 12,
+                gap: 6,
+              }}
+            >
+              <View style={uiStyles.wrapRow}>
+                <StatusBadge value={entry.action} />
+                <Text style={{ color: '#64748B', fontSize: 12 }}>
+                  {formatDateTime(entry.createdAt)}
+                </Text>
+              </View>
+              <Text style={{ color: '#334155' }}>
+                {entry.user?.fullName ?? entry.user?.email ?? 'Operator i paidentifikuar'}
+              </Text>
+              {summarizeAudit(entry.metadata) ? (
+                <Text style={{ color: '#475569' }}>{summarizeAudit(entry.metadata)}</Text>
+              ) : null}
+            </View>
+          ))}
         </SectionCard>
       ) : null}
     </Screen>

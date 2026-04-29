@@ -131,6 +131,7 @@ export type WmsTask = {
   qty: number | string;
   lotCode?: string | null;
   serialNo?: string | null;
+  expiryDate?: string | null;
   referenceNo?: string | null;
   notes?: string | null;
   sourceType?: string | null;
@@ -158,6 +159,25 @@ export type WmsTask = {
     openTasks: number;
     doneTasks: number;
   } | null;
+  progress?: {
+    initialQty: number | string;
+    pickedQty: number | string;
+    shortQty: number | string;
+    remainingQty: number | string;
+    completionPercent: number;
+    latestAction?: string | null;
+  } | null;
+  auditTrail?: Array<{
+    id: string;
+    action: string;
+    createdAt?: string;
+    metadata?: Record<string, unknown> | null;
+    user?: {
+      id?: string;
+      fullName?: string | null;
+      email?: string | null;
+    } | null;
+  }>;
 };
 
 export type ScanPayload = {

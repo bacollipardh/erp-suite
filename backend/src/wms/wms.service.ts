@@ -14,6 +14,7 @@ import {
   WmsTaskType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { toPaginatedResponse, toPagination } from '../common/utils/pagination';
 import { WmsQueryDto } from './dto/wms-query.dto';
 import {
@@ -30,6 +31,7 @@ import {
   WmsStatusDto,
   WmsTaskActionDto,
   WmsTaskPickConfirmDto,
+  WmsTaskShortDto,
 } from './dto/wms-operations.dto';
 
 type Tx = PrismaService | any;
@@ -78,7 +80,10 @@ function todayUtcDate() {
 
 @Injectable()
 export class WmsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogs: AuditLogsService,
+  ) {}
 
   async findLocations(query: WmsQueryDto = {}) {
     const page = query.page ?? 1;
@@ -402,6 +407,18 @@ export class WmsService {
     });
     if (!task) throw new NotFoundException('WMS task not found');
 
+    const auditTrail = await this.auditLogs.findEntityLogs({
+      entityType: 'wms_tasks',
+      entityId: id,
+      limit: 20,
+    });
+    const progress = this.buildTaskProgress(task, auditTrail);
+    const detailBase = {
+      ...task,
+      auditTrail,
+      progress,
+    };
+
     if (task.sourceType === 'AGENT_ORDER' && task.sourceId) {
       const orderTasks = await this.prisma.wmsTask.findMany({
         where: {
@@ -411,7 +428,7 @@ export class WmsService {
       });
 
       return {
-        ...task,
+        ...detailBase,
         agentOrderWorkflow: {
           agentOrderId: task.sourceId,
           referenceNo: task.referenceNo,
@@ -426,7 +443,7 @@ export class WmsService {
     }
 
     if (task.sourceType !== 'SALES_INVOICE' || !task.sourceId) {
-      return task;
+      return detailBase;
     }
 
     const [reservations, invoiceTasks] = await this.prisma.$transaction([
@@ -442,7 +459,7 @@ export class WmsService {
     ]);
 
     return {
-      ...task,
+      ...detailBase,
       invoiceWorkflow: {
         salesInvoiceId: task.sourceId,
         referenceNo: task.referenceNo,
@@ -1130,6 +1147,13 @@ export class WmsService {
     ) {
       throw new BadRequestException('Serial number does not match the task');
     }
+    if (
+      dto.expiryDate?.trim() &&
+      task.expiryDate &&
+      dateOnly(dto.expiryDate)?.getTime() !== task.expiryDate.getTime()
+    ) {
+      throw new BadRequestException('Expiry date does not match the task');
+    }
 
     const invoice = await this.loadSalesInvoiceForWms(task.sourceId);
 
@@ -1225,6 +1249,19 @@ export class WmsService {
         },
       });
 
+      await this.logTaskAudit(task.id, userId, 'PICK_CONFIRM', {
+        sourceType: task.sourceType,
+        sourceId: task.sourceId,
+        pickedQty: qty,
+        remainingQty: nextTaskQty,
+        locationCode: reservation.locationId ? task.sourceLocation?.code : null,
+        itemCode: task.item?.code ?? null,
+        lotCode: reservation.lotCode,
+        serialNo: reservation.serialNo,
+        expiryDate: reservation.expiryDate?.toISOString().slice(0, 10) ?? null,
+        notes: nullableText(dto.notes),
+      });
+
       return {
         task: updatedTask,
         pickedQty: qty,
@@ -1269,6 +1306,27 @@ export class WmsService {
     if (!locationScan) {
       throw new BadRequestException('Location scan/code is required for agent-order picking');
     }
+    if (
+      dto.lotCode?.trim() &&
+      task.lotCode &&
+      dto.lotCode.trim().toLowerCase() !== task.lotCode.toLowerCase()
+    ) {
+      throw new BadRequestException('Lot code does not match the task');
+    }
+    if (
+      dto.serialNo?.trim() &&
+      task.serialNo &&
+      dto.serialNo.trim().toLowerCase() !== task.serialNo.toLowerCase()
+    ) {
+      throw new BadRequestException('Serial number does not match the task');
+    }
+    if (
+      dto.expiryDate?.trim() &&
+      task.expiryDate &&
+      dateOnly(dto.expiryDate)?.getTime() !== task.expiryDate.getTime()
+    ) {
+      throw new BadRequestException('Expiry date does not match the task');
+    }
 
     const location = await this.prisma.wmsLocation.findFirst({
       where: {
@@ -1291,6 +1349,7 @@ export class WmsService {
         inventoryStatus: WmsInventoryStatus.AVAILABLE,
         ...(task.lotCode ? { lotCode: task.lotCode } : {}),
         ...(task.serialNo ? { serialNo: task.serialNo } : {}),
+        ...(task.expiryDate ? { expiryDate: task.expiryDate } : {}),
       },
     });
     const availableQty = roundQty(
@@ -1331,6 +1390,21 @@ export class WmsService {
         sourceLocation: true,
         destinationLocation: true,
       },
+    });
+
+    await this.logTaskAudit(task.id, userId, 'PICK_CONFIRM', {
+      sourceType: task.sourceType,
+      sourceId: task.sourceId,
+      pickedQty: qty,
+      remainingQty: nextTaskQty,
+      locationCode: location.code,
+      itemCode: task.item?.code ?? null,
+      lotCode: task.lotCode ?? nullableText(dto.lotCode),
+      serialNo: task.serialNo ?? nullableText(dto.serialNo),
+      expiryDate:
+        (task.expiryDate ? task.expiryDate.toISOString().slice(0, 10) : null) ??
+        nullableText(dto.expiryDate),
+      notes: nullableText(dto.notes),
     });
 
     return {
@@ -1456,6 +1530,8 @@ export class WmsService {
     const invoice = await this.loadSalesInvoiceForWms(salesInvoiceId);
     await this.assertSalesInvoicePicked(invoice);
 
+    const loggedTaskIds: string[] = [];
+
     await this.prisma.$transaction(async (tx) => {
       const doneTask = await tx.wmsTask.findFirst({
         where: {
@@ -1480,8 +1556,19 @@ export class WmsService {
             completedAt: new Date(),
           },
         });
+        loggedTaskIds.push(doneTask.id);
         return;
       }
+
+      const openPackTasks = await tx.wmsTask.findMany({
+        where: {
+          sourceType: 'SALES_INVOICE',
+          sourceId: salesInvoiceId,
+          taskType: WmsTaskType.PACK,
+          status: { in: [WmsTaskStatus.PENDING, WmsTaskStatus.IN_PROGRESS] },
+        },
+        select: { id: true },
+      });
 
       const updated = await tx.wmsTask.updateMany({
         where: {
@@ -1497,9 +1584,12 @@ export class WmsService {
         },
       });
 
-      if (updated.count > 0) return;
+      if (updated.count > 0) {
+        loggedTaskIds.push(...openPackTasks.map((entry) => entry.id));
+        return;
+      }
 
-      await tx.wmsTask.create({
+      const createdTask = await tx.wmsTask.create({
         data: {
           warehouseId: invoice.warehouseId,
           taskType: WmsTaskType.PACK,
@@ -1512,7 +1602,16 @@ export class WmsService {
           completedAt: new Date(),
         },
       });
+      loggedTaskIds.push(createdTask.id);
     });
+
+    for (const taskId of loggedTaskIds) {
+      await this.logTaskAudit(taskId, userId, 'PACK_CONFIRM', {
+        sourceType: 'SALES_INVOICE',
+        sourceId: salesInvoiceId,
+        docNo: invoice.docNo,
+      });
+    }
 
     return { salesInvoiceId, docNo: invoice.docNo, packed: true };
   }
@@ -1572,11 +1671,18 @@ export class WmsService {
       WmsTaskStatus.IN_PROGRESS,
       userId,
       dto ?? {},
+      'START',
     );
   }
 
   async completeTask(id: string, dto: WmsTaskActionDto, userId: string) {
-    return this.updateTaskStatus(id, WmsTaskStatus.DONE, userId, dto ?? {});
+    return this.updateTaskStatus(
+      id,
+      WmsTaskStatus.DONE,
+      userId,
+      dto ?? {},
+      'COMPLETE',
+    );
   }
 
   async cancelTask(id: string, dto: WmsTaskActionDto, userId: string) {
@@ -1585,11 +1691,92 @@ export class WmsService {
       WmsTaskStatus.CANCELLED,
       userId,
       dto ?? {},
+      'CANCEL',
     );
   }
 
-  async shortTask(id: string, dto: WmsTaskActionDto, userId: string) {
-    return this.updateTaskStatus(id, WmsTaskStatus.SHORT, userId, dto ?? {});
+  async shortTask(id: string, dto: WmsTaskShortDto, userId: string) {
+    const task = await this.prisma.wmsTask.findUnique({
+      where: { id },
+      include: {
+        item: true,
+        sourceLocation: true,
+        destinationLocation: true,
+      },
+    });
+    if (!task) throw new NotFoundException('WMS task not found');
+    if (
+      task.status === WmsTaskStatus.DONE ||
+      task.status === WmsTaskStatus.CANCELLED
+    ) {
+      throw new BadRequestException('Closed WMS tasks cannot be changed');
+    }
+
+    const reasonCode = nullableText(dto.reasonCode);
+    const notes = nullableText(dto.notes);
+    if (task.taskType === WmsTaskType.PICK && !reasonCode) {
+      throw new BadRequestException('Short reason is required for PICK tasks');
+    }
+
+    const remainingQty = roundQty(numberValue(task.qty));
+    const shortQty = roundQty(numberValue(dto.shortQty ?? remainingQty));
+    if (
+      task.taskType === WmsTaskType.PICK &&
+      (!Number.isFinite(shortQty) || shortQty <= 0)
+    ) {
+      throw new BadRequestException('Short quantity must be greater than zero');
+    }
+    if (task.taskType === WmsTaskType.PICK && shortQty > remainingQty) {
+      throw new BadRequestException('Short quantity exceeds task quantity');
+    }
+
+    if (task.taskType === WmsTaskType.PICK && task.sourceType === 'SALES_INVOICE' && task.sourceId) {
+      return this.shortSalesInvoicePickTask(task, { reasonCode, notes, shortQty }, userId);
+    }
+
+    const nextQty =
+      task.taskType === WmsTaskType.PICK
+        ? roundQty(Math.max(0, remainingQty - shortQty))
+        : remainingQty;
+    const nextStatus =
+      task.taskType === WmsTaskType.PICK
+        ? nextQty <= 0
+          ? WmsTaskStatus.SHORT
+          : WmsTaskStatus.BLOCKED
+        : WmsTaskStatus.SHORT;
+    const nextNotes = this.combineTaskNotes(
+      task.notes,
+      this.buildShortNote(reasonCode, task.taskType === WmsTaskType.PICK ? shortQty : undefined, notes),
+    );
+
+    const updatedTask = await this.prisma.wmsTask.update({
+      where: { id },
+      data: {
+        qty: task.taskType === WmsTaskType.PICK ? nextQty : task.qty,
+        status: nextStatus,
+        assignedToId: userId,
+        notes: nextNotes,
+        completedAt: nextStatus === WmsTaskStatus.SHORT ? new Date() : null,
+      },
+      include: {
+        warehouse: true,
+        item: true,
+        sourceLocation: true,
+        destinationLocation: true,
+      },
+    });
+
+    await this.logTaskAudit(task.id, userId, 'SHORT', {
+      sourceType: task.sourceType,
+      sourceId: task.sourceId,
+      reasonCode,
+      shortQty: task.taskType === WmsTaskType.PICK ? shortQty : null,
+      remainingQty: nextQty,
+      resultingStatus: nextStatus,
+      notes,
+    });
+
+    return updatedTask;
   }
 
   async markExpiredStock(userId: string) {
@@ -1908,6 +2095,213 @@ export class WmsService {
     }
   }
 
+  private async shortSalesInvoicePickTask(
+    task: any,
+    params: {
+      reasonCode?: string | null;
+      notes?: string | null;
+      shortQty: number;
+    },
+    userId: string,
+  ) {
+    const invoice = await this.loadSalesInvoiceForWms(task.sourceId);
+
+    return this.prisma.$transaction(async (tx) => {
+      const reservation = await tx.wmsReservation.findFirst({
+        where: {
+          salesInvoiceId: task.sourceId,
+          warehouseId: task.warehouseId,
+          locationId: task.sourceLocationId!,
+          itemId: task.itemId!,
+          lotCode: task.lotCode ?? null,
+          serialNo: task.serialNo ?? null,
+          expiryDate: task.expiryDate ?? null,
+          status: {
+            in: [WmsReservationStatus.RESERVED, WmsReservationStatus.PICKED],
+          },
+          qtyReserved: { gt: 0 },
+        },
+      });
+      if (!reservation) {
+        throw new BadRequestException(
+          'No reserved quantity was found for this short action',
+        );
+      }
+
+      const stock = await this.findStock(tx, {
+        locationId: reservation.locationId,
+        itemId: reservation.itemId,
+        lotCode: reservation.lotCode,
+        serialNo: reservation.serialNo,
+        expiryDate: reservation.expiryDate,
+        inventoryStatus: WmsInventoryStatus.AVAILABLE,
+      });
+      if (!stock || numberValue(stock.reservedQty) < params.shortQty) {
+        throw new BadRequestException(
+          'Reserved WMS stock is no longer available for short release',
+        );
+      }
+
+      const nextReservedQty = roundQty(
+        numberValue(reservation.qtyReserved) - params.shortQty,
+      );
+      const nextTaskQty = roundQty(numberValue(task.qty) - params.shortQty);
+      const nextStatus =
+        nextTaskQty <= 0 ? WmsTaskStatus.SHORT : WmsTaskStatus.BLOCKED;
+      const nextReservationStatus =
+        nextReservedQty <= 0
+          ? numberValue(reservation.qtyPicked) > 0
+            ? WmsReservationStatus.PICKED
+            : WmsReservationStatus.SHORT
+          : WmsReservationStatus.RESERVED;
+
+      await tx.wmsStock.update({
+        where: { id: stock.id },
+        data: {
+          reservedQty: { decrement: params.shortQty },
+        },
+      });
+
+      await tx.wmsReservation.update({
+        where: { id: reservation.id },
+        data: {
+          qtyReserved: nextReservedQty,
+          status: nextReservationStatus,
+        },
+      });
+
+      await this.createMovement(tx, {
+        warehouseId: reservation.warehouseId,
+        itemId: reservation.itemId,
+        fromLocationId: reservation.locationId,
+        movementType: WmsMovementType.RELEASE,
+        qty: params.shortQty,
+        lotCode: reservation.lotCode,
+        serialNo: reservation.serialNo,
+        expiryDate: reservation.expiryDate,
+        sourceType: 'SALES_INVOICE',
+        sourceId: invoice.id,
+        referenceNo: invoice.docNo,
+        notes: this.buildShortNote(params.reasonCode, params.shortQty, params.notes),
+        createdById: userId,
+      });
+
+      const updatedTask = await tx.wmsTask.update({
+        where: { id: task.id },
+        data: {
+          qty: nextTaskQty,
+          status: nextStatus,
+          assignedToId: userId,
+          notes: this.combineTaskNotes(
+            task.notes,
+            this.buildShortNote(params.reasonCode, params.shortQty, params.notes),
+          ),
+          completedAt: nextStatus === WmsTaskStatus.SHORT ? new Date() : null,
+        },
+        include: {
+          warehouse: true,
+          item: true,
+          sourceLocation: true,
+          destinationLocation: true,
+        },
+      });
+
+      await this.logTaskAudit(task.id, userId, 'SHORT', {
+        sourceType: task.sourceType,
+        sourceId: task.sourceId,
+        reasonCode: params.reasonCode,
+        shortQty: params.shortQty,
+        remainingQty: nextTaskQty,
+        resultingStatus: nextStatus,
+        notes: params.notes,
+      });
+
+      return updatedTask;
+    });
+  }
+
+  private buildTaskProgress(task: any, auditTrail: any[]) {
+    const pickedQty = roundQty(
+      auditTrail
+        .filter((entry) => entry.action === 'PICK_CONFIRM')
+        .reduce(
+          (sum, entry) => sum + numberValue((entry.metadata as any)?.pickedQty),
+          0,
+        ),
+    );
+    const shortQty = roundQty(
+      auditTrail
+        .filter((entry) => entry.action === 'SHORT')
+        .reduce(
+          (sum, entry) => sum + numberValue((entry.metadata as any)?.shortQty),
+          0,
+        ),
+    );
+    const remainingQty = roundQty(numberValue(task.qty));
+    const initialQty = roundQty(
+      Math.max(remainingQty, pickedQty + shortQty + remainingQty),
+    );
+    const handledQty = roundQty(pickedQty + shortQty);
+    const isClosed =
+      task.status === WmsTaskStatus.DONE ||
+      task.status === WmsTaskStatus.SHORT ||
+      task.status === WmsTaskStatus.CANCELLED;
+
+    return {
+      initialQty,
+      pickedQty,
+      shortQty,
+      remainingQty,
+      completionPercent:
+        initialQty > 0
+          ? Math.min(100, Math.round((handledQty / initialQty) * 100))
+          : isClosed
+            ? 100
+            : 0,
+      latestAction: auditTrail[0]?.action ?? null,
+    };
+  }
+
+  private buildShortNote(
+    reasonCode?: string | null,
+    shortQty?: number,
+    notes?: string | null,
+  ) {
+    const parts = ['Short'];
+    if (shortQty && Number.isFinite(shortQty)) {
+      parts.push(`qty ${roundQty(shortQty)}`);
+    }
+    if (reasonCode) {
+      parts.push(`reason ${reasonCode}`);
+    }
+    if (notes) {
+      parts.push(notes);
+    }
+    return parts.join(' | ');
+  }
+
+  private combineTaskNotes(
+    existing?: string | null,
+    appended?: string | null,
+  ) {
+    return [nullableText(existing), nullableText(appended)].filter(Boolean).join('\n');
+  }
+
+  private logTaskAudit(
+    taskId: string,
+    userId: string,
+    action: string,
+    metadata?: unknown,
+  ) {
+    return this.auditLogs.log({
+      userId,
+      entityType: 'wms_tasks',
+      entityId: taskId,
+      action,
+      metadata,
+    });
+  }
+
   private matchesScanCode(
     value: string,
     candidates: Array<string | null | undefined>,
@@ -1958,6 +2352,7 @@ export class WmsService {
     status: WmsTaskStatus,
     userId: string,
     dto: WmsTaskActionDto = {},
+    auditAction = 'STATUS_CHANGE',
   ) {
     const task = await this.prisma.wmsTask.findUnique({ where: { id } });
     if (!task) throw new NotFoundException('WMS task not found');
@@ -1968,7 +2363,7 @@ export class WmsService {
       throw new BadRequestException('Closed WMS tasks cannot be changed');
     }
 
-    return this.prisma.wmsTask.update({
+    const updatedTask = await this.prisma.wmsTask.update({
       where: { id },
       data: {
         status,
@@ -1989,6 +2384,14 @@ export class WmsService {
         destinationLocation: true,
       },
     });
+
+    await this.logTaskAudit(id, userId, auditAction, {
+      previousStatus: task.status,
+      nextStatus: status,
+      notes: nullableText(dto.notes),
+    });
+
+    return updatedTask;
   }
 
   private async executeStockMove(
