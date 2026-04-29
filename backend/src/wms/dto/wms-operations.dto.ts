@@ -172,3 +172,30 @@ export class WmsTaskActionDto {
   @IsString()
   notes?: string;
 }
+
+export class WmsTaskPickConfirmDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(0.001)
+  qty?: number;
+
+  @IsOptional()
+  @IsString()
+  locationCode?: string;
+
+  @IsOptional()
+  @IsString()
+  itemCode?: string;
+
+  @IsOptional()
+  @IsString()
+  lotCode?: string;
+
+  @IsOptional()
+  @IsString()
+  serialNo?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}

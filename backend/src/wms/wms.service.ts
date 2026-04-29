@@ -29,6 +29,7 @@ import {
   WmsReplenishDto,
   WmsStatusDto,
   WmsTaskActionDto,
+  WmsTaskPickConfirmDto,
 } from './dto/wms-operations.dto';
 
 type Tx = PrismaService | any;
@@ -387,6 +388,79 @@ export class WmsService {
     ]);
 
     return toPaginatedResponse({ items, total, page, limit });
+  }
+
+  async findTaskById(id: string) {
+    const task = await this.prisma.wmsTask.findUnique({
+      where: { id },
+      include: {
+        warehouse: true,
+        item: true,
+        sourceLocation: true,
+        destinationLocation: true,
+      },
+    });
+    if (!task) throw new NotFoundException('WMS task not found');
+
+    if (task.sourceType !== 'SALES_INVOICE' || !task.sourceId) {
+      return task;
+    }
+
+    const [reservations, invoiceTasks] = await this.prisma.$transaction([
+      this.prisma.wmsReservation.findMany({
+        where: { salesInvoiceId: task.sourceId },
+      }),
+      this.prisma.wmsTask.findMany({
+        where: {
+          sourceType: 'SALES_INVOICE',
+          sourceId: task.sourceId,
+        },
+      }),
+    ]);
+
+    return {
+      ...task,
+      invoiceWorkflow: {
+        salesInvoiceId: task.sourceId,
+        referenceNo: task.referenceNo,
+        reservedCount: reservations.filter(
+          (entry) => entry.status === WmsReservationStatus.RESERVED,
+        ).length,
+        pickedCount: reservations.filter(
+          (entry) => entry.status === WmsReservationStatus.PICKED,
+        ).length,
+        reservedQty: roundQty(
+          reservations.reduce(
+            (sum, entry) => sum + numberValue(entry.qtyReserved),
+            0,
+          ),
+        ),
+        pickedQty: roundQty(
+          reservations.reduce(
+            (sum, entry) => sum + numberValue(entry.qtyPicked),
+            0,
+          ),
+        ),
+        openPickTasks: invoiceTasks.filter(
+          (entry) =>
+            entry.taskType === WmsTaskType.PICK &&
+            ([
+              WmsTaskStatus.PENDING,
+              WmsTaskStatus.IN_PROGRESS,
+              WmsTaskStatus.BLOCKED,
+            ] as WmsTaskStatus[]).includes(entry.status),
+        ).length,
+        openPackTasks: invoiceTasks.filter(
+          (entry) =>
+            entry.taskType === WmsTaskType.PACK &&
+            ([
+              WmsTaskStatus.PENDING,
+              WmsTaskStatus.IN_PROGRESS,
+              WmsTaskStatus.BLOCKED,
+            ] as WmsTaskStatus[]).includes(entry.status),
+        ).length,
+      },
+    };
   }
 
   async findReservations(query: WmsQueryDto = {}) {
@@ -947,33 +1021,222 @@ export class WmsService {
         },
         data: { status: WmsTaskStatus.DONE, completedAt: new Date() },
       });
-
-      const packTaskCount = await tx.wmsTask.count({
-        where: {
-          sourceType: 'SALES_INVOICE',
-          sourceId: salesInvoiceId,
-          taskType: WmsTaskType.PACK,
-        },
-      });
-      if (packTaskCount === 0) {
-        await tx.wmsTask.create({
-          data: {
-            warehouseId: invoice.warehouseId,
-            taskType: WmsTaskType.PACK,
-            status: WmsTaskStatus.PENDING,
-            sourceType: 'SALES_INVOICE',
-            sourceId: invoice.id,
-            referenceNo: invoice.docNo,
-            notes: 'Pack picked goods before posting/shipping',
-            createdById: userId,
-          },
-        });
-      }
+      await this.ensurePackTaskForSalesInvoiceTx(tx, invoice, userId);
 
       return {
         salesInvoiceId,
         docNo: invoice.docNo,
         picked: reservations.length,
+      };
+    });
+  }
+
+  async confirmPickTask(id: string, dto: WmsTaskPickConfirmDto, userId: string) {
+    const task = await this.prisma.wmsTask.findUnique({
+      where: { id },
+      include: {
+        item: true,
+        sourceLocation: true,
+      },
+    });
+    if (!task) throw new NotFoundException('WMS task not found');
+    if (task.taskType !== WmsTaskType.PICK) {
+      throw new BadRequestException('Only PICK tasks can be confirmed here');
+    }
+    if (task.sourceType !== 'SALES_INVOICE' || !task.sourceId) {
+      throw new BadRequestException(
+        'This pick task is not linked to a sales invoice workflow',
+      );
+    }
+    if (
+      ([WmsTaskStatus.DONE, WmsTaskStatus.CANCELLED, WmsTaskStatus.SHORT] as WmsTaskStatus[]).includes(task.status)
+    ) {
+      throw new BadRequestException('This pick task is already closed');
+    }
+
+    const remainingQty = roundQty(numberValue(task.qty));
+    const qty = roundQty(numberValue(dto.qty ?? remainingQty));
+    if (!Number.isFinite(qty) || qty <= 0) {
+      throw new BadRequestException('Pick quantity must be greater than zero');
+    }
+    if (qty > remainingQty) {
+      throw new BadRequestException('Pick quantity exceeds task quantity');
+    }
+
+    const locationScan = dto.locationCode?.trim();
+    if (
+      locationScan &&
+      !this.matchesScanCode(locationScan, [
+        task.sourceLocation?.code,
+        task.sourceLocation?.barcode,
+      ])
+    ) {
+      throw new BadRequestException(
+        'Scanned location does not match the task source location',
+      );
+    }
+
+    const itemScan = dto.itemCode?.trim();
+    if (
+      itemScan &&
+      !this.matchesScanCode(itemScan, [
+        task.item?.code,
+        task.item?.barcode,
+        task.itemId,
+      ])
+    ) {
+      throw new BadRequestException(
+        'Scanned item does not match the task item',
+      );
+    }
+
+    if (
+      dto.lotCode?.trim() &&
+      task.lotCode &&
+      dto.lotCode.trim().toLowerCase() !== task.lotCode.toLowerCase()
+    ) {
+      throw new BadRequestException('Lot code does not match the task');
+    }
+    if (
+      dto.serialNo?.trim() &&
+      task.serialNo &&
+      dto.serialNo.trim().toLowerCase() !== task.serialNo.toLowerCase()
+    ) {
+      throw new BadRequestException('Serial number does not match the task');
+    }
+
+    const invoice = await this.loadSalesInvoiceForWms(task.sourceId);
+
+    return this.prisma.$transaction(async (tx) => {
+      const reservation = await tx.wmsReservation.findFirst({
+        where: {
+          salesInvoiceId: task.sourceId!,
+          warehouseId: task.warehouseId,
+          locationId: task.sourceLocationId!,
+          itemId: task.itemId!,
+          lotCode: task.lotCode ?? null,
+          serialNo: task.serialNo ?? null,
+          expiryDate: task.expiryDate ?? null,
+          status: WmsReservationStatus.RESERVED,
+          qtyReserved: { gt: 0 },
+        },
+      });
+      if (!reservation) {
+        throw new BadRequestException(
+          'No reserved quantity was found for this pick task',
+        );
+      }
+
+      const stock = await this.findStock(tx, {
+        locationId: reservation.locationId,
+        itemId: reservation.itemId,
+        lotCode: reservation.lotCode,
+        serialNo: reservation.serialNo,
+        expiryDate: reservation.expiryDate,
+        inventoryStatus: WmsInventoryStatus.AVAILABLE,
+      });
+      if (!stock || numberValue(stock.reservedQty) < qty) {
+        throw new BadRequestException(
+          'Reserved WMS stock is no longer available for this pick',
+        );
+      }
+
+      const nextReservedQty = roundQty(numberValue(reservation.qtyReserved) - qty);
+      const nextPickedQty = roundQty(numberValue(reservation.qtyPicked) + qty);
+      const nextTaskQty = roundQty(remainingQty - qty);
+
+      await tx.wmsStock.update({
+        where: { id: stock.id },
+        data: {
+          reservedQty: { decrement: qty },
+          pickedQty: { increment: qty },
+        },
+      });
+
+      await tx.wmsReservation.update({
+        where: { id: reservation.id },
+        data: {
+          qtyReserved: nextReservedQty,
+          qtyPicked: nextPickedQty,
+          status:
+            nextReservedQty <= 0
+              ? WmsReservationStatus.PICKED
+              : WmsReservationStatus.RESERVED,
+          pickedAt: new Date(),
+        },
+      });
+
+      await this.createMovement(tx, {
+        warehouseId: reservation.warehouseId,
+        itemId: reservation.itemId,
+        fromLocationId: reservation.locationId,
+        movementType: WmsMovementType.PICK,
+        qty,
+        lotCode: reservation.lotCode,
+        serialNo: reservation.serialNo,
+        expiryDate: reservation.expiryDate,
+        sourceType: 'SALES_INVOICE',
+        sourceId: invoice.id,
+        referenceNo: invoice.docNo,
+        notes: nullableText(dto.notes),
+        createdById: userId,
+      });
+
+      const updatedTask = await tx.wmsTask.update({
+        where: { id: task.id },
+        data: {
+          qty: nextTaskQty,
+          status: nextTaskQty <= 0 ? WmsTaskStatus.DONE : WmsTaskStatus.IN_PROGRESS,
+          assignedToId: userId,
+          notes: nullableText(dto.notes) ?? task.notes,
+          completedAt: nextTaskQty <= 0 ? new Date() : null,
+        },
+        include: {
+          warehouse: true,
+          item: true,
+          sourceLocation: true,
+          destinationLocation: true,
+        },
+      });
+
+      return {
+        task: updatedTask,
+        pickedQty: qty,
+        remainingQty: nextTaskQty,
+      };
+    });
+  }
+
+  async finalizeSalesPick(salesInvoiceId: string, userId: string) {
+    const invoice = await this.loadSalesInvoiceForWms(salesInvoiceId);
+    await this.assertSalesInvoicePicked(invoice);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.wmsTask.updateMany({
+        where: {
+          sourceType: 'SALES_INVOICE',
+          sourceId: salesInvoiceId,
+          taskType: WmsTaskType.PICK,
+          status: {
+            in: [
+              WmsTaskStatus.PENDING,
+              WmsTaskStatus.IN_PROGRESS,
+              WmsTaskStatus.BLOCKED,
+            ],
+          },
+        },
+        data: {
+          status: WmsTaskStatus.DONE,
+          completedAt: new Date(),
+        },
+      });
+
+      await this.ensurePackTaskForSalesInvoiceTx(tx, invoice, userId);
+
+      return {
+        salesInvoiceId,
+        docNo: invoice.docNo,
+        readyForPack: true,
       };
     });
   }
@@ -1000,12 +1263,13 @@ export class WmsService {
           inventoryStatus: WmsInventoryStatus.AVAILABLE,
         });
         if (stock) {
-          if (reservation.status === WmsReservationStatus.PICKED) {
+          if (numberValue(reservation.qtyPicked) > 0) {
             await tx.wmsStock.update({
               where: { id: stock.id },
               data: { pickedQty: { decrement: reservation.qtyPicked } },
             });
-          } else {
+          }
+          if (numberValue(reservation.qtyReserved) > 0) {
             await tx.wmsStock.update({
               where: { id: stock.id },
               data: { reservedQty: { decrement: reservation.qtyReserved } },
@@ -1021,7 +1285,10 @@ export class WmsService {
           itemId: reservation.itemId,
           fromLocationId: reservation.locationId,
           movementType: WmsMovementType.RELEASE,
-          qty: numberValue(reservation.qtyReserved),
+          qty: roundQty(
+            numberValue(reservation.qtyReserved) +
+              numberValue(reservation.qtyPicked),
+          ),
           lotCode: reservation.lotCode,
           serialNo: reservation.serialNo,
           expiryDate: reservation.expiryDate,
@@ -1477,6 +1744,44 @@ export class WmsService {
         );
       }
     }
+  }
+
+  private async ensurePackTaskForSalesInvoiceTx(
+    tx: Tx,
+    invoice: SalesInvoiceForWms,
+    userId: string,
+  ) {
+    const packTaskCount = await tx.wmsTask.count({
+      where: {
+        sourceType: 'SALES_INVOICE',
+        sourceId: invoice.id,
+        taskType: WmsTaskType.PACK,
+      },
+    });
+    if (packTaskCount === 0) {
+      await tx.wmsTask.create({
+        data: {
+          warehouseId: invoice.warehouseId,
+          taskType: WmsTaskType.PACK,
+          status: WmsTaskStatus.PENDING,
+          sourceType: 'SALES_INVOICE',
+          sourceId: invoice.id,
+          referenceNo: invoice.docNo,
+          notes: 'Pack picked goods before posting/shipping',
+          createdById: userId,
+        },
+      });
+    }
+  }
+
+  private matchesScanCode(
+    value: string,
+    candidates: Array<string | null | undefined>,
+  ) {
+    const normalized = value.trim().toLowerCase();
+    return candidates.some(
+      (candidate) => candidate?.trim().toLowerCase() === normalized,
+    );
   }
 
   private async assertNoActiveSalesInvoiceWorkflowTx(

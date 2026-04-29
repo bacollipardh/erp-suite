@@ -12,6 +12,7 @@ import {
   WmsReplenishDto,
   WmsStatusDto,
   WmsTaskActionDto,
+  WmsTaskPickConfirmDto,
 } from './dto/wms-operations.dto';
 import { WmsQueryDto } from './dto/wms-query.dto';
 import { WmsService } from './wms.service';
@@ -54,6 +55,12 @@ export class WmsController {
   @RequirePermissions(PERMISSIONS.wmsRead)
   findTasks(@Query() query: WmsQueryDto) {
     return this.wmsService.findTasks(query);
+  }
+
+  @Get('tasks/:id')
+  @RequirePermissions(PERMISSIONS.wmsRead)
+  findTaskById(@Param('id') id: string) {
+    return this.wmsService.findTaskById(id);
   }
 
   @Get('reservations')
@@ -146,6 +153,12 @@ export class WmsController {
     return this.wmsService.shortTask(id, dto, user.sub);
   }
 
+  @Post('tasks/:id/pick-confirm')
+  @RequirePermissions(PERMISSIONS.wmsPick)
+  confirmPickTask(@Param('id') id: string, @Body() dto: WmsTaskPickConfirmDto, @CurrentUser() user: JwtPayload) {
+    return this.wmsService.confirmPickTask(id, dto, user.sub);
+  }
+
   @Post('picking/sales-invoices/:id/plan')
   @RequirePermissions(PERMISSIONS.wmsPick)
   planSalesPick(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
@@ -156,6 +169,12 @@ export class WmsController {
   @RequirePermissions(PERMISSIONS.wmsPick)
   confirmSalesPick(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.wmsService.confirmSalesPick(id, user.sub);
+  }
+
+  @Post('picking/sales-invoices/:id/finalize')
+  @RequirePermissions(PERMISSIONS.wmsPick)
+  finalizeSalesPick(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.wmsService.finalizeSalesPick(id, user.sub);
   }
 
   @Post('picking/sales-invoices/:id/release')

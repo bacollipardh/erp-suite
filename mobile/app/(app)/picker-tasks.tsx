@@ -239,6 +239,13 @@ export default function PickerTasksScreen() {
               </Text>
 
               <View style={{ gap: 8 }}>
+                {['PICK', 'PACK'].includes(task.taskType) ? (
+                  <Button
+                    label="Hap Workflow"
+                    variant="secondary"
+                    onPress={() => router.push(`/picker-tasks/${task.id}` as any)}
+                  />
+                ) : null}
                 {task.status === 'PENDING' ? (
                   <Button
                     label="Start Task"
@@ -247,27 +254,11 @@ export default function PickerTasksScreen() {
                   />
                 ) : null}
                 {task.taskType === 'PICK' && task.sourceType === 'SALES_INVOICE' && ['PENDING', 'IN_PROGRESS', 'BLOCKED'].includes(task.status) ? (
-                  <>
-                    <Button
-                      label="Konfirmo Picking"
-                      variant="secondary"
-                      loading={actionLoading === `${task.id}:confirm-pick`}
-                      onPress={() => void runWorkflowAction(task, 'confirm-pick')}
-                    />
-                    <Button
-                      label="Liro Rezervimet"
-                      variant="ghost"
-                      loading={actionLoading === `${task.id}:release-pick`}
-                      onPress={() => void runWorkflowAction(task, 'release-pick')}
-                    />
-                  </>
-                ) : null}
-                {task.taskType === 'PACK' && task.sourceType === 'SALES_INVOICE' && ['PENDING', 'IN_PROGRESS', 'BLOCKED'].includes(task.status) ? (
                   <Button
-                    label="Konfirmo Packing"
-                    variant="secondary"
-                    loading={actionLoading === `${task.id}:confirm-pack`}
-                    onPress={() => void runWorkflowAction(task, 'confirm-pack')}
+                    label="Liro Rezervimet"
+                    variant="ghost"
+                    loading={actionLoading === `${task.id}:release-pick`}
+                    onPress={() => void runWorkflowAction(task, 'release-pick')}
                   />
                 ) : null}
                 {task.taskType !== 'PICK' && task.taskType !== 'PACK' && task.status === 'IN_PROGRESS' ? (

@@ -128,6 +128,8 @@ export type WmsTask = {
   taskType: string;
   status: string;
   qty: number | string;
+  lotCode?: string | null;
+  serialNo?: string | null;
   referenceNo?: string | null;
   notes?: string | null;
   sourceType?: string | null;
@@ -137,8 +139,18 @@ export type WmsTask = {
   completedAt?: string | null;
   item?: { id: string; code: string; name: string; barcode?: string | null } | null;
   warehouse?: { id: string; code?: string; name: string } | null;
-  sourceLocation?: { id: string; code: string } | null;
-  destinationLocation?: { id: string; code: string } | null;
+  sourceLocation?: { id: string; code: string; barcode?: string | null } | null;
+  destinationLocation?: { id: string; code: string; barcode?: string | null } | null;
+  invoiceWorkflow?: {
+    salesInvoiceId: string;
+    referenceNo?: string | null;
+    reservedCount: number;
+    pickedCount: number;
+    reservedQty: number | string;
+    pickedQty: number | string;
+    openPickTasks: number;
+    openPackTasks: number;
+  } | null;
 };
 
 export type ScanPayload = {
