@@ -108,6 +108,10 @@ export default function PickerTaskWorkflowScreen() {
     task.sourceType === 'SALES_INVOICE' &&
     task.sourceId &&
     Number(task.invoiceWorkflow?.reservedCount ?? 0) === 0;
+  const agentOrderReadyToFinalize =
+    task.sourceType === 'AGENT_ORDER' &&
+    task.sourceId &&
+    Number(task.agentOrderWorkflow?.openTasks ?? 0) === 0;
 
   return (
     <Screen scroll>
@@ -154,6 +158,14 @@ export default function PickerTaskWorkflowScreen() {
           </Text>
           <Text style={{ color: '#334155' }}>
             Pick task të hapura: {task.invoiceWorkflow.openPickTasks} | Pack task të hapura: {task.invoiceWorkflow.openPackTasks}
+          </Text>
+        </SectionCard>
+      ) : null}
+
+      {task.agentOrderWorkflow ? (
+        <SectionCard title="Gjendja e Agent Order" subtitle="Përmbledhje e picking-ut për këtë order të agjentit.">
+          <Text style={{ color: '#334155' }}>
+            Task të hapura: {task.agentOrderWorkflow.openTasks} | Task të kryera: {task.agentOrderWorkflow.doneTasks}
           </Text>
         </SectionCard>
       ) : null}
@@ -283,6 +295,26 @@ export default function PickerTaskWorkflowScreen() {
                   body: {},
                 });
                 setSuccess('Fatura u finalizua për picking. Pack task tani duhet të jetë gati.');
+              })
+            }
+          />
+        </SectionCard>
+      ) : null}
+
+      {task.taskType === 'PICK' && agentOrderReadyToFinalize ? (
+        <SectionCard title="Finalizo Agent Order" subtitle="Kur krejt task-et e picking-ut mbarojnë, kalo order-in gati për dokument.">
+          <Button
+            label="Konfirmo Krejt Order-in"
+            variant="secondary"
+            loading={busy === 'finalize-agent-order'}
+            onPress={() =>
+              void runAction('finalize-agent-order', async () => {
+                await apiRequest(apiUrl, `/agent-orders/${task.sourceId}/complete-wms`, {
+                  method: 'POST',
+                  token,
+                  body: {},
+                });
+                setSuccess('Agent order u finalizua dhe është gati për dokument.');
               })
             }
           />

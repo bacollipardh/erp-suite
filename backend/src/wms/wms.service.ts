@@ -402,6 +402,29 @@ export class WmsService {
     });
     if (!task) throw new NotFoundException('WMS task not found');
 
+    if (task.sourceType === 'AGENT_ORDER' && task.sourceId) {
+      const orderTasks = await this.prisma.wmsTask.findMany({
+        where: {
+          sourceType: 'AGENT_ORDER',
+          sourceId: task.sourceId,
+        },
+      });
+
+      return {
+        ...task,
+        agentOrderWorkflow: {
+          agentOrderId: task.sourceId,
+          referenceNo: task.referenceNo,
+          openTasks: orderTasks.filter((entry) =>
+            ([WmsTaskStatus.PENDING, WmsTaskStatus.IN_PROGRESS, WmsTaskStatus.BLOCKED] as WmsTaskStatus[]).includes(entry.status),
+          ).length,
+          doneTasks: orderTasks.filter(
+            (entry) => entry.status === WmsTaskStatus.DONE,
+          ).length,
+        },
+      };
+    }
+
     if (task.sourceType !== 'SALES_INVOICE' || !task.sourceId) {
       return task;
     }
@@ -1043,10 +1066,13 @@ export class WmsService {
     if (task.taskType !== WmsTaskType.PICK) {
       throw new BadRequestException('Only PICK tasks can be confirmed here');
     }
+
+    if (task.sourceType === 'AGENT_ORDER' && task.sourceId) {
+      return this.confirmAgentOrderPickTask(task, dto, userId);
+    }
+
     if (task.sourceType !== 'SALES_INVOICE' || !task.sourceId) {
-      throw new BadRequestException(
-        'This pick task is not linked to a sales invoice workflow',
-      );
+      throw new BadRequestException('This pick task is not linked to a supported workflow');
     }
     if (
       ([WmsTaskStatus.DONE, WmsTaskStatus.CANCELLED, WmsTaskStatus.SHORT] as WmsTaskStatus[]).includes(task.status)
@@ -1205,6 +1231,114 @@ export class WmsService {
         remainingQty: nextTaskQty,
       };
     });
+  }
+
+  private async confirmAgentOrderPickTask(
+    task: any,
+    dto: WmsTaskPickConfirmDto,
+    userId: string,
+  ) {
+    if (
+      ([WmsTaskStatus.DONE, WmsTaskStatus.CANCELLED, WmsTaskStatus.SHORT] as WmsTaskStatus[]).includes(task.status)
+    ) {
+      throw new BadRequestException('This pick task is already closed');
+    }
+
+    const qty = roundQty(numberValue(dto.qty ?? task.qty));
+    const remainingQty = roundQty(numberValue(task.qty));
+    if (!Number.isFinite(qty) || qty <= 0) {
+      throw new BadRequestException('Pick quantity must be greater than zero');
+    }
+    if (qty > remainingQty) {
+      throw new BadRequestException('Pick quantity exceeds task quantity');
+    }
+
+    const itemScan = dto.itemCode?.trim();
+    if (
+      itemScan &&
+      !this.matchesScanCode(itemScan, [
+        task.item?.code,
+        task.item?.barcode,
+        task.itemId,
+      ])
+    ) {
+      throw new BadRequestException('Scanned item does not match the task item');
+    }
+
+    const locationScan = dto.locationCode?.trim();
+    if (!locationScan) {
+      throw new BadRequestException('Location scan/code is required for agent-order picking');
+    }
+
+    const location = await this.prisma.wmsLocation.findFirst({
+      where: {
+        warehouseId: task.warehouseId,
+        OR: [
+          { code: { equals: locationScan, mode: 'insensitive' } },
+          { barcode: { equals: locationScan, mode: 'insensitive' } },
+        ],
+      },
+    });
+    if (!location) {
+      throw new BadRequestException('Scanned location was not found in this warehouse');
+    }
+
+    const stocks = await this.prisma.wmsStock.findMany({
+      where: {
+        warehouseId: task.warehouseId,
+        locationId: location.id,
+        itemId: task.itemId,
+        inventoryStatus: WmsInventoryStatus.AVAILABLE,
+        ...(task.lotCode ? { lotCode: task.lotCode } : {}),
+        ...(task.serialNo ? { serialNo: task.serialNo } : {}),
+      },
+    });
+    const availableQty = roundQty(
+      stocks.reduce(
+        (sum, stock) =>
+          sum +
+          roundQty(
+            numberValue(stock.qtyOnHand) -
+              numberValue(stock.reservedQty) -
+              numberValue(stock.pickedQty),
+          ),
+        0,
+      ),
+    );
+    if (availableQty < qty) {
+      throw new BadRequestException('Nuk ka stok të mjaftueshëm në lokacionin e skenuar');
+    }
+
+    const nextTaskQty = roundQty(remainingQty - qty);
+    const noteParts = [
+      nullableText(task.notes),
+      `Picked ${qty} from ${location.code}${dto.notes ? ` | ${dto.notes.trim()}` : ''}`,
+    ].filter(Boolean);
+
+    const updatedTask = await this.prisma.wmsTask.update({
+      where: { id: task.id },
+      data: {
+        sourceLocationId: location.id,
+        qty: nextTaskQty,
+        assignedToId: userId,
+        status: nextTaskQty <= 0 ? WmsTaskStatus.DONE : WmsTaskStatus.IN_PROGRESS,
+        notes: noteParts.join('\n'),
+        completedAt: nextTaskQty <= 0 ? new Date() : null,
+      },
+      include: {
+        warehouse: true,
+        item: true,
+        sourceLocation: true,
+        destinationLocation: true,
+      },
+    });
+
+    return {
+      task: updatedTask,
+      pickedQty: qty,
+      remainingQty: nextTaskQty,
+      locationCode: location.code,
+    };
   }
 
   async finalizeSalesPick(salesInvoiceId: string, userId: string) {

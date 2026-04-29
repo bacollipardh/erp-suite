@@ -151,6 +151,12 @@ export type WmsTask = {
     openPickTasks: number;
     openPackTasks: number;
   } | null;
+  agentOrderWorkflow?: {
+    agentOrderId: string;
+    referenceNo?: string | null;
+    openTasks: number;
+    doneTasks: number;
+  } | null;
 };
 
 export type ScanPayload = {
