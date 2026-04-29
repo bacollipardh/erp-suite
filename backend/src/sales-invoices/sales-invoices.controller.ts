@@ -58,6 +58,7 @@ export class SalesInvoicesController {
     await this.customerCreditApprovalGateService.assertPostAllowed(id, user.sub);
     return this.salesInvoicesService.post(id, user.sub, {
       skipWms: dto?.skipWms === true,
+      skipWmsReason: dto?.skipWmsReason,
     });
   }
 

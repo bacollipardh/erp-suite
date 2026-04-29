@@ -18,7 +18,8 @@ POS dhe forma standarde e fatures se shitjes kane opsionin `Posto pa WMS`.
 
 Kur ky opsion aktivizohet:
 
-1. Fatura postohet pa krijuar/kerkuar pick dhe pack task.
+1. Perdoruesi duhet te shkruaje arsyen e bypass-it.
+2. Fatura postohet pa krijuar/kerkuar pick dhe pack task.
 2. Stoku zbritet normalisht.
 3. WMS stock zbritet direkt nga lokacionet e disponueshme dhe ruhen levizjet `SHIP`.
 4. Financat, kontimet dhe kartela e bleresit marrin efekt si ne postimin normal.
@@ -30,17 +31,24 @@ Nese fatura ka WMS task ose rezervim aktiv, sistemi nuk lejon bypass derisa WMS 
 - `frontend/components/sales-agent/pos-form.tsx`
   - Pas krijimit te fatures thirret automatikisht WMS plan/pick/pack.
   - Fatura postohet vetem pasi WMS te kompletohet.
-  - U shtua checkbox `Posto pa WMS` per raste kur nuk duhet workflow pick/pack.
+  - U shtua checkbox `Posto pa WMS` dhe fusha e arsyes per raste kur nuk duhet workflow pick/pack.
   - Nese WMS ose postimi deshton, fatura mbetet draft dhe UI tregon mesazh paralajmerues me link te fatures.
 
 - `frontend/components/invoices/sales-invoice-form.tsx`
-  - Faturat draft mund te postohen me workflow WMS ose me bypass WMS.
+  - Faturat draft mund te postohen me workflow WMS ose me bypass WMS me arsye te detyrueshme.
+
+- `frontend/components/invoices/document-action-panel.tsx`
+  - Faqja e fatures tregon `Statusi WMS`: mode, Pick, Pack, Ship, task aktive, sasite dhe arsye bypass.
 
 - `backend/src/sales-invoices`
-  - Endpoint-i i postimit pranon `skipWms: true`.
+  - Endpoint-i i postimit pranon `skipWms: true` dhe `skipWmsReason`.
+  - Detaji i fatures kthen `wmsSummary` per UI.
 
 - `backend/src/wms/wms.service.ts`
   - U shtua direct WMS shipment per bypass: nuk krijon task-a, por zbrit WMS stock dhe ruan levizjet.
+
+- `docs/sales-wms-finance-operational-guide.md`
+  - U shtua dokumentim praktik per shitje, WMS, kthime, pagesa, kartela dhe audit trail.
 
 - `scripts/smoke-pos-wms-flow.mjs`
   - Teston rrjedhen POS -> WMS -> posted invoice permes API.

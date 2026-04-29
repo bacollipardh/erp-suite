@@ -63,6 +63,7 @@ export function SalesInvoiceForm({
   const [busy, setBusy] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [postWithoutWms, setPostWithoutWms] = useState(false);
+  const [postWithoutWmsReason, setPostWithoutWmsReason] = useState('');
 
   const [form, setForm] = useState({
     seriesId: data?.seriesId ?? '',
@@ -152,10 +153,15 @@ export function SalesInvoiceForm({
 
   async function onPost() {
     setApiError(null);
+    if (postWithoutWms && !postWithoutWmsReason.trim()) {
+      setApiError('Shkruaj arsyen pse kjo fature po postohet pa WMS.');
+      return;
+    }
 
     try {
       await api.postDocument('sales-invoices', data.id, {
         skipWms: postWithoutWms,
+        skipWmsReason: postWithoutWms ? postWithoutWmsReason.trim() : undefined,
       });
       router.refresh();
     } catch (error) {
@@ -273,6 +279,13 @@ export function SalesInvoiceForm({
                   </span>
                 </span>
               </label>
+              {postWithoutWms ? (
+                <TextareaInput
+                  label="Arsyeja pa WMS"
+                  value={postWithoutWmsReason}
+                  onChange={(event) => setPostWithoutWmsReason(event.target.value)}
+                />
+              ) : null}
               <ConfirmButton
                 label={postWithoutWms ? 'Posto pa WMS' : 'Posto Dokumentin'}
                 confirmText={

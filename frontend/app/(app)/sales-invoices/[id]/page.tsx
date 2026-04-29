@@ -53,6 +53,7 @@ export default async function EditSalesInvoicePage({
           fiscalStatus={doc.fiscalStatus}
           fiscalReference={doc.fiscalReference}
           fiscalError={doc.fiscalError}
+          wmsSummary={doc.wmsSummary}
         />
       </div>
 

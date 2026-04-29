@@ -5,6 +5,7 @@ const customerCode = process.env.ERP_POS_CUSTOMER_CODE || 'CUS-003';
 const warehouseCode = process.env.ERP_POS_WAREHOUSE_CODE || 'MAIN';
 const itemCode = process.env.ERP_POS_ITEM_CODE || 'MOUSE-001';
 const qty = Number(process.env.ERP_POS_QTY || 1);
+const bypassReason = process.env.ERP_POS_BYPASS_REASON || 'Smoke test cash-and-carry bypass';
 
 async function readError(response) {
   const text = await response.text();
@@ -105,11 +106,29 @@ async function main() {
 
   const posted = await fetchJson(
     `sales-invoices/${invoice.id}/post`,
-    { method: 'POST', headers, body: JSON.stringify({ skipWms: true }) },
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        skipWms: true,
+        skipWmsReason: bypassReason,
+      }),
+    },
     'post sales invoice without WMS workflow',
   );
   if (posted.status !== 'POSTED') {
     throw new Error(`Expected invoice to be POSTED, got ${posted.status}`);
+  }
+  const postedDetail = await fetchJson(
+    `sales-invoices/${posted.id}`,
+    { headers },
+    'posted sales invoice details',
+  );
+  if (postedDetail.wmsSummary?.mode !== 'BYPASS') {
+    throw new Error(`Expected WMS summary mode BYPASS, got ${postedDetail.wmsSummary?.mode}`);
+  }
+  if (postedDetail.wmsSummary?.bypassReason !== bypassReason) {
+    throw new Error('Expected WMS summary to include the bypass reason');
   }
 
   const reservations = unwrapList(
@@ -143,7 +162,8 @@ async function main() {
         warehouse: warehouse.code,
         item: item.code,
         qty,
-        wmsMode: 'BYPASS',
+        wmsMode: postedDetail.wmsSummary.mode,
+        bypassReason: postedDetail.wmsSummary.bypassReason,
         wmsReservations: reservations.length,
         wmsTasks: tasks.map((entry) => `${entry.taskType}:${entry.status}`),
         grandTotal: posted.grandTotal,

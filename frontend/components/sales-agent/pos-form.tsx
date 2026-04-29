@@ -66,10 +66,6 @@ async function prepareWmsAndPostInvoice(invoiceId: string) {
   return api.postDocument('sales-invoices', invoiceId);
 }
 
-async function postInvoiceWithoutWms(invoiceId: string) {
-  return api.postDocument('sales-invoices', invoiceId, { skipWms: true });
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 export function PosForm({
   items,
@@ -96,6 +92,7 @@ export function PosForm({
   const [seriesId, setSeriesId]           = useState(series[0]?.id ?? '');
   const [notes, setNotes]                 = useState('');
   const [skipWms, setSkipWms]             = useState(false);
+  const [skipWmsReason, setSkipWmsReason] = useState('');
 
   // Cart
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -197,6 +194,10 @@ async function handleSubmit() {
     if (!cart.length)    { setError('Shto të paktën 1 artikull.'); return; }
     if (!warehouseId)    { setError('Zgjidhni magazinën.');        return; }
     if (!seriesId)       { setError('Zgjidhni serinë e dokumentit.'); return; }
+    if (skipWms && !skipWmsReason.trim()) {
+      setError('Shkruani arsyen pse kjo fature po postohet pa WMS.');
+      return;
+    }
 
     setBusy(true);
     setError(null);
@@ -223,7 +224,10 @@ async function handleSubmit() {
 
       try {
         if (skipWms) {
-          await postInvoiceWithoutWms(invoice.id);
+          await api.postDocument('sales-invoices', invoice.id, {
+            skipWms: true,
+            skipWmsReason: skipWmsReason.trim(),
+          });
           setSuccess({
             id: invoice.id,
             docNo: invoice.docNo,
@@ -251,6 +255,7 @@ async function handleSubmit() {
       setCustomerId('');
       setCustomerQ('');
       setNotes('');
+      setSkipWmsReason('');
       router.refresh();
     } catch (err: unknown) {
       setError(parseApiError(err));
@@ -466,6 +471,15 @@ async function handleSubmit() {
                 </span>
               </span>
             </label>
+            {skipWms ? (
+              <textarea
+                value={skipWmsReason}
+                onChange={(e) => setSkipWmsReason(e.target.value)}
+                rows={2}
+                placeholder="Arsyeja e postimit pa WMS..."
+                className="mt-2 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-amber-900 placeholder:text-amber-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
+              />
+            ) : null}
 
             <button
               onClick={handleSubmit}

@@ -4,13 +4,28 @@ import { api } from '@/lib/api';
 import { PERMISSIONS } from '@/lib/permissions';
 import { requirePagePermission } from '@/lib/server-page-auth';
 
-export default async function AuditLogsPage() {
+export default async function AuditLogsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ search?: string }>;
+}) {
   await requirePagePermission(PERMISSIONS.auditLogsRead);
-  const logs = await api.list('audit-logs');
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const logs = await api.list('audit-logs', {
+    search: resolvedSearchParams.search,
+    limit: 100,
+  });
 
   return (
     <div>
-      <PageHeader title="Regjistri i Auditimit" description="Gjurmimi i veprimeve në sistem." />
+      <PageHeader
+        title="Regjistri i Auditimit"
+        description={
+          resolvedSearchParams.search
+            ? `Gjurmimi i veprimeve i filtruar per ${resolvedSearchParams.search}.`
+            : 'Gjurmimi i veprimeve në sistem.'
+        }
+      />
       <ServerDataTable
         data={logs}
         columns={[

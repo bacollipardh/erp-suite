@@ -127,6 +127,21 @@ async function main() {
   if (posted.status !== 'POSTED') {
     throw new Error(`Expected invoice to be POSTED, got ${posted.status}`);
   }
+  const postedDetail = await fetchJson(
+    `sales-invoices/${posted.id}`,
+    { headers },
+    'posted sales invoice details',
+  );
+  if (postedDetail.wmsSummary?.mode !== 'WORKFLOW') {
+    throw new Error(`Expected WMS summary mode WORKFLOW, got ${postedDetail.wmsSummary?.mode}`);
+  }
+  if (
+    postedDetail.wmsSummary?.steps?.picked !== 'DONE' ||
+    postedDetail.wmsSummary?.steps?.packed !== 'DONE' ||
+    postedDetail.wmsSummary?.steps?.shipped !== 'DONE'
+  ) {
+    throw new Error('Expected WMS summary steps to be DONE');
+  }
 
   const reservations = unwrapList(
     await fetchJson(
@@ -161,6 +176,7 @@ async function main() {
         item: item.code,
         qty,
         wmsReservations: reservations.length,
+        wmsMode: postedDetail.wmsSummary.mode,
         wmsTasks: tasks.map((entry) => `${entry.taskType}:${entry.status}`),
         grandTotal: posted.grandTotal,
       },

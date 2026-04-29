@@ -28,6 +28,7 @@ import { WmsService } from '../wms/wms.service';
 
 type PostSalesInvoiceOptions = {
   skipWms?: boolean;
+  skipWmsReason?: string;
 };
 
 @Injectable()
@@ -90,10 +91,14 @@ export class SalesInvoicesService {
   async findOne(id: string) {
     const doc = await this.findOneWithoutPayments(id);
 
-    const payments = await this.getPayments(id);
+    const [payments, wmsSummary] = await Promise.all([
+      this.getPayments(id),
+      this.buildWmsSummary(doc),
+    ]);
     return {
       ...this.enrichDocumentState(doc),
       payments,
+      wmsSummary,
     };
   }
 
@@ -213,6 +218,128 @@ export class SalesInvoicesService {
     });
     if (!doc) throw new NotFoundException('Sales invoice not found');
     return doc;
+  }
+
+  private async buildWmsSummary(doc: Awaited<ReturnType<SalesInvoicesService['findOneWithoutPayments']>>) {
+    const [reservations, tasks, postLog, bypassLog] = await Promise.all([
+      this.prisma.wmsReservation.findMany({
+        where: { salesInvoiceId: doc.id },
+        include: {
+          item: { select: { id: true, code: true, name: true } },
+          location: { select: { id: true, code: true, zone: true, aisle: true, rack: true, shelf: true, bin: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.wmsTask.findMany({
+        where: { sourceType: 'SALES_INVOICE', sourceId: doc.id },
+        include: {
+          item: { select: { id: true, code: true, name: true } },
+          sourceLocation: { select: { id: true, code: true, zone: true, aisle: true, rack: true, shelf: true, bin: true } },
+          destinationLocation: { select: { id: true, code: true, zone: true, aisle: true, rack: true, shelf: true, bin: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.auditLog.findFirst({
+        where: { entityType: 'sales_invoices', entityId: doc.id, action: 'POST' },
+        include: { user: { select: { id: true, fullName: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.auditLog.findFirst({
+        where: { entityType: 'sales_invoices', entityId: doc.id, action: 'WMS_BYPASS_POST' },
+        include: { user: { select: { id: true, fullName: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const postMetadata = (postLog?.metadata ?? {}) as Record<string, unknown>;
+    const bypassMetadata = (bypassLog?.metadata ?? {}) as Record<string, unknown>;
+    const totalQty = round2(doc.lines.reduce((sum, line) => sum + Number(line.qty ?? 0), 0));
+    const reservationQty = (status?: string) =>
+      round2(
+        reservations
+          .filter((reservation) => !status || reservation.status === status)
+          .reduce((sum, reservation) => sum + Number(reservation.qtyReserved ?? 0), 0),
+      );
+    const pickedQty = round2(
+      reservations.reduce((sum, reservation) => sum + Number(reservation.qtyPicked ?? 0), 0),
+    );
+    const shippedQty = reservationQty('SHIPPED');
+    const activeTaskStatuses = ['PENDING', 'IN_PROGRESS', 'BLOCKED'];
+    const activeTasks = tasks.filter((task) => activeTaskStatuses.includes(String(task.status)));
+    const mode =
+      postMetadata.wmsMode === 'BYPASS' || bypassLog
+        ? 'BYPASS'
+        : reservations.length || tasks.length
+          ? 'WORKFLOW'
+          : 'NOT_STARTED';
+    const hasDoneTask = (taskType: string) =>
+      tasks.some((task) => task.taskType === taskType && task.status === 'DONE');
+    const pickedDone = pickedQty >= totalQty && totalQty > 0;
+    const shippedDone = shippedQty >= totalQty && totalQty > 0;
+
+    return {
+      mode,
+      bypassReason:
+        (bypassMetadata.skipWmsReason as string | undefined) ??
+        (postMetadata.skipWmsReason as string | undefined) ??
+        null,
+      totalQty,
+      postAudit: postLog
+        ? {
+            action: postLog.action,
+            createdAt: postLog.createdAt,
+            user: postLog.user,
+          }
+        : null,
+      reservations: {
+        count: reservations.length,
+        totalQty: reservationQty(),
+        pickedQty,
+        shippedQty,
+        byStatus: reservations.reduce<Record<string, number>>((acc, reservation) => {
+          acc[reservation.status] = (acc[reservation.status] ?? 0) + 1;
+          return acc;
+        }, {}),
+        items: reservations.map((reservation) => ({
+          id: reservation.id,
+          status: reservation.status,
+          qtyReserved: reservation.qtyReserved,
+          qtyPicked: reservation.qtyPicked,
+          item: reservation.item,
+          location: reservation.location,
+          lotCode: reservation.lotCode,
+          serialNo: reservation.serialNo,
+          expiryDate: reservation.expiryDate,
+        })),
+      },
+      tasks: {
+        count: tasks.length,
+        activeCount: activeTasks.length,
+        byStatus: tasks.reduce<Record<string, number>>((acc, task) => {
+          acc[task.status] = (acc[task.status] ?? 0) + 1;
+          return acc;
+        }, {}),
+        byType: tasks.reduce<Record<string, number>>((acc, task) => {
+          acc[task.taskType] = (acc[task.taskType] ?? 0) + 1;
+          return acc;
+        }, {}),
+        active: activeTasks.map((task) => ({
+          id: task.id,
+          taskType: task.taskType,
+          status: task.status,
+          qty: task.qty,
+          referenceNo: task.referenceNo,
+          item: task.item,
+          sourceLocation: task.sourceLocation,
+          destinationLocation: task.destinationLocation,
+        })),
+      },
+      steps: {
+        picked: mode === 'BYPASS' ? 'BYPASSED' : pickedDone || hasDoneTask('PICK') ? 'DONE' : 'PENDING',
+        packed: mode === 'BYPASS' ? 'BYPASSED' : hasDoneTask('PACK') ? 'DONE' : 'PENDING',
+        shipped: shippedDone || hasDoneTask('SHIP') ? 'DONE' : 'PENDING',
+      },
+    };
   }
 
   private async validateDraftInput(
@@ -410,8 +537,12 @@ export class SalesInvoicesService {
   ) {
     const existing = await this.findOne(id);
     const skipWms = options.skipWms === true;
+    const skipWmsReason = options.skipWmsReason?.trim() ?? '';
     if (existing.status !== DocumentStatus.DRAFT) {
       throw new BadRequestException('Only DRAFT sales invoice can be posted');
+    }
+    if (skipWms && !skipWmsReason) {
+      throw new BadRequestException('Reason is required when posting a sales invoice without WMS');
     }
 
     await this.financialPeriodsService.assertDateOpen(
@@ -475,6 +606,7 @@ export class SalesInvoicesService {
           tx,
           updated,
           postedById,
+          skipWmsReason,
         );
       } else {
         await this.wmsService.shipSalesInvoiceTx(tx, updated, postedById);
@@ -497,8 +629,28 @@ export class SalesInvoicesService {
       entityType: 'sales_invoices',
       entityId: doc.id,
       action: 'POST',
-      metadata: { docNo: doc.docNo, wmsMode: skipWms ? 'BYPASS' : 'WORKFLOW' },
+      metadata: {
+        docNo: doc.docNo,
+        wmsMode: skipWms ? 'BYPASS' : 'WORKFLOW',
+        skipWmsReason: skipWms ? skipWmsReason : undefined,
+      },
     });
+
+    if (skipWms) {
+      await this.auditLogs.log({
+        userId: postedById,
+        entityType: 'sales_invoices',
+        entityId: doc.id,
+        action: 'WMS_BYPASS_POST',
+        metadata: {
+          docNo: doc.docNo,
+          reason: skipWmsReason,
+          warehouseId: doc.warehouseId,
+          lineCount: existing.lines.length,
+          totalQty: existing.lines.reduce((sum, line) => sum + Number(line.qty ?? 0), 0),
+        },
+      });
+    }
 
     return doc;
   }

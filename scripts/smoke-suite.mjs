@@ -244,7 +244,10 @@ async function main() {
     {
       method: 'POST',
       headers: authHeaders,
-      body: JSON.stringify({ skipWms: true }),
+      body: JSON.stringify({
+        skipWms: true,
+        skipWmsReason: 'Smoke suite bypass for generic sales invoice flow',
+      }),
     },
     'post sales invoice',
   );

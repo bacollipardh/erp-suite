@@ -8,16 +8,28 @@ import { formatDateOnly, formatDateTime } from '@/lib/date';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import { requirePagePermission } from '@/lib/server-page-auth';
 
-export default async function WmsTasksPage() {
+export default async function WmsTasksPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ search?: string }>;
+}) {
   const user = await requirePagePermission(PERMISSIONS.wmsRead);
   const canManage = hasPermission(user.permissions, PERMISSIONS.wmsManage);
-  const tasks = await api.list('wms/tasks', { limit: 300 });
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const tasks = await api.list('wms/tasks', {
+    limit: 300,
+    search: resolvedSearchParams.search,
+  });
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Detyrat WMS"
-        description="Lista e punes ne magazine, nga pranimi dhe putaway deri te picking, count dhe QC."
+        description={
+          resolvedSearchParams.search
+            ? `Lista e punes ne magazine e filtruar per ${resolvedSearchParams.search}.`
+            : 'Lista e punes ne magazine, nga pranimi dhe putaway deri te picking, count dhe QC.'
+        }
       />
       <ServerDataTable
         data={tasks}

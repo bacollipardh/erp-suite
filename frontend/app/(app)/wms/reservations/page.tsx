@@ -7,15 +7,28 @@ import { formatDateOnly, formatDateTime } from '@/lib/date';
 import { PERMISSIONS } from '@/lib/permissions';
 import { requirePagePermission } from '@/lib/server-page-auth';
 
-export default async function WmsReservationsPage() {
+export default async function WmsReservationsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ search?: string; sourceId?: string }>;
+}) {
   await requirePagePermission(PERMISSIONS.wmsRead);
-  const reservations = await api.list('wms/reservations', { limit: 300 });
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const reservations = await api.list('wms/reservations', {
+    limit: 300,
+    search: resolvedSearchParams.search,
+    sourceId: resolvedSearchParams.sourceId,
+  });
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Rezervimet WMS"
-        description="Rezervimet e krijuara nga picking, me status, lokacion, lot, skadence dhe serial number."
+        description={
+          resolvedSearchParams.search
+            ? `Rezervimet e filtruara per ${resolvedSearchParams.search}.`
+            : 'Rezervimet e krijuara nga picking, me status, lokacion, lot, skadence dhe serial number.'
+        }
       />
       <ServerDataTable
         data={reservations}

@@ -1342,6 +1342,7 @@ export class WmsService {
     tx: Tx,
     invoice: SalesInvoiceForWms,
     userId: string,
+    reason?: string | null,
   ) {
     await this.assertNoActiveSalesInvoiceWorkflowTx(tx, invoice);
 
@@ -1404,7 +1405,9 @@ export class WmsService {
           sourceType: 'SALES_INVOICE',
           sourceId: invoice.id,
           referenceNo: invoice.docNo,
-          notes: 'Posted without WMS pick/pack workflow',
+          notes: reason
+            ? `Posted without WMS pick/pack workflow: ${reason}`
+            : 'Posted without WMS pick/pack workflow',
           createdById: userId,
         });
       }

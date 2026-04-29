@@ -41,10 +41,52 @@ type PaymentEntry = {
   user?: { id: string; fullName: string; email?: string | null } | null;
 };
 
+type WmsSummary = {
+  mode: 'WORKFLOW' | 'BYPASS' | 'NOT_STARTED' | string;
+  bypassReason?: string | null;
+  totalQty?: number | string | null;
+  reservations?: {
+    count?: number;
+    totalQty?: number | string | null;
+    pickedQty?: number | string | null;
+    shippedQty?: number | string | null;
+    byStatus?: Record<string, number>;
+  };
+  tasks?: {
+    count?: number;
+    activeCount?: number;
+    byStatus?: Record<string, number>;
+    byType?: Record<string, number>;
+    active?: {
+      id: string;
+      taskType: string;
+      status: string;
+      referenceNo?: string | null;
+      item?: { code?: string | null; name?: string | null } | null;
+    }[];
+  };
+  steps?: {
+    picked?: string;
+    packed?: string;
+    shipped?: string;
+  };
+  postAudit?: {
+    createdAt?: string | null;
+    user?: { fullName?: string | null; email?: string | null } | null;
+  } | null;
+};
+
 function formatMoney(value: number) {
   return value.toLocaleString('sq-AL', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
+  });
+}
+
+function formatQty(value: number | string | null | undefined) {
+  return Number(value ?? 0).toLocaleString('sq-AL', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 3,
   });
 }
 
@@ -97,6 +139,7 @@ export function DocumentActionPanel({
   fiscalStatus,
   fiscalReference,
   fiscalError,
+  wmsSummary,
 }: {
   documentType: DocumentType;
   documentId: string;
@@ -116,6 +159,7 @@ export function DocumentActionPanel({
   fiscalStatus?: string | null;
   fiscalReference?: string | null;
   fiscalError?: string | null;
+  wmsSummary?: WmsSummary | null;
 }) {
   const router = useRouter();
   const { user } = useSession();
@@ -160,6 +204,9 @@ export function DocumentActionPanel({
 
   const paymentActionBlocked =
     status === 'DRAFT' || status === 'CANCELLED' || status === 'STORNO' || remaining <= 0;
+  const wmsTasksHref = `/wms/tasks?search=${encodeURIComponent(docNo)}`;
+  const wmsReservationsHref = `/wms/reservations?sourceId=${encodeURIComponent(documentId)}&search=${encodeURIComponent(docNo)}`;
+  const auditHref = `/audit-logs?search=${encodeURIComponent(documentId)}`;
 
   const [amount, setAmount] = useState(remaining > 0 ? remaining.toFixed(2) : '');
   const [paidAt, setPaidAt] = useState(toDateInputValue(new Date()));
@@ -323,6 +370,82 @@ export function DocumentActionPanel({
           daysPastDue={daysPastDue}
           outstandingAmount={remaining}
         />
+      ) : null}
+
+      {documentType === 'sales-invoices' && wmsSummary ? (
+        <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Statusi WMS</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                {wmsSummary.mode === 'BYPASS'
+                  ? 'Fatura eshte postuar pa workflow pick/pack.'
+                  : wmsSummary.mode === 'WORKFLOW'
+                    ? 'Fatura lidhet me workflow WMS.'
+                    : 'Ende nuk ka workflow WMS per kete fature.'}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge value={wmsSummary.mode} />
+              <Link href={wmsTasksHref} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:text-slate-900">
+                Detyrat WMS
+              </Link>
+              <Link href={wmsReservationsHref} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:text-slate-900">
+                Rezervimet
+              </Link>
+              <Link href={auditHref} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:text-slate-900">
+                Audit
+              </Link>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500 mb-1">Pick</p>
+              <StatusBadge value={wmsSummary.steps?.picked ?? 'PENDING'} />
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500 mb-1">Pack</p>
+              <StatusBadge value={wmsSummary.steps?.packed ?? 'PENDING'} />
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500 mb-1">Ship</p>
+              <StatusBadge value={wmsSummary.steps?.shipped ?? 'PENDING'} />
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500 mb-1">Task aktive</p>
+              <p className="text-sm font-semibold text-slate-900">{wmsSummary.tasks?.activeCount ?? 0}</p>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500 mb-1">Sasia totale</p>
+              <p className="text-sm font-semibold text-slate-900">{formatQty(wmsSummary.totalQty)}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500 mb-1">Picked / Shipped</p>
+              <p className="text-sm font-semibold text-slate-900">
+                {formatQty(wmsSummary.reservations?.pickedQty)} / {formatQty(wmsSummary.reservations?.shippedQty)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500 mb-1">Postuar nga</p>
+              <p className="text-sm font-semibold text-slate-900">
+                {wmsSummary.postAudit?.user?.fullName ?? wmsSummary.postAudit?.user?.email ?? '-'}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">{formatDateTime(wmsSummary.postAudit?.createdAt)}</p>
+            </div>
+          </div>
+          {wmsSummary.bypassReason ? (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Arsye pa WMS: {wmsSummary.bypassReason}
+            </div>
+          ) : null}
+          {wmsSummary.tasks?.active?.length ? (
+            <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+              Task aktiv: {wmsSummary.tasks.active.map((task) => `${task.taskType}:${task.status}`).join(', ')}
+            </div>
+          ) : null}
+        </section>
       ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
