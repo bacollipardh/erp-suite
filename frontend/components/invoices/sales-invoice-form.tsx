@@ -62,6 +62,7 @@ export function SalesInvoiceForm({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [postWithoutWms, setPostWithoutWms] = useState(false);
 
   const [form, setForm] = useState({
     seriesId: data?.seriesId ?? '',
@@ -153,7 +154,9 @@ export function SalesInvoiceForm({
     setApiError(null);
 
     try {
-      await api.postDocument('sales-invoices', data.id);
+      await api.postDocument('sales-invoices', data.id, {
+        skipWms: postWithoutWms,
+      });
       router.refresh();
     } catch (error) {
       setApiError(parseApiError(error));
@@ -253,14 +256,34 @@ export function SalesInvoiceForm({
       <DocumentTotals {...totals} />
 
       <div className="flex items-center justify-between gap-3 pt-1">
-        <div>
+        <div className="space-y-2">
           {mode === 'edit' && data?.status === 'DRAFT' ? (
-            <ConfirmButton
-              label="Posto Dokumentin"
-              confirmText="Posto kete fature shitjeje?"
-              onClick={onPost}
-              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm font-medium transition-colors shadow-sm"
-            />
+            <>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <input
+                  type="checkbox"
+                  checked={postWithoutWms}
+                  onChange={(event) => setPostWithoutWms(event.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-amber-300 text-amber-600"
+                />
+                <span>
+                  <span className="block font-semibold">Posto pa WMS</span>
+                  <span className="block text-xs text-amber-700">
+                    Stoku dhe financa postohen, por pick/pack nuk kerkohet.
+                  </span>
+                </span>
+              </label>
+              <ConfirmButton
+                label={postWithoutWms ? 'Posto pa WMS' : 'Posto Dokumentin'}
+                confirmText={
+                  postWithoutWms
+                    ? 'Posto kete fature shitjeje pa workflow WMS?'
+                    : 'Posto kete fature shitjeje?'
+                }
+                onClick={onPost}
+                className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm font-medium transition-colors shadow-sm"
+              />
+            </>
           ) : null}
         </div>
         {!isPosted ? (

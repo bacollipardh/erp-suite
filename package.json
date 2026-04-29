@@ -15,6 +15,7 @@
     "smoke:auth": "node scripts/smoke-auth.mjs",
     "smoke:agent-wms": "node scripts/smoke-agent-wms-flow.mjs",
     "smoke:pos-wms": "node scripts/smoke-pos-wms-flow.mjs",
+    "smoke:pos-no-wms": "node scripts/smoke-pos-bypass-wms-flow.mjs",
     "smoke:full": "node scripts/smoke-suite.mjs"
   }
 }

@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { SalesInvoicesService } from './sales-invoices.service';
 import { CustomerCreditApprovalGateService } from './customer-credit-approval-gate.service';
 import { CreateSalesInvoiceDto } from './dto/create-sales-invoice.dto';
+import { PostSalesInvoiceDto } from './dto/post-sales-invoice.dto';
 import { UpdateSalesInvoiceDto } from './dto/update-sales-invoice.dto';
 import { CurrentUser, JwtPayload } from '../auth/decorators/current-user.decorator';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -49,9 +50,15 @@ export class SalesInvoicesController {
 
   @Post(':id/post')
   @RequirePermissions(PERMISSIONS.salesInvoicesManage)
-  async post(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+  async post(
+    @Param('id') id: string,
+    @Body() dto: PostSalesInvoiceDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
     await this.customerCreditApprovalGateService.assertPostAllowed(id, user.sub);
-    return this.salesInvoicesService.post(id, user.sub);
+    return this.salesInvoicesService.post(id, user.sub, {
+      skipWms: dto?.skipWms === true,
+    });
   }
 
   @Post(':id/payments')

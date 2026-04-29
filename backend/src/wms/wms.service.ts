@@ -1338,6 +1338,79 @@ export class WmsService {
     });
   }
 
+  async shipSalesInvoiceWithoutWorkflowTx(
+    tx: Tx,
+    invoice: SalesInvoiceForWms,
+    userId: string,
+  ) {
+    await this.assertNoActiveSalesInvoiceWorkflowTx(tx, invoice);
+
+    const planned: Array<{
+      line: SalesInvoiceForWms['lines'][number];
+      allocations: Array<{ stock: any; qty: number }>;
+    }> = [];
+
+    for (const line of invoice.lines) {
+      const qtyNeeded = numberValue(line.qty);
+      const allocations = await this.allocateAvailableStock(tx, {
+        warehouseId: invoice.warehouseId,
+        itemId: line.itemId,
+        qtyNeeded,
+      });
+      const allocatedTotal = roundQty(
+        allocations.reduce((sum, row) => sum + row.qty, 0),
+      );
+      if (allocatedTotal < qtyNeeded) {
+        throw new BadRequestException(
+          `WMS stock is not available for item ${line.itemId} even for bypass posting`,
+        );
+      }
+      planned.push({ line, allocations });
+    }
+
+    for (const entry of planned) {
+      for (const allocation of entry.allocations) {
+        await tx.wmsStock.update({
+          where: { id: allocation.stock.id },
+          data: { qtyOnHand: { decrement: allocation.qty } },
+        });
+        await tx.wmsReservation.create({
+          data: {
+            salesInvoiceId: invoice.id,
+            salesInvoiceLineId: entry.line.id,
+            warehouseId: invoice.warehouseId,
+            locationId: allocation.stock.locationId,
+            itemId: entry.line.itemId,
+            qtyReserved: allocation.qty,
+            qtyPicked: allocation.qty,
+            lotCode: allocation.stock.lotCode,
+            serialNo: allocation.stock.serialNo,
+            expiryDate: allocation.stock.expiryDate,
+            status: WmsReservationStatus.SHIPPED,
+            createdById: userId,
+            pickedAt: new Date(),
+            shippedAt: new Date(),
+          },
+        });
+        await this.createMovement(tx, {
+          warehouseId: invoice.warehouseId,
+          itemId: entry.line.itemId,
+          fromLocationId: allocation.stock.locationId,
+          movementType: WmsMovementType.SHIP,
+          qty: allocation.qty,
+          lotCode: allocation.stock.lotCode,
+          serialNo: allocation.stock.serialNo,
+          expiryDate: allocation.stock.expiryDate,
+          sourceType: 'SALES_INVOICE',
+          sourceId: invoice.id,
+          referenceNo: invoice.docNo,
+          notes: 'Posted without WMS pick/pack workflow',
+          createdById: userId,
+        });
+      }
+    }
+  }
+
   async scan(code: string) {
     const search = code.trim();
     if (!search) throw new BadRequestException('Barcode or code is required');
@@ -1394,6 +1467,41 @@ export class WmsService {
           `Sales invoice ${invoice.docNo} cannot be posted before WMS picking is completed`,
         );
       }
+    }
+  }
+
+  private async assertNoActiveSalesInvoiceWorkflowTx(
+    tx: Tx,
+    invoice: SalesInvoiceForWms,
+  ) {
+    const [activeReservations, activeTasks] = await Promise.all([
+      tx.wmsReservation.count({
+        where: {
+          salesInvoiceId: invoice.id,
+          status: {
+            in: [WmsReservationStatus.RESERVED, WmsReservationStatus.PICKED],
+          },
+        },
+      }),
+      tx.wmsTask.count({
+        where: {
+          sourceType: 'SALES_INVOICE',
+          sourceId: invoice.id,
+          status: {
+            in: [
+              WmsTaskStatus.PENDING,
+              WmsTaskStatus.IN_PROGRESS,
+              WmsTaskStatus.BLOCKED,
+            ],
+          },
+        },
+      }),
+    ]);
+
+    if (activeReservations > 0 || activeTasks > 0) {
+      throw new BadRequestException(
+        `Sales invoice ${invoice.docNo} already has active WMS work. Release or finish WMS before bypass posting.`,
+      );
     }
   }
 

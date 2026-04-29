@@ -33,6 +33,7 @@ type PosSuccess = {
   id: string;
   docNo: string;
   posted: boolean;
+  wmsMode?: 'WORKFLOW' | 'BYPASS';
   warning?: string;
 };
 
@@ -65,6 +66,10 @@ async function prepareWmsAndPostInvoice(invoiceId: string) {
   return api.postDocument('sales-invoices', invoiceId);
 }
 
+async function postInvoiceWithoutWms(invoiceId: string) {
+  return api.postDocument('sales-invoices', invoiceId, { skipWms: true });
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export function PosForm({
   items,
@@ -90,6 +95,7 @@ export function PosForm({
   const [payMethodId, setPayMethodId]     = useState(paymentMethods[0]?.id ?? '');
   const [seriesId, setSeriesId]           = useState(series[0]?.id ?? '');
   const [notes, setNotes]                 = useState('');
+  const [skipWms, setSkipWms]             = useState(false);
 
   // Cart
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -216,12 +222,29 @@ async function handleSubmit() {
       const invoice = await api.create('sales-invoices', payload);
 
       try {
-        await prepareWmsAndPostInvoice(invoice.id);
-        setSuccess({ id: invoice.id, docNo: invoice.docNo, posted: true });
+        if (skipWms) {
+          await postInvoiceWithoutWms(invoice.id);
+          setSuccess({
+            id: invoice.id,
+            docNo: invoice.docNo,
+            posted: true,
+            wmsMode: 'BYPASS',
+          });
+        } else {
+          await prepareWmsAndPostInvoice(invoice.id);
+          setSuccess({
+            id: invoice.id,
+            docNo: invoice.docNo,
+            posted: true,
+            wmsMode: 'WORKFLOW',
+          });
+        }
       } catch (postError) {
         const message = parseApiError(postError);
         setSuccess({ id: invoice.id, docNo: invoice.docNo, posted: false, warning: message });
-        setError(`Fatura ${invoice.docNo} u krijua si draft, por WMS/postimi nuk u kompletua: ${message}`);
+        setError(
+          `Fatura ${invoice.docNo} u krijua si draft, por postimi nuk u kompletua: ${message}`,
+        );
       }
 
       setCart([]);
@@ -259,7 +282,9 @@ async function handleSubmit() {
             <span>
               Fatura <strong className="mx-1">{success.docNo}</strong>{' '}
               {success.posted
-                ? 'u krijua, WMS u kompletua dhe u postua.'
+                ? success.wmsMode === 'BYPASS'
+                  ? 'u krijua dhe u postua pa workflow WMS.'
+                  : 'u krijua, WMS u kompletua dhe u postua.'
                 : 'u krijua si draft. Kontrollo WMS/postimin.'}
             </span>
           </div>
@@ -427,6 +452,21 @@ async function handleSubmit() {
               </div>
             </div>
 
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <input
+                type="checkbox"
+                checked={skipWms}
+                onChange={(e) => setSkipWms(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-amber-300 text-amber-600"
+              />
+              <span>
+                <span className="block font-semibold">Posto pa WMS</span>
+                <span className="block text-xs text-amber-700">
+                  E zbret stokun dhe e konton faturen, por nuk krijon pick/pack task.
+                </span>
+              </span>
+            </label>
+
             <button
               onClick={handleSubmit}
               disabled={busy || cart.length === 0}
@@ -441,7 +481,9 @@ async function handleSubmit() {
                   Duke krijuar...
                 </span>
               ) : (
-                `✓ Krijo & Posto Faturën${cart.length ? ` (${cart.length} art.)` : ''}`
+                `${skipWms ? '✓ Krijo & Posto pa WMS' : '✓ Krijo & Posto Faturën'}${
+                  cart.length ? ` (${cart.length} art.)` : ''
+                }`
               )}
             </button>
           </div>

@@ -12,12 +12,35 @@ POS / Shitja e shpejte nuk duhet ta postoje faturen direkt kur sistemi ka WMS ak
 
 Kjo e mbron sistemin nga situata ku financa postohet pa dalje reale nga WMS.
 
+## Opsioni pa WMS
+
+POS dhe forma standarde e fatures se shitjes kane opsionin `Posto pa WMS`.
+
+Kur ky opsion aktivizohet:
+
+1. Fatura postohet pa krijuar/kerkuar pick dhe pack task.
+2. Stoku zbritet normalisht.
+3. WMS stock zbritet direkt nga lokacionet e disponueshme dhe ruhen levizjet `SHIP`.
+4. Financat, kontimet dhe kartela e bleresit marrin efekt si ne postimin normal.
+
+Nese fatura ka WMS task ose rezervim aktiv, sistemi nuk lejon bypass derisa WMS te lirohet ose perfundohet. Kjo shmang dy dalje paralele per te njejten fature.
+
 ## Cfare ndryshoi
 
 - `frontend/components/sales-agent/pos-form.tsx`
   - Pas krijimit te fatures thirret automatikisht WMS plan/pick/pack.
   - Fatura postohet vetem pasi WMS te kompletohet.
+  - U shtua checkbox `Posto pa WMS` per raste kur nuk duhet workflow pick/pack.
   - Nese WMS ose postimi deshton, fatura mbetet draft dhe UI tregon mesazh paralajmerues me link te fatures.
+
+- `frontend/components/invoices/sales-invoice-form.tsx`
+  - Faturat draft mund te postohen me workflow WMS ose me bypass WMS.
+
+- `backend/src/sales-invoices`
+  - Endpoint-i i postimit pranon `skipWms: true`.
+
+- `backend/src/wms/wms.service.ts`
+  - U shtua direct WMS shipment per bypass: nuk krijon task-a, por zbrit WMS stock dhe ruan levizjet.
 
 - `scripts/smoke-pos-wms-flow.mjs`
   - Teston rrjedhen POS -> WMS -> posted invoice permes API.
@@ -33,6 +56,7 @@ Me Docker te ndezur:
 ```powershell
 docker compose run --rm backend npm run prisma:seed
 npm run smoke:pos-wms
+npm run smoke:pos-no-wms
 ```
 
 Per UI:
@@ -41,6 +65,7 @@ Per UI:
 2. Zgjidh bleresin, magazinen, serien dhe artikullin.
 3. Kliko `Krijo & Posto Faturen`.
 4. Suksesi duhet te tregoje qe WMS u kompletua dhe fatura u postua.
+5. Per bypass, aktivizo `Posto pa WMS` para klikimit.
 
 ## Shenime operative
 

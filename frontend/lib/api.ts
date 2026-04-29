@@ -88,6 +88,6 @@ export const api = {
   post: <T = any>(endpoint: string, body: unknown) =>
     apiFetch<T>(`/${endpoint}`, { method: 'POST', body: JSON.stringify(body) }),
   delete: <T = any>(endpoint: string) => apiFetch<T>(`/${endpoint}`, { method: 'DELETE' }),
-  postDocument: <T = any>(endpoint: string, id: string) =>
-    apiFetch<T>(`/${endpoint}/${id}/post`, { method: 'POST', body: JSON.stringify({}) }),
+  postDocument: <T = any>(endpoint: string, id: string, body: unknown = {}) =>
+    apiFetch<T>(`/${endpoint}/${id}/post`, { method: 'POST', body: JSON.stringify(body) }),
 };

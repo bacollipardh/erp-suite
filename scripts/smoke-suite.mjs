@@ -2,6 +2,8 @@ const apiBaseUrl = process.env.ERP_API_BASE_URL || 'http://localhost:3000/api';
 const frontendBaseUrl = process.env.ERP_FRONTEND_BASE_URL || 'http://localhost:3001';
 const email = process.env.ERP_ADMIN_EMAIL || 'admin@erp.local';
 const password = process.env.ERP_ADMIN_PASSWORD || 'Admin123!';
+const approvalEmail = process.env.ERP_APPROVER_EMAIL || 'manager@erp.local';
+const approvalPassword = process.env.ERP_APPROVER_PASSWORD || 'Admin123!';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -27,6 +29,35 @@ async function expectOk(response, label) {
 async function fetchJson(url, options, label) {
   const response = await expectOk(await fetch(url, options), label);
   return response.json();
+}
+
+function extractUuid(value) {
+  return String(value ?? '').match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i,
+  )?.[0];
+}
+
+async function fetchJsonWithApproval(url, options, label, approverHeaders) {
+  const response = await fetch(url, options);
+  if (response.ok) return response.json();
+
+  const message = await readError(response);
+  const approvalRequestId = extractUuid(message);
+  if (!approvalRequestId) {
+    throw new Error(`${label} failed (${response.status}): ${message}`);
+  }
+
+  await fetchJson(
+    `${apiBaseUrl}/approvals/requests/${approvalRequestId}/approve`,
+    {
+      method: 'POST',
+      headers: approverHeaders,
+      body: JSON.stringify({ note: `Smoke suite approval for ${label}` }),
+    },
+    `approve ${label}`,
+  );
+
+  return fetchJson(url, options, `${label} after approval`);
 }
 
 function unwrapList(payload) {
@@ -62,6 +93,21 @@ async function main() {
 
   const authHeaders = {
     Authorization: `Bearer ${login.accessToken}`,
+    'Content-Type': 'application/json',
+  };
+
+  const approverLogin = await fetchJson(
+    `${apiBaseUrl}/auth/login`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: approvalEmail, password: approvalPassword }),
+    },
+    'approver login',
+  );
+
+  const approverHeaders = {
+    Authorization: `Bearer ${approverLogin.accessToken}`,
     'Content-Type': 'application/json',
   };
 
@@ -105,7 +151,7 @@ async function main() {
   const supplier = requireEntry(suppliers, () => true, 'supplier');
   const mainWarehouse = requireEntry(warehouses, () => true, 'main warehouse');
   const secondaryWarehouse = requireEntry(warehouses, (entry) => entry.id !== mainWarehouse.id, 'secondary warehouse');
-  const item = requireEntry(items, () => true, 'item');
+  const item = requireEntry(items, (entry) => entry.code === 'MOUSE-001', 'MOUSE-001 item');
   const paymentMethod = requireEntry(paymentMethods, () => true, 'payment method');
   const financeAccount = requireEntry(financeAccounts, () => true, 'finance account');
   const date = today();
@@ -198,7 +244,7 @@ async function main() {
     {
       method: 'POST',
       headers: authHeaders,
-      body: JSON.stringify({}),
+      body: JSON.stringify({ skipWms: true }),
     },
     'post sales invoice',
   );
@@ -255,7 +301,7 @@ async function main() {
     'create sales return',
   );
 
-  await fetchJson(
+  await fetchJsonWithApproval(
     `${apiBaseUrl}/sales-returns/${salesReturn.id}/post`,
     {
       method: 'POST',
@@ -263,6 +309,7 @@ async function main() {
       body: JSON.stringify({}),
     },
     'post sales return',
+    approverHeaders,
   );
 
   await fetchJson(
@@ -364,7 +411,7 @@ async function main() {
     'VAT_OUTPUT ledger account',
   );
 
-  await fetchJson(
+  await fetchJsonWithApproval(
     `${apiBaseUrl}/accounting/journal-entries`,
     {
       method: 'POST',
@@ -390,9 +437,10 @@ async function main() {
       }),
     },
     'create manual journal entry',
+    approverHeaders,
   );
 
-  await fetchJson(
+  await fetchJsonWithApproval(
     `${apiBaseUrl}/accounting/journal-entries`,
     {
       method: 'POST',
@@ -418,6 +466,7 @@ async function main() {
       }),
     },
     'create manual vat adjustment',
+    approverHeaders,
   );
 
   const financialPeriodsPage = await fetchJson(

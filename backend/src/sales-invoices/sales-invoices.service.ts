@@ -26,6 +26,10 @@ import { FinancialPeriodsService } from '../financial-periods/financial-periods.
 import { AccountingService } from '../accounting/accounting.service';
 import { WmsService } from '../wms/wms.service';
 
+type PostSalesInvoiceOptions = {
+  skipWms?: boolean;
+};
+
 @Injectable()
 export class SalesInvoicesService {
   constructor(
@@ -399,8 +403,13 @@ export class SalesInvoicesService {
     });
   }
 
-  async post(id: string, postedById: string) {
+  async post(
+    id: string,
+    postedById: string,
+    options: PostSalesInvoiceOptions = {},
+  ) {
     const existing = await this.findOne(id);
+    const skipWms = options.skipWms === true;
     if (existing.status !== DocumentStatus.DRAFT) {
       throw new BadRequestException('Only DRAFT sales invoice can be posted');
     }
@@ -411,7 +420,9 @@ export class SalesInvoicesService {
       'Postimi i fatures se shitjes',
     );
 
-    await this.wmsService.ensureSalesInvoiceReadyToPost(existing);
+    if (!skipWms) {
+      await this.wmsService.ensureSalesInvoiceReadyToPost(existing);
+    }
 
     for (const line of existing.lines) {
       await this.stockService.ensureSufficientStock({
@@ -459,7 +470,15 @@ export class SalesInvoicesService {
         );
       }
 
-      await this.wmsService.shipSalesInvoiceTx(tx, updated, postedById);
+      if (skipWms) {
+        await this.wmsService.shipSalesInvoiceWithoutWorkflowTx(
+          tx,
+          updated,
+          postedById,
+        );
+      } else {
+        await this.wmsService.shipSalesInvoiceTx(tx, updated, postedById);
+      }
 
       await this.accountingService.postSalesInvoiceTx(tx, {
         invoice: {
@@ -478,7 +497,7 @@ export class SalesInvoicesService {
       entityType: 'sales_invoices',
       entityId: doc.id,
       action: 'POST',
-      metadata: { docNo: doc.docNo },
+      metadata: { docNo: doc.docNo, wmsMode: skipWms ? 'BYPASS' : 'WORKFLOW' },
     });
 
     return doc;
