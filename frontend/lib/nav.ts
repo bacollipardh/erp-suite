@@ -23,6 +23,7 @@ export const navSections: NavSection[] = [
       { label: 'Approval Inbox', href: '/approvals', permission: PERMISSIONS.dashboard },
       { label: 'New Approval Request', href: '/approvals/new', permission: PERMISSIONS.dashboard },
       { label: 'Control Tower', href: '/control-tower/exceptions', permission: PERMISSIONS.dashboard },
+      { label: 'Mobile Operations', href: '/mobile-operations', permission: PERMISSIONS.dashboard },
     ],
   },
   {

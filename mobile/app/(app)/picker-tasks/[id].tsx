@@ -19,6 +19,12 @@ import {
 } from '../../../src/components/ui';
 import { apiRequest } from '../../../src/lib/api';
 import { formatDateOnly, formatDateTime, formatQty, sentenceStatus } from '../../../src/lib/format';
+import {
+  enqueuePickerAction,
+  listQueuedPickerActions,
+  removeQueuedPickerAction,
+  type QueuedPickerAction,
+} from '../../../src/lib/offline-queue';
 import { hasPermission, PERMISSIONS } from '../../../src/lib/permissions';
 import type { PickerOption, WmsTask } from '../../../src/types';
 import { useAuth } from '../../../src/providers/auth-provider';
@@ -75,6 +81,7 @@ export default function PickerTaskWorkflowScreen() {
   const [suggestedLocations, setSuggestedLocations] = useState<LocationSuggestion[]>([]);
   const [pickers, setPickers] = useState<PickerOption[]>([]);
   const [selectedPickerId, setSelectedPickerId] = useState('');
+  const [queuedActions, setQueuedActions] = useState<QueuedPickerAction[]>([]);
 
   const canManageTask = hasPermission(user, PERMISSIONS.wmsManage);
 
@@ -88,6 +95,8 @@ export default function PickerTaskWorkflowScreen() {
         ? await apiRequest<PickerOption[]>(apiUrl, '/agent-orders/pickers', { token })
         : [];
       setTask(nextTask);
+      const nextQueuedActions = await listQueuedPickerActions();
+      setQueuedActions(nextQueuedActions.filter((entry) => entry.taskId === nextTask.id));
       setPickers(nextPickers);
       setSelectedPickerId((current) => current || nextTask.assignedToId || nextPickers[0]?.id || '');
       setQty(String(Number(nextTask.qty ?? 0)));
@@ -150,6 +159,49 @@ export default function PickerTaskWorkflowScreen() {
     } finally {
       setBusy(null);
     }
+  }
+
+  function buildPickConfirmBody() {
+    return {
+      locationCode,
+      itemCode,
+      qty: Number(qty || 0),
+      lotCode: lotCode || undefined,
+      serialNo: serialNo || undefined,
+      expiryDate: expiryDate || undefined,
+      notes: notes || undefined,
+    };
+  }
+
+  function buildShortBody() {
+    return {
+      shortQty: Number(shortQty || 0),
+      reasonCode: shortReason,
+      notes: notes || undefined,
+    };
+  }
+
+  async function queuePickerAction(entry: Omit<QueuedPickerAction, 'id' | 'createdAt'>) {
+    const queued = await enqueuePickerAction(entry);
+    setQueuedActions((current) => [queued, ...current]);
+    setSuccess('Veprimi u ruajt offline dhe do sinkronizohet më vonë.');
+  }
+
+  async function syncQueuedActions() {
+    await runAction('sync-queue', async () => {
+      const current = await listQueuedPickerActions();
+      const forThisTask = current.filter((entry) => entry.taskId === task?.id);
+      for (const entry of forThisTask) {
+        await apiRequest(apiUrl, entry.path, {
+          method: entry.method,
+          token,
+          body: entry.body,
+        });
+        await removeQueuedPickerAction(entry.id);
+      }
+      setQueuedActions([]);
+      setSuccess('Queue offline u sinkronizua me backend.');
+    });
   }
 
   if (loading) {
@@ -217,6 +269,38 @@ export default function PickerTaskWorkflowScreen() {
           </Text>
         </SectionCard>
       ) : null}
+
+      <SectionCard title="Offline Queue" subtitle="Veprimet e ruajtura pa lidhje ruhen lokalisht dhe dërgohen kur API është gati.">
+        <View style={uiStyles.wrapRow}>
+          <MetricTile label="Në pritje" value={queuedActions.length} />
+          <MetricTile label="Task" value={task.referenceNo ?? task.id.slice(0, 8)} />
+        </View>
+        {queuedActions.map((entry) => (
+          <View
+            key={entry.id}
+            style={{
+              borderWidth: 1,
+              borderColor: '#D8E0EA',
+              borderRadius: 14,
+              padding: 12,
+              gap: 4,
+            }}
+          >
+            <StatusBadge value={entry.action} />
+            <Text style={{ color: '#334155' }}>{entry.summary}</Text>
+            <Text style={{ color: '#64748B', fontSize: 12 }}>
+              {formatDateTime(entry.createdAt)}
+            </Text>
+          </View>
+        ))}
+        <Button
+          label="Sinkronizo Queue"
+          variant="secondary"
+          disabled={!queuedActions.length}
+          loading={busy === 'sync-queue'}
+          onPress={() => void syncQueuedActions()}
+        />
+      </SectionCard>
 
       <SectionCard title="Detajet e Task-ut" subtitle={task.warehouse?.name ?? '-'}>
         <View style={uiStyles.wrapRow}>
@@ -482,17 +566,23 @@ export default function PickerTaskWorkflowScreen() {
                   await apiRequest(apiUrl, `/wms/tasks/${task.id}/pick-confirm`, {
                     method: 'POST',
                     token,
-                    body: {
-                      locationCode,
-                      itemCode,
-                      qty: Number(qty || 0),
-                      lotCode: lotCode || undefined,
-                      serialNo: serialNo || undefined,
-                      expiryDate: expiryDate || undefined,
-                      notes: notes || undefined,
-                    },
+                    body: buildPickConfirmBody(),
                   });
                   setSuccess('Pick-u u konfirmua për këtë task.');
+                })
+              }
+            />
+            <Button
+              label="Ruaj Pick Offline"
+              variant="ghost"
+              onPress={() =>
+                void queuePickerAction({
+                  taskId: task.id,
+                  action: 'pick-confirm',
+                  path: `/wms/tasks/${task.id}/pick-confirm`,
+                  method: 'POST',
+                  body: buildPickConfirmBody(),
+                  summary: `Pick ${qty || 0} | ${locationCode || '-'} | ${itemCode || '-'}`,
                 })
               }
             />
@@ -555,13 +645,23 @@ export default function PickerTaskWorkflowScreen() {
                   await apiRequest(apiUrl, `/wms/tasks/${task.id}/short`, {
                     method: 'POST',
                     token,
-                    body: {
-                      shortQty: Number(shortQty || 0),
-                      reasonCode: shortReason,
-                      notes: notes || undefined,
-                    },
+                    body: buildShortBody(),
                   });
                   setSuccess('Short-i u regjistrua dhe task-u u përditësua.');
+                })
+              }
+            />
+            <Button
+              label="Ruaj Short Offline"
+              variant="ghost"
+              onPress={() =>
+                void queuePickerAction({
+                  taskId: task.id,
+                  action: 'short',
+                  path: `/wms/tasks/${task.id}/short`,
+                  method: 'POST',
+                  body: buildShortBody(),
+                  summary: `Short ${shortQty || 0} | ${shortReason}`,
                 })
               }
             />
@@ -625,6 +725,20 @@ export default function PickerTaskWorkflowScreen() {
               })
             }
           />
+          <Button
+            label="Ruaj Packing Offline"
+            variant="ghost"
+            onPress={() =>
+              void queuePickerAction({
+                taskId: task.id,
+                action: 'pack',
+                path: `/wms/packing/sales-invoices/${task.sourceId}/pack`,
+                method: 'POST',
+                body: {},
+                summary: `Packing | ${task.referenceNo ?? task.sourceId ?? '-'}`,
+              })
+            }
+          />
           <Label>Arsye short / exception</Label>
           <View style={uiStyles.wrapRow}>
             {SHORT_REASONS.map((entry) => (
@@ -657,6 +771,23 @@ export default function PickerTaskWorkflowScreen() {
                   },
                 });
                 setSuccess('Pack task u kalua në short me arsye.');
+              })
+            }
+          />
+          <Button
+            label="Ruaj PACK Short Offline"
+            variant="ghost"
+            onPress={() =>
+              void queuePickerAction({
+                taskId: task.id,
+                action: 'short',
+                path: `/wms/tasks/${task.id}/short`,
+                method: 'POST',
+                body: {
+                  reasonCode: shortReason,
+                  notes: notes || undefined,
+                },
+                summary: `PACK short | ${shortReason}`,
               })
             }
           />

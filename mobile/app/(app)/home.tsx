@@ -12,7 +12,11 @@ import {
   uiStyles,
 } from '../../src/components/ui';
 import { apiList } from '../../src/lib/api';
-import { listQueuedAgentOrders } from '../../src/lib/offline-queue';
+import { listQueuedAgentOrders, listQueuedPickerActions } from '../../src/lib/offline-queue';
+import {
+  ensureNotificationPermissions,
+  notifyOperationalSummary,
+} from '../../src/lib/notifications';
 import {
   canUseAgentApp,
   canUsePickerApp,
@@ -31,19 +35,22 @@ export default function HomeScreen() {
     shortTasks: number;
     readyOrders: number;
     queuedDrafts: number;
+    queuedPickerActions: number;
   }>({
     blockedTasks: 0,
     shortTasks: 0,
     readyOrders: 0,
     queuedDrafts: 0,
+    queuedPickerActions: 0,
   });
+  const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const [blockedTasks, shortTasks, readyOrders, queuedDrafts] = await Promise.all([
+      const [blockedTasks, shortTasks, readyOrders, queuedDrafts, queuedPickerActions] = await Promise.all([
         canUsePickerApp(user)
           ? apiList<any>(apiUrl, '/wms/tasks', { token, query: { status: 'BLOCKED', limit: 100 } })
           : Promise.resolve([]),
@@ -54,13 +61,17 @@ export default function HomeScreen() {
           ? apiList<any>(apiUrl, '/agent-orders', { token, query: { status: 'READY_FOR_DOCUMENT', limit: 100 } })
           : Promise.resolve([]),
         listQueuedAgentOrders(),
+        listQueuedPickerActions(),
       ]);
-      setAlerts({
+      const nextAlerts = {
         blockedTasks: blockedTasks.length,
         shortTasks: shortTasks.length,
         readyOrders: readyOrders.length,
         queuedDrafts: queuedDrafts.length,
-      });
+        queuedPickerActions: queuedPickerActions.length,
+      };
+      setAlerts(nextAlerts);
+      await notifyOperationalSummary(nextAlerts);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Load failed');
     } finally {
@@ -98,11 +109,25 @@ export default function HomeScreen() {
             <MetricTile label="Short WMS" value={alerts.shortTasks} />
             <MetricTile label="Ready Orders" value={alerts.readyOrders} />
             <MetricTile label="Draft Queue" value={alerts.queuedDrafts} />
+            <MetricTile label="Picker Queue" value={alerts.queuedPickerActions} />
           </View>
         ) : null}
-        <Text style={{ color: '#475569', lineHeight: 22 }}>
-          Këto sinjale shërbejnë si hooks për njoftime operative në mobile edhe kur s’kemi futur ende push vendor-specific.
-        </Text>
+        {notificationStatus ? (
+          <Text style={{ color: '#475569', lineHeight: 22 }}>{notificationStatus}</Text>
+        ) : null}
+        <Button
+          label="Aktivizo Njoftimet"
+          variant="secondary"
+          onPress={() =>
+            void ensureNotificationPermissions()
+              .then((result) => setNotificationStatus(result.message))
+              .catch((nextError) =>
+                setNotificationStatus(
+                  nextError instanceof Error ? nextError.message : 'Njoftimet nuk u aktivizuan.',
+                ),
+              )
+          }
+        />
       </SectionCard>
 
       {canUseAgentApp(user) ? (
