@@ -17,7 +17,7 @@ import {
   TopTitle,
   uiStyles,
 } from '../../../src/components/ui';
-import { apiRequest } from '../../../src/lib/api';
+import { apiList, apiRequest } from '../../../src/lib/api';
 import { formatDateOnly, formatDateTime, formatQty, sentenceStatus } from '../../../src/lib/format';
 import {
   enqueuePickerAction,
@@ -159,6 +159,80 @@ export default function PickerTaskWorkflowScreen() {
     } finally {
       setBusy(null);
     }
+  }
+
+  function useExpectedValues() {
+    if (!task) return;
+    setLocationCode(task.sourceLocation?.barcode || task.sourceLocation?.code || '');
+    setItemCode(task.item?.barcode || task.item?.code || '');
+    setQty(String(Number(task.qty ?? 0)));
+    setLotCode(task.lotCode || '');
+    setSerialNo(task.serialNo || '');
+    setExpiryDate(
+      task.expiryDate ? new Date(task.expiryDate).toISOString().slice(0, 10) : '',
+    );
+    setSuccess('Vlerat e pritura u vendosën. Tani vetëm konfirmo pick-un.');
+  }
+
+  async function goToNextOpenTask() {
+    if (!token || !task) return;
+    const allTasks = await apiList<WmsTask>(apiUrl, '/wms/tasks', {
+      token,
+      query: { limit: 100 },
+    });
+    const openTasks = allTasks.filter(
+      (entry) =>
+        entry.id !== task.id &&
+        ['PENDING', 'IN_PROGRESS', 'BLOCKED'].includes(entry.status) &&
+        (!entry.assignedToId || entry.assignedToId === user?.id),
+    );
+    const sameReference = openTasks.find(
+      (entry) => task.referenceNo && entry.referenceNo === task.referenceNo,
+    );
+    const nextTask = sameReference ?? openTasks[0];
+    if (nextTask) {
+      router.replace(`/picker-tasks/${nextTask.id}` as any);
+    } else {
+      router.replace('/picker-tasks');
+    }
+  }
+
+  async function confirmPick(moveNext: boolean) {
+    if (!task) return;
+    await runAction(moveNext ? 'pick-confirm-next' : 'pick-confirm', async () => {
+      await apiRequest(apiUrl, `/wms/tasks/${task.id}/pick-confirm`, {
+        method: 'POST',
+        token,
+        body: buildPickConfirmBody(),
+      });
+      setSuccess(
+        moveNext
+          ? 'Pick-u u konfirmua. Po hapet task-u i radhës.'
+          : 'Pick-u u konfirmua për këtë task.',
+      );
+      if (moveNext) {
+        await goToNextOpenTask();
+      }
+    });
+  }
+
+  async function registerShort(moveNext: boolean) {
+    if (!task) return;
+    await runAction(moveNext ? 'short-task-next' : 'short-task', async () => {
+      await apiRequest(apiUrl, `/wms/tasks/${task.id}/short`, {
+        method: 'POST',
+        token,
+        body: buildShortBody(),
+      });
+      setSuccess(
+        moveNext
+          ? 'Short-i u regjistrua. Po hapet task-u i radhës.'
+          : 'Short-i u regjistrua dhe task-u u përditësua.',
+      );
+      if (moveNext) {
+        await goToNextOpenTask();
+      }
+    });
   }
 
   function buildPickConfirmBody() {
@@ -325,6 +399,33 @@ export default function PickerTaskWorkflowScreen() {
         <Text style={{ color: '#64748B', fontSize: 12 }}>
           Krijuar: {formatDateTime(task.createdAt)}
         </Text>
+      </SectionCard>
+
+      <SectionCard title="Workflow i Shpejtë" subtitle="Përdor këtë pjesë për punën ditore: nis, mbush vlerat e pritura, konfirmo dhe kalo te task-u tjetër.">
+        <View style={uiStyles.wrapRow}>
+          {task.status === 'PENDING' ? (
+            <Button
+              label="Nis Task-un"
+              loading={busy === 'start-task'}
+              onPress={() =>
+                void runAction('start-task', async () => {
+                  await apiRequest(apiUrl, `/wms/tasks/${task.id}/start`, {
+                    method: 'POST',
+                    token,
+                    body: { notes: 'Started from mobile quick workflow' },
+                  });
+                  setSuccess('Task-u u nis. Vlerat janë gati për konfirmim.');
+                })
+              }
+            />
+          ) : null}
+          <Button label="Përdor të Priturat" variant="secondary" onPress={useExpectedValues} />
+          <Button
+            label="Hap Task-in Tjetër"
+            variant="ghost"
+            onPress={() => void goToNextOpenTask()}
+          />
+        </View>
       </SectionCard>
 
       {task.invoiceWorkflow ? (
@@ -561,16 +662,13 @@ export default function PickerTaskWorkflowScreen() {
             <Button
               label="Konfirmo këtë Pick"
               loading={busy === 'pick-confirm'}
-              onPress={() =>
-                void runAction('pick-confirm', async () => {
-                  await apiRequest(apiUrl, `/wms/tasks/${task.id}/pick-confirm`, {
-                    method: 'POST',
-                    token,
-                    body: buildPickConfirmBody(),
-                  });
-                  setSuccess('Pick-u u konfirmua për këtë task.');
-                })
-              }
+              onPress={() => void confirmPick(false)}
+            />
+            <Button
+              label="Konfirmo Pick + Tjetri"
+              variant="secondary"
+              loading={busy === 'pick-confirm-next'}
+              onPress={() => void confirmPick(true)}
             />
             <Button
               label="Ruaj Pick Offline"
@@ -640,16 +738,13 @@ export default function PickerTaskWorkflowScreen() {
               label="Regjistro Short"
               variant="ghost"
               loading={busy === 'short-task'}
-              onPress={() =>
-                void runAction('short-task', async () => {
-                  await apiRequest(apiUrl, `/wms/tasks/${task.id}/short`, {
-                    method: 'POST',
-                    token,
-                    body: buildShortBody(),
-                  });
-                  setSuccess('Short-i u regjistrua dhe task-u u përditësua.');
-                })
-              }
+              onPress={() => void registerShort(false)}
+            />
+            <Button
+              label="Short + Tjetri"
+              variant="secondary"
+              loading={busy === 'short-task-next'}
+              onPress={() => void registerShort(true)}
             />
             <Button
               label="Ruaj Short Offline"

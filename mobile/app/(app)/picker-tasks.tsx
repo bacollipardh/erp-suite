@@ -85,6 +85,23 @@ export default function PickerTasksScreen() {
     return tasks.filter((task) => task.status === 'BLOCKED');
   }, [filter, tasks, user?.id]);
 
+  const nextOpenTask = useMemo(
+    () =>
+      visibleTasks.find((task) =>
+        ['PENDING', 'IN_PROGRESS', 'BLOCKED'].includes(task.status),
+      ),
+    [visibleTasks],
+  );
+
+  const workSummary = useMemo(
+    () => ({
+      pending: visibleTasks.filter((task) => task.status === 'PENDING').length,
+      inProgress: visibleTasks.filter((task) => task.status === 'IN_PROGRESS').length,
+      blocked: visibleTasks.filter((task) => task.status === 'BLOCKED').length,
+    }),
+    [visibleTasks],
+  );
+
   async function runTaskAction(
     taskId: string,
     action: 'start' | 'complete' | 'short' | 'cancel',
@@ -207,6 +224,30 @@ export default function PickerTasksScreen() {
             </Pressable>
           ))}
         </View>
+      </SectionCard>
+
+      <SectionCard title="Hapi i Radhës" subtitle="Picker-i nuk ka nevojë të zgjedhë manualisht çdo herë. Hap task-un e parë aktiv dhe vazhdo rrjedhën.">
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <StatusBadge value={`PENDING ${workSummary.pending}`} />
+          <StatusBadge value={`IN PROGRESS ${workSummary.inProgress}`} />
+          <StatusBadge value={`BLOCKED ${workSummary.blocked}`} />
+        </View>
+        {nextOpenTask ? (
+          <>
+            <Text style={{ color: '#334155', fontWeight: '700' }}>
+              {nextOpenTask.taskType} | {nextOpenTask.referenceNo ?? '-'}
+            </Text>
+            <Text style={{ color: '#64748B' }}>
+              {nextOpenTask.item?.code ?? '-'} - {nextOpenTask.item?.name ?? '-'} | Qty {formatQty(nextOpenTask.qty)}
+            </Text>
+            <Button
+              label="Hap Task-in e Radhës"
+              onPress={() => router.push(`/picker-tasks/${nextOpenTask.id}` as any)}
+            />
+          </>
+        ) : (
+          <EmptyState title="Nuk ka task aktiv për këtë filtër" />
+        )}
       </SectionCard>
 
       {loading ? <LoadingState /> : null}

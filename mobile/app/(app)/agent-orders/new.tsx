@@ -113,9 +113,15 @@ export default function AgentOrderNewScreen() {
   const [priority, setPriority] = useState('5');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([createEmptyLine()]);
+  const [quickItemSearch, setQuickItemSearch] = useState('');
+  const [quickSelectedItemId, setQuickSelectedItemId] = useState('');
+  const [quickQty, setQuickQty] = useState('1');
+  const [quickDiscountPercent, setQuickDiscountPercent] = useState('0');
+  const [showAdvancedLines, setShowAdvancedLines] = useState(false);
 
   const isReturnOrder = orderType === 'RETURN_ORDER';
   const sourceInvoice = returnSources.find((entry) => entry.id === sourceSalesInvoiceId);
+  const quickSelectedItem = items.find((entry) => entry.id === quickSelectedItemId);
 
   const visibleCustomers = useMemo(
     () =>
@@ -171,6 +177,22 @@ export default function AgentOrderNewScreen() {
         )
         .slice(0, 12),
     [customerId, returnSources, sourceSearch],
+  );
+
+  const visibleQuickItems = useMemo(
+    () =>
+      items
+        .filter((entry) => entry.isActive !== false)
+        .filter((entry) =>
+          !quickItemSearch
+            ? true
+            : matchesSearch(
+                `${entry.code ?? ''} ${entry.name} ${entry.barcode ?? ''}`,
+                quickItemSearch,
+              ),
+        )
+        .slice(0, 10),
+    [items, quickItemSearch],
   );
 
   const totals = useMemo(() => {
@@ -258,6 +280,40 @@ export default function AgentOrderNewScreen() {
       unitPrice: String(Number(sourceLine.unitPrice ?? 0)),
       taxPercent: String(Number(sourceLine.taxPercent ?? 0)),
     });
+  }
+
+  function addQuickLine() {
+    const item = quickSelectedItem;
+    if (!item) {
+      setError('Zgjidh artikullin para se ta shtosh në order.');
+      return;
+    }
+    const nextLine: DraftLine = {
+      ...createEmptyLine(),
+      itemId: item.id,
+      description: item.name,
+      qty: quickQty || '1',
+      unitPrice: String(Number(item.standardSalesPrice ?? 0)),
+      discountPercent: quickDiscountPercent || '0',
+      taxPercent: String(Number(item.taxRate?.ratePercent ?? item.taxRate?.rate ?? 18)),
+    };
+    setLines((current) => {
+      const hasOnlyEmptyLine =
+        current.length === 1 &&
+        !current[0].itemId &&
+        !current[0].description &&
+        Number(current[0].unitPrice || 0) === 0;
+      return hasOnlyEmptyLine ? [nextLine] : [...current, nextLine];
+    });
+    setQuickItemSearch('');
+    setQuickSelectedItemId('');
+    setQuickQty('1');
+    setQuickDiscountPercent('0');
+    setSuccess(`${item.code ?? item.name} u shtua në order.`);
+  }
+
+  function duplicateLine(line: DraftLine) {
+    setLines((current) => [...current, { ...line, itemSearch: '' }]);
   }
 
   function buildPayload() {
@@ -616,9 +672,139 @@ export default function AgentOrderNewScreen() {
         <Input value={notes} onChangeText={setNotes} placeholder="Opsionale" multiline />
       </SectionCard>
 
-      <SectionCard title="Rreshtat" subtitle="Shto artikujt dhe sasitë e porosisë.">
-        <View style={{ gap: 14 }}>
-          {lines.map((line, index) => {
+      {!isReturnOrder ? (
+        <SectionCard title="Shto Artikull Shpejt" subtitle="Kërko artikullin, shkruaj sasinë dhe shtoje pa hapur formular të gjatë.">
+          <Input
+            value={quickItemSearch}
+            onChangeText={(value) => {
+              setQuickItemSearch(value);
+              setQuickSelectedItemId('');
+            }}
+            placeholder="Kërko me kod, barkod ose emër..."
+          />
+          <View style={{ gap: 8 }}>
+            {visibleQuickItems.map((entry) => (
+              <Pressable
+                key={entry.id}
+                onPress={() => {
+                  setQuickSelectedItemId(entry.id);
+                  setQuickItemSearch(optionTitle([entry.code ?? undefined, entry.name]));
+                }}
+                style={{
+                  borderWidth: 1,
+                  borderColor: quickSelectedItemId === entry.id ? '#2553EB' : '#D8E0EA',
+                  backgroundColor: quickSelectedItemId === entry.id ? '#E8EEFF' : '#FFFFFF',
+                  borderRadius: 12,
+                  padding: 10,
+                }}
+              >
+                <Text style={{ fontWeight: '700', color: '#0F172A' }}>
+                  {optionTitle([entry.code ?? undefined, entry.name])}
+                </Text>
+                <Text style={{ color: '#64748B', marginTop: 4 }}>
+                  Barkodi {entry.barcode ?? '-'} | Çmimi {formatNumber(entry.standardSalesPrice)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={uiStyles.row}>
+            <View style={{ flex: 1 }}>
+              <Label>Sasia</Label>
+              <Input value={quickQty} onChangeText={setQuickQty} keyboardType="numeric" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Label>Discount %</Label>
+              <Input
+                value={quickDiscountPercent}
+                onChangeText={setQuickDiscountPercent}
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
+          <Button label="Shto në Order" onPress={addQuickLine} disabled={!quickSelectedItemId} />
+        </SectionCard>
+      ) : null}
+
+      <SectionCard title="Rreshtat e Order-it" subtitle="Lista kompakte. Opsionet e avancuara hapen vetëm kur duhet çmim, TVSH ose shënim specifik.">
+        {lines.some((line) => line.itemId) ? (
+          <View style={{ gap: 10 }}>
+            {lines.map((line, index) => {
+              const lineItem = items.find((entry) => entry.id === line.itemId);
+              const lineTotal =
+                Number(line.qty || 0) *
+                Number(line.unitPrice || 0) *
+                (1 - Number(line.discountPercent || 0) / 100) *
+                (1 + Number(line.taxPercent || 0) / 100);
+              return (
+                <View
+                  key={index}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#D8E0EA',
+                    borderRadius: 14,
+                    padding: 12,
+                    gap: 10,
+                    backgroundColor: '#FFFFFF',
+                  }}
+                >
+                  <Text style={{ fontWeight: '700', color: '#0F172A' }}>
+                    {lineItem?.code ?? `Rreshti ${index + 1}`} | {line.description || lineItem?.name || '-'}
+                  </Text>
+                  <Text style={{ color: '#475569' }}>
+                    Qty {line.qty || 0} | Çmimi {formatNumber(line.unitPrice)} | Total {formatNumber(lineTotal)} EUR
+                  </Text>
+                  <View style={uiStyles.wrapRow}>
+                    <Button
+                      label="-1"
+                      variant="ghost"
+                      onPress={() =>
+                        updateLine(index, {
+                          qty: String(Math.max(1, Number(line.qty || 1) - 1)),
+                        })
+                      }
+                    />
+                    <Button
+                      label="+1"
+                      variant="ghost"
+                      onPress={() =>
+                        updateLine(index, {
+                          qty: String(Number(line.qty || 0) + 1),
+                        })
+                      }
+                    />
+                    <Button
+                      label="Dyfisho"
+                      variant="ghost"
+                      onPress={() => duplicateLine(line)}
+                    />
+                    <Button
+                      label="Hiq"
+                      variant="danger"
+                      disabled={lines.length === 1}
+                      onPress={() =>
+                        setLines((current) =>
+                          current.filter((_, currentIndex) => currentIndex !== index),
+                        )
+                      }
+                    />
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <EmptyState title="Shto artikullin e parë" hint="Përdor kërkimin e shpejtë sipër dhe order-i ndërtohet si listë e thjeshtë." />
+        )}
+
+        <Button
+          label={showAdvancedLines ? 'Mbyll Opsionet e Avancuara' : 'Hap Opsionet e Avancuara'}
+          variant="secondary"
+          onPress={() => setShowAdvancedLines((current) => !current)}
+        />
+
+        {showAdvancedLines || isReturnOrder ? (
+          <View style={{ gap: 14 }}>
+            {lines.map((line, index) => {
             const filteredItems = items
               .filter((entry) => entry.isActive !== false)
               .filter((entry) =>
@@ -768,11 +954,12 @@ export default function AgentOrderNewScreen() {
                 />
               </View>
             );
-          })}
-        </View>
+            })}
+          </View>
+        ) : null}
 
         <Button
-          label="Shto Rresht"
+          label="Shto Rresht Bosh"
           variant="secondary"
           onPress={() => setLines((current) => [...current, createEmptyLine()])}
         />
