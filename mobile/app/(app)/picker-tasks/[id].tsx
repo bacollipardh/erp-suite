@@ -82,6 +82,7 @@ export default function PickerTaskWorkflowScreen() {
   const [pickers, setPickers] = useState<PickerOption[]>([]);
   const [selectedPickerId, setSelectedPickerId] = useState('');
   const [queuedActions, setQueuedActions] = useState<QueuedPickerAction[]>([]);
+  const [showAdvancedWorkflow, setShowAdvancedWorkflow] = useState(false);
 
   const canManageTask = hasPermission(user, PERMISSIONS.wmsManage);
 
@@ -216,6 +217,25 @@ export default function PickerTaskWorkflowScreen() {
     });
   }
 
+  async function confirmExpectedPick(moveNext: boolean) {
+    if (!task) return;
+    await runAction(moveNext ? 'expected-pick-next' : 'expected-pick', async () => {
+      await apiRequest(apiUrl, `/wms/tasks/${task.id}/pick-confirm`, {
+        method: 'POST',
+        token,
+        body: buildExpectedPickBody(),
+      });
+      setSuccess(
+        moveNext
+          ? 'Pick-u u konfirmua me vlerat e pritura. Po hapet task-u tjetër.'
+          : 'Pick-u u konfirmua me vlerat e pritura.',
+      );
+      if (moveNext) {
+        await goToNextOpenTask();
+      }
+    });
+  }
+
   async function registerShort(moveNext: boolean) {
     if (!task) return;
     await runAction(moveNext ? 'short-task-next' : 'short-task', async () => {
@@ -243,6 +263,21 @@ export default function PickerTaskWorkflowScreen() {
       lotCode: lotCode || undefined,
       serialNo: serialNo || undefined,
       expiryDate: expiryDate || undefined,
+      notes: notes || undefined,
+    };
+  }
+
+  function buildExpectedPickBody() {
+    if (!task) return buildPickConfirmBody();
+    return {
+      locationCode: task.sourceLocation?.barcode || task.sourceLocation?.code || locationCode,
+      itemCode: task.item?.barcode || task.item?.code || itemCode,
+      qty: Number(task.qty ?? qty ?? 0),
+      lotCode: task.lotCode || undefined,
+      serialNo: task.serialNo || undefined,
+      expiryDate: task.expiryDate
+        ? new Date(task.expiryDate).toISOString().slice(0, 10)
+        : undefined,
       notes: notes || undefined,
     };
   }
@@ -329,7 +364,121 @@ export default function PickerTaskWorkflowScreen() {
       ) : null}
       {error ? <ErrorState message={error} onRetry={() => void load()} /> : null}
 
-      {task.progress ? (
+      <SectionCard
+        title="Task i Thjeshtë"
+        subtitle="Puna normale bëhet këtu. Detajet teknike, scan manual dhe audit janë poshtë te opsionet e avancuara."
+      >
+        <View style={uiStyles.wrapRow}>
+          <StatusBadge value={task.status} />
+          <StatusBadge value={task.taskType} />
+        </View>
+        <Text style={{ color: '#0F172A', fontWeight: '700' }}>
+          {task.item?.code ?? '-'} | {task.item?.name ?? '-'}
+        </Text>
+        <Text style={{ color: '#475569' }}>
+          Lokacioni: {task.sourceLocation?.code ?? '-'} | Qty {formatQty(task.qty)}
+        </Text>
+        {task.lotCode || task.serialNo || task.expiryDate ? (
+          <Text style={{ color: '#64748B' }}>
+            Lot {task.lotCode ?? '-'} | Serial {task.serialNo ?? '-'} | Skadenca {formatDateOnly(task.expiryDate)}
+          </Text>
+        ) : null}
+
+        {task.status === 'PENDING' ? (
+          <Button
+            label="Nis Task-un"
+            loading={busy === 'start-task'}
+            onPress={() =>
+              void runAction('start-task', async () => {
+                await apiRequest(apiUrl, `/wms/tasks/${task.id}/start`, {
+                  method: 'POST',
+                  token,
+                  body: { notes: 'Started from simplified mobile workflow' },
+                });
+                setSuccess('Task-u u nis.');
+              })
+            }
+          />
+        ) : null}
+
+        {task.taskType === 'PICK' && taskIsOpen ? (
+          <>
+            <Button
+              label="Konfirmo Pick + Hape Tjetrin"
+              loading={busy === 'expected-pick-next'}
+              onPress={() => void confirmExpectedPick(true)}
+            />
+            <Button
+              label="Ka Problem / Short"
+              variant="secondary"
+              loading={busy === 'short-task-next'}
+              onPress={() => void registerShort(true)}
+            />
+          </>
+        ) : null}
+
+        {task.taskType === 'PACK' && taskIsOpen ? (
+          <Button
+            label="Konfirmo Packing"
+            loading={busy === 'confirm-pack'}
+            onPress={() =>
+              void runAction('confirm-pack', async () => {
+                await apiRequest(apiUrl, `/wms/packing/sales-invoices/${task.sourceId}/pack`, {
+                  method: 'POST',
+                  token,
+                  body: {},
+                });
+                setSuccess('Packing u konfirmua.');
+                await goToNextOpenTask();
+              })
+            }
+          />
+        ) : null}
+
+        {task.taskType === 'PICK' && invoiceReadyToFinalize ? (
+          <Button
+            label="Finalizo Faturën"
+            variant="secondary"
+            loading={busy === 'finalize-invoice'}
+            onPress={() =>
+              void runAction('finalize-invoice', async () => {
+                await apiRequest(apiUrl, `/wms/picking/sales-invoices/${task.sourceId}/finalize`, {
+                  method: 'POST',
+                  token,
+                  body: {},
+                });
+                setSuccess('Fatura u finalizua për picking.');
+              })
+            }
+          />
+        ) : null}
+
+        {task.taskType === 'PICK' && agentOrderReadyToFinalize ? (
+          <Button
+            label="Finalizo Order-in"
+            variant="secondary"
+            loading={busy === 'finalize-agent-order'}
+            onPress={() =>
+              void runAction('finalize-agent-order', async () => {
+                await apiRequest(apiUrl, `/agent-orders/${task.sourceId}/complete-wms`, {
+                  method: 'POST',
+                  token,
+                  body: {},
+                });
+                setSuccess('Agent order u finalizua.');
+              })
+            }
+          />
+        ) : null}
+
+        <Button
+          label={showAdvancedWorkflow ? 'Mbyll Opsionet e Avancuara' : 'Hap Opsionet e Avancuara'}
+          variant="ghost"
+          onPress={() => setShowAdvancedWorkflow((current) => !current)}
+        />
+      </SectionCard>
+
+      {showAdvancedWorkflow && task.progress ? (
         <SectionCard title="Progresi i Task-ut" subtitle="Sa është trajtuar, sa ka mbetur dhe gjurma e fundit e punës.">
           <View style={uiStyles.wrapRow}>
             <MetricTile label="Planifikuar" value={formatQty(task.progress.initialQty)} />
@@ -344,6 +493,7 @@ export default function PickerTaskWorkflowScreen() {
         </SectionCard>
       ) : null}
 
+      {showAdvancedWorkflow ? (
       <SectionCard title="Offline Queue" subtitle="Veprimet e ruajtura pa lidhje ruhen lokalisht dhe dërgohen kur API është gati.">
         <View style={uiStyles.wrapRow}>
           <MetricTile label="Në pritje" value={queuedActions.length} />
@@ -375,7 +525,9 @@ export default function PickerTaskWorkflowScreen() {
           onPress={() => void syncQueuedActions()}
         />
       </SectionCard>
+      ) : null}
 
+      {showAdvancedWorkflow ? (
       <SectionCard title="Detajet e Task-ut" subtitle={task.warehouse?.name ?? '-'}>
         <View style={uiStyles.wrapRow}>
           <StatusBadge value={task.status} />
@@ -400,7 +552,9 @@ export default function PickerTaskWorkflowScreen() {
           Krijuar: {formatDateTime(task.createdAt)}
         </Text>
       </SectionCard>
+      ) : null}
 
+      {showAdvancedWorkflow ? (
       <SectionCard title="Workflow i Shpejtë" subtitle="Përdor këtë pjesë për punën ditore: nis, mbush vlerat e pritura, konfirmo dhe kalo te task-u tjetër.">
         <View style={uiStyles.wrapRow}>
           {task.status === 'PENDING' ? (
@@ -427,8 +581,9 @@ export default function PickerTaskWorkflowScreen() {
           />
         </View>
       </SectionCard>
+      ) : null}
 
-      {task.invoiceWorkflow ? (
+      {showAdvancedWorkflow && task.invoiceWorkflow ? (
         <SectionCard title="Gjendja e Faturës" subtitle="Përmbledhje e picking-ut për këtë sales invoice.">
           <Text style={{ color: '#334155' }}>
             Reserved: {formatQty(task.invoiceWorkflow.reservedQty)} | Picked: {formatQty(task.invoiceWorkflow.pickedQty)}
@@ -439,7 +594,7 @@ export default function PickerTaskWorkflowScreen() {
         </SectionCard>
       ) : null}
 
-      {task.agentOrderWorkflow ? (
+      {showAdvancedWorkflow && task.agentOrderWorkflow ? (
         <SectionCard title="Gjendja e Agent Order" subtitle="Përmbledhje e picking-ut për këtë order të agjentit.">
           <Text style={{ color: '#334155' }}>
             Task të hapura: {task.agentOrderWorkflow.openTasks} | Task të kryera: {task.agentOrderWorkflow.doneTasks}
@@ -447,7 +602,7 @@ export default function PickerTaskWorkflowScreen() {
         </SectionCard>
       ) : null}
 
-      {canManageTask ? (
+      {showAdvancedWorkflow && canManageTask ? (
         <SectionCard title="Supervisor / Exception" subtitle="Reassign, rifillo task të bllokuar ose mbylle me vendim operativ.">
           <Label>Ricaktimi</Label>
           <View style={uiStyles.wrapRow}>
@@ -516,7 +671,7 @@ export default function PickerTaskWorkflowScreen() {
         </SectionCard>
       ) : null}
 
-      {task.taskType === 'PICK' && taskIsOpen ? (
+      {showAdvancedWorkflow && task.taskType === 'PICK' && taskIsOpen ? (
         <>
           <SectionCard title="Scan ose Shkruaj" subtitle="Verifiko lokacionin dhe artikullin para konfirmimit.">
             <Label>Kodi i lokacionit</Label>
@@ -764,7 +919,7 @@ export default function PickerTaskWorkflowScreen() {
         </>
       ) : null}
 
-      {task.taskType === 'PICK' && invoiceReadyToFinalize ? (
+      {showAdvancedWorkflow && task.taskType === 'PICK' && invoiceReadyToFinalize ? (
         <SectionCard title="Finalizo Picking-un e Faturës" subtitle="Kur të gjitha pick-et janë kryer, konfirmo krejt faturën.">
           <Button
             label="Konfirmo Krejt Faturën"
@@ -784,7 +939,7 @@ export default function PickerTaskWorkflowScreen() {
         </SectionCard>
       ) : null}
 
-      {task.taskType === 'PICK' && agentOrderReadyToFinalize ? (
+      {showAdvancedWorkflow && task.taskType === 'PICK' && agentOrderReadyToFinalize ? (
         <SectionCard title="Finalizo Agent Order" subtitle="Kur krejt task-et e picking-ut mbarojnë, kalo order-in gati për dokument.">
           <Button
             label="Konfirmo Krejt Order-in"
@@ -804,7 +959,7 @@ export default function PickerTaskWorkflowScreen() {
         </SectionCard>
       ) : null}
 
-      {task.taskType === 'PACK' && taskIsOpen ? (
+      {showAdvancedWorkflow && task.taskType === 'PACK' && taskIsOpen ? (
         <SectionCard title="Packing" subtitle="Pas finalizimit të picking-ut, konfirmo paketimin.">
           <Button
             label="Konfirmo Packing"
@@ -889,7 +1044,7 @@ export default function PickerTaskWorkflowScreen() {
         </SectionCard>
       ) : null}
 
-      {task.auditTrail?.length ? (
+      {showAdvancedWorkflow && task.auditTrail?.length ? (
         <SectionCard title="Histori veprimesh" subtitle="Çdo start, pick, short dhe pack ruhet këtu për kontroll operativ.">
           {task.auditTrail.map((entry) => (
             <View

@@ -118,10 +118,13 @@ export default function AgentOrderNewScreen() {
   const [quickQty, setQuickQty] = useState('1');
   const [quickDiscountPercent, setQuickDiscountPercent] = useState('0');
   const [showAdvancedLines, setShowAdvancedLines] = useState(false);
+  const [showAdvancedSetup, setShowAdvancedSetup] = useState(false);
 
   const isReturnOrder = orderType === 'RETURN_ORDER';
   const sourceInvoice = returnSources.find((entry) => entry.id === sourceSalesInvoiceId);
   const quickSelectedItem = items.find((entry) => entry.id === quickSelectedItemId);
+  const selectedCustomer = customers.find((entry) => entry.id === customerId);
+  const selectedWarehouse = warehouses.find((entry) => entry.id === warehouseId);
 
   const visibleCustomers = useMemo(
     () =>
@@ -242,6 +245,14 @@ export default function AgentOrderNewScreen() {
       setItems(nextItems);
       setReturnSources(nextReturnSources);
       setQueuedDrafts(await listQueuedAgentOrders());
+      setWarehouseId((current) => {
+        if (current) return current;
+        const preferred =
+          nextWarehouses.find((entry) => entry.code === 'MAIN') ??
+          nextWarehouses.find((entry) => entry.isActive !== false) ??
+          nextWarehouses[0];
+        return preferred?.id ?? '';
+      });
     } catch (nextError) {
       setError(parseApiError(nextError));
     } finally {
@@ -468,6 +479,210 @@ export default function AgentOrderNewScreen() {
         </SectionCard>
       ) : null}
 
+      <SectionCard
+        title="Porosi e Shpejtë"
+        subtitle="Rrjedha normale: zgjidh klientin, shto artikujt dhe krijo order-in."
+      >
+        <View style={uiStyles.wrapRow}>
+          <Button
+            label={selectedCustomer ? `Klienti: ${selectedCustomer.name}` : '1. Zgjidh Klientin'}
+            variant={selectedCustomer ? 'secondary' : 'primary'}
+            onPress={() => {
+              setCustomerId('');
+              setCustomerSearch('');
+            }}
+          />
+          <Button
+            label={selectedWarehouse ? `Magazina: ${selectedWarehouse.code ?? selectedWarehouse.name}` : '2. Magazina'}
+            variant={selectedWarehouse ? 'secondary' : 'ghost'}
+            onPress={() => setWarehouseId('')}
+          />
+        </View>
+
+        {!customerId ? (
+          <>
+            <Input
+              value={customerSearch}
+              onChangeText={setCustomerSearch}
+              placeholder="Kërko klientin..."
+            />
+            <View style={{ gap: 8 }}>
+              {visibleCustomers.map((entry) => (
+                <Pressable
+                  key={entry.id}
+                  onPress={() => {
+                    setCustomerId(entry.id);
+                    setCustomerObjectId('');
+                    setCustomerSearch(entry.name);
+                  }}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#D8E0EA',
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: 14,
+                    padding: 12,
+                  }}
+                >
+                  <Text style={{ fontWeight: '700', color: '#0F172A' }}>
+                    {optionTitle([entry.code ?? undefined, entry.name])}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        ) : !warehouseId ? (
+          <>
+            <Input
+              value={warehouseSearch}
+              onChangeText={setWarehouseSearch}
+              placeholder="Kërko magazinë..."
+            />
+            <View style={{ gap: 8 }}>
+              {visibleWarehouses.map((entry) => (
+                <Pressable
+                  key={entry.id}
+                  onPress={() => setWarehouseId(entry.id)}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#D8E0EA',
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: 14,
+                    padding: 12,
+                  }}
+                >
+                  <Text style={{ fontWeight: '700', color: '#0F172A' }}>
+                    {optionTitle([entry.code ?? undefined, entry.name])}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        ) : (
+          <>
+            <Input
+              value={quickItemSearch}
+              onChangeText={(value) => {
+                setQuickItemSearch(value);
+                setQuickSelectedItemId('');
+              }}
+              placeholder="Kërko artikull me kod, barkod ose emër..."
+            />
+            <View style={{ gap: 8 }}>
+              {visibleQuickItems.map((entry) => (
+                <Pressable
+                  key={entry.id}
+                  onPress={() => {
+                    setQuickSelectedItemId(entry.id);
+                    setQuickItemSearch(optionTitle([entry.code ?? undefined, entry.name]));
+                  }}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: quickSelectedItemId === entry.id ? '#2553EB' : '#D8E0EA',
+                    backgroundColor: quickSelectedItemId === entry.id ? '#E8EEFF' : '#FFFFFF',
+                    borderRadius: 12,
+                    padding: 10,
+                  }}
+                >
+                  <Text style={{ fontWeight: '700', color: '#0F172A' }}>
+                    {optionTitle([entry.code ?? undefined, entry.name])}
+                  </Text>
+                  <Text style={{ color: '#64748B', marginTop: 4 }}>
+                    {entry.barcode ?? '-'} | {formatNumber(entry.standardSalesPrice)} EUR
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={uiStyles.row}>
+              <View style={{ flex: 1 }}>
+                <Label>Sasia</Label>
+                <Input value={quickQty} onChangeText={setQuickQty} keyboardType="numeric" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Label>Zbritje %</Label>
+                <Input
+                  value={quickDiscountPercent}
+                  onChangeText={setQuickDiscountPercent}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+            <Button label="Shto Artikullin" onPress={addQuickLine} disabled={!quickSelectedItemId} />
+          </>
+        )}
+
+        {lines.some((line) => line.itemId) ? (
+          <View style={{ gap: 8 }}>
+            {lines.map((line, index) => {
+                if (!line.itemId) return null;
+                const lineItem = items.find((entry) => entry.id === line.itemId);
+                return (
+                  <View
+                    key={`${line.itemId}-${index}`}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#D8E0EA',
+                      borderRadius: 14,
+                      padding: 12,
+                      gap: 8,
+                    }}
+                  >
+                    <Text style={{ fontWeight: '700', color: '#0F172A' }}>
+                      {lineItem?.code ?? '-'} | {line.description || lineItem?.name || '-'}
+                    </Text>
+                    <View style={uiStyles.wrapRow}>
+                      <Button
+                        label="-"
+                        variant="ghost"
+                        onPress={() =>
+                          updateLine(index, {
+                            qty: String(Math.max(1, Number(line.qty || 1) - 1)),
+                          })
+                        }
+                      />
+                      <Button
+                        label={`Qty ${line.qty}`}
+                        variant="secondary"
+                        onPress={() => undefined}
+                      />
+                      <Button
+                        label="+"
+                        variant="ghost"
+                        onPress={() =>
+                          updateLine(index, {
+                            qty: String(Number(line.qty || 0) + 1),
+                          })
+                        }
+                      />
+                      <Button
+                        label="Hiq"
+                        variant="danger"
+                        disabled={lines.length === 1}
+                        onPress={() =>
+                          setLines((current) =>
+                            current.filter((_, currentIndex) => currentIndex !== index),
+                          )
+                        }
+                      />
+                    </View>
+                  </View>
+                );
+              })}
+            <Text style={{ color: '#0F172A', fontWeight: '700' }}>
+              Total: {formatNumber(totals.total)} EUR
+            </Text>
+            <Button label="Krijo Order-in" loading={saving} disabled={saving} onPress={() => void submit()} />
+          </View>
+        ) : null}
+
+        <Button
+          label={showAdvancedSetup ? 'Mbyll Detajet' : 'Detaje / Kthim / Offline'}
+          variant="ghost"
+          onPress={() => setShowAdvancedSetup((current) => !current)}
+        />
+      </SectionCard>
+
+      {showAdvancedSetup ? (
+        <>
       <SectionCard title="Queue Lokale" subtitle="Ruaj draft-et në telefon dhe dërgoji kur lidhja është stabile.">
         <View style={uiStyles.wrapRow}>
           <Button label="Ruaj Draft Lokal" variant="secondary" onPress={() => void saveDraftLocally()} />
@@ -671,8 +886,10 @@ export default function AgentOrderNewScreen() {
         <Label>Shënime</Label>
         <Input value={notes} onChangeText={setNotes} placeholder="Opsionale" multiline />
       </SectionCard>
+        </>
+      ) : null}
 
-      {!isReturnOrder ? (
+      {showAdvancedSetup && !isReturnOrder ? (
         <SectionCard title="Shto Artikull Shpejt" subtitle="Kërko artikullin, shkruaj sasinë dhe shtoje pa hapur formular të gjatë.">
           <Input
             value={quickItemSearch}
@@ -725,6 +942,7 @@ export default function AgentOrderNewScreen() {
         </SectionCard>
       ) : null}
 
+      {showAdvancedSetup ? (
       <SectionCard title="Rreshtat e Order-it" subtitle="Lista kompakte. Opsionet e avancuara hapen vetëm kur duhet çmim, TVSH ose shënim specifik.">
         {lines.some((line) => line.itemId) ? (
           <View style={{ gap: 10 }}>
@@ -971,13 +1189,14 @@ export default function AgentOrderNewScreen() {
             Total: {formatNumber(totals.total)} EUR
           </Text>
         </View>
-      </SectionCard>
 
       <Button
         label={saving ? 'Duke ruajtur...' : 'Krijo Order-in'}
         disabled={saving}
         onPress={() => void submit()}
       />
+      </SectionCard>
+      ) : null}
     </Screen>
   );
 }
