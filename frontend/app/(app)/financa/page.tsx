@@ -236,6 +236,9 @@ export default async function FinanceHubPage() {
             <Link href="/financa/transfere/new" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               Transfer
             </Link>
+            <Link href="/financa/mbyllja-ditore" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              Mbyllja ditore
+            </Link>
             <Link href="/financa/pajtimi-bankar/new" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               Statement line
             </Link>
@@ -309,6 +312,15 @@ export default async function FinanceHubPage() {
             href="/financa/llogarite"
             badge="Treasury"
             tone="emerald"
+          />
+        ) : null}
+        {canFinanceAccounts ? (
+          <DomainActionCard
+            title="Mbyllja Ditore e Arkës"
+            description="Hap ditën, numëro cash-in fizik, krahaso me ledger-in dhe regjistro diferencën para dorëzimit."
+            href="/financa/mbyllja-ditore"
+            badge="Daily Close"
+            tone="amber"
           />
         ) : null}
         {canFinanceAccounts ? (

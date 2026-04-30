@@ -25,6 +25,7 @@ import { ReportsModule } from './reports/reports.module';
 import { FiscalizationModule } from './fiscalization/fiscalization.module';
 import { FinanceSettlementsModule } from './finance-settlements/finance-settlements.module';
 import { FinanceAccountsModule } from './finance-accounts/finance-accounts.module';
+import { CashDailyCloseModule } from './cash-daily-close/cash-daily-close.module';
 import { FinanceReconciliationModule } from './finance-reconciliation/finance-reconciliation.module';
 import { FinancialPeriodsModule } from './financial-periods/financial-periods.module';
 import { AccountingModule } from './accounting/accounting.module';
@@ -68,6 +69,7 @@ import { AgentOrdersModule } from './agent-orders/agent-orders.module';
     FiscalizationModule,
     FinanceSettlementsModule,
     FinanceAccountsModule,
+    CashDailyCloseModule,
     FinanceReconciliationModule,
     FinancialPeriodsModule,
     AccountingModule,

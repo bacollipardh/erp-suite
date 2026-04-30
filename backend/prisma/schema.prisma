@@ -247,6 +247,14 @@ enum FinanceStatementLineStatus {
   @@map("finance_statement_line_status")
 }
 
+enum CashDailyCloseStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+
+  @@map("cash_daily_close_status")
+}
+
 enum LedgerAccountCategory {
   ASSET
   LIABILITY
@@ -310,6 +318,8 @@ model User {
   createdFinanceSettlements           FinanceSettlement[]           @relation("FinanceSettlementCreatedBy")
   createdFinanceSettlementAllocations FinanceSettlementAllocation[] @relation("FinanceSettlementAllocationCreatedBy")
   createdFinanceAccountTransactions   FinanceAccountTransaction[]   @relation("FinanceAccountTransactionCreatedBy")
+  openedCashDailyCloses                CashDailyClose[]              @relation("CashDailyCloseOpenedBy")
+  closedCashDailyCloses                CashDailyClose[]              @relation("CashDailyCloseClosedBy")
   createdFinanceStatementLines        FinanceStatementLine[]        @relation("FinanceStatementLineCreatedBy")
   createdFinanceStatementMatches      FinanceStatementMatch[]       @relation("FinanceStatementMatchCreatedBy")
   createdJournalEntries               JournalEntry[]                @relation("JournalEntryCreatedBy")
@@ -520,6 +530,7 @@ model FinanceAccount {
   ledgerAccount  LedgerAccount?             @relation(fields: [ledgerAccountId], references: [id])
   transactions   FinanceAccountTransaction[]
   statementLines FinanceStatementLine[]
+  dailyCloses    CashDailyClose[]
   paidVatSettlements VatSettlement[]        @relation("VatSettlementPaidFinanceAccount")
   createdAt      DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1206,6 +1217,37 @@ model FinanceAccountTransaction {
   @@index([createdById])
   @@index([sourceDocumentType, sourceDocumentId])
   @@map("finance_account_transactions")
+}
+
+model CashDailyClose {
+  id                     String               @id @default(uuid()) @db.Uuid
+  financeAccountId       String               @map("finance_account_id") @db.Uuid
+  businessDate           DateTime             @map("business_date") @db.Date
+  status                 CashDailyCloseStatus @default(OPEN)
+  openingBalance         Decimal              @default(0) @map("opening_balance") @db.Decimal(18, 2)
+  totalIn                Decimal              @default(0) @map("total_in") @db.Decimal(18, 2)
+  totalOut               Decimal              @default(0) @map("total_out") @db.Decimal(18, 2)
+  expectedClosingBalance Decimal              @default(0) @map("expected_closing_balance") @db.Decimal(18, 2)
+  countedCashAmount      Decimal?             @map("counted_cash_amount") @db.Decimal(18, 2)
+  differenceAmount       Decimal?             @map("difference_amount") @db.Decimal(18, 2)
+  openingNotes           String?              @map("opening_notes")
+  closingNotes           String?              @map("closing_notes")
+  openedById             String               @map("opened_by") @db.Uuid
+  closedById             String?              @map("closed_by") @db.Uuid
+  openedAt               DateTime             @default(now()) @map("opened_at") @db.Timestamptz(6)
+  closedAt               DateTime?            @map("closed_at") @db.Timestamptz(6)
+  createdAt              DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  financeAccount         FinanceAccount       @relation(fields: [financeAccountId], references: [id])
+  openedBy               User                 @relation("CashDailyCloseOpenedBy", fields: [openedById], references: [id])
+  closedBy               User?                @relation("CashDailyCloseClosedBy", fields: [closedById], references: [id])
+
+  @@unique([financeAccountId, businessDate])
+  @@index([businessDate, status])
+  @@index([financeAccountId, status])
+  @@index([openedById])
+  @@index([closedById])
+  @@map("cash_daily_closes")
 }
 
 model FinanceStatementLine {

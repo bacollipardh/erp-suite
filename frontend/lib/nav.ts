@@ -73,6 +73,7 @@ export const navSections: NavSection[] = [
         permission: [PERMISSIONS.reportsReceivables, PERMISSIONS.reportsPayables, PERMISSIONS.salesInvoicesPay, PERMISSIONS.purchaseInvoicesPay, PERMISSIONS.financeAccountsRead],
       },
       { label: 'Llogarite Cash / Bank', href: '/financa/llogarite', permission: PERMISSIONS.financeAccountsRead },
+      { label: 'Mbyllja Ditore e Arkës', href: '/financa/mbyllja-ditore', permission: PERMISSIONS.financeAccountsRead },
       { label: 'Dokumente Arketimi', href: '/financa/dokumente-arketimi', permission: PERMISSIONS.salesInvoicesPay },
       { label: 'Dokumente Pagesash', href: '/financa/dokumente-pagesash', permission: PERMISSIONS.purchaseInvoicesPay },
       { label: 'Periudhat Financiare', href: '/financa/periudhat', permission: PERMISSIONS.financialPeriodsRead },
