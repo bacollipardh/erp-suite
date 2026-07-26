@@ -25,6 +25,8 @@ type DashboardPayload = {
     approvedCount: number;
     rejectedCount: number;
     cancelledCount: number;
+    escalatedCount: number;
+    overdueCount: number;
     totalAmount: number;
     pendingAmount: number;
     approvedAmount: number;
@@ -92,11 +94,13 @@ export default async function Page() {
         <Link href="/approvals" className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Approval Inbox</Link>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-5">
-        <div className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">Total Requests</div><div className="text-2xl font-bold text-slate-900">{data.summary.totalCount}</div></div>
+      <div className="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
+        <div className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">Total</div><div className="text-2xl font-bold text-slate-900">{data.summary.totalCount}</div></div>
         <div className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">Pending</div><div className="text-2xl font-bold text-amber-600">{data.summary.pendingCount}</div><div className="text-xs text-slate-400">{money(data.summary.pendingAmount)}</div></div>
         <div className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">Approved</div><div className="text-2xl font-bold text-emerald-600">{data.summary.approvedCount}</div><div className="text-xs text-slate-400">{money(data.summary.approvedAmount)}</div></div>
-        <div className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">Avg Resolution</div><div className="text-2xl font-bold text-slate-900">{hours(data.summary.avgResolutionHours)}</div></div>
+        <div className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">Rejected</div><div className="text-2xl font-bold text-red-600">{data.summary.rejectedCount}</div></div>
+        <div className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">Eskaluar</div><div className="text-2xl font-bold text-amber-700">{data.summary.escalatedCount}</div></div>
+        <div className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">Overdue (SLA)</div><div className="text-2xl font-bold text-red-700">{data.summary.overdueCount}</div></div>
         <div className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">Oldest Pending</div><div className="text-2xl font-bold text-orange-600">{hours(data.summary.oldestPendingHours)}</div></div>
       </div>
 

@@ -24,10 +24,11 @@ type ApprovalRequest = {
   requestedAt: string;
   ageHours?: number;
   isOverdue?: boolean;
+  isEscalated?: boolean;
   slaHours?: number;
 };
 type ApprovalPayload = { items: ApprovalRequest[]; total: number; summary: { total: number; pending: number; approved: number; rejected: number; cancelled: number } };
-type BadgePayload = { pendingAll: number; pendingForMe: number; overdueAll: number; slaHours: number };
+type BadgePayload = { pendingAll: number; pendingForMe: number; overdueAll: number; escalatedAll: number; slaHours: number };
 
 function value(params: SearchParams, key: string) { const raw = params[key]; return Array.isArray(raw) ? raw[0] : raw; }
 function money(value: number, currency = 'EUR') { return new Intl.NumberFormat('sq-XK', { style: 'currency', currency }).format(Number(value ?? 0)); }
@@ -53,7 +54,7 @@ export default async function Page({ searchParams }: { searchParams?: Promise<Se
       <CreateApprovalRequestForm />
     </div>
 
-    <div className="grid gap-3 md:grid-cols-3">
+    <div className="grid gap-3 md:grid-cols-4">
       <Link href={scopeLink('for_me')} className={`rounded-2xl border p-4 shadow-sm ${scope === 'for_me' || scope === 'my_approvals' ? 'bg-indigo-50 border-indigo-200' : 'bg-white hover:bg-slate-50'}`}>
         <div className="text-xs text-slate-500">Pending for me</div><div className="text-2xl font-bold text-indigo-700">{badge.pendingForMe}</div>
       </Link>
@@ -61,7 +62,10 @@ export default async function Page({ searchParams }: { searchParams?: Promise<Se
         <div className="text-xs text-slate-500">Pending all</div><div className="text-2xl font-bold text-amber-600">{badge.pendingAll}</div>
       </Link>
       <Link href="/approvals?status=PENDING" className="rounded-2xl border bg-white p-4 shadow-sm hover:bg-slate-50">
-        <div className="text-xs text-slate-500">Overdue &gt; {badge.slaHours}h</div><div className="text-2xl font-bold text-red-600">{badge.overdueAll}</div>
+        <div className="text-xs text-slate-500">Overdue (SLA)</div><div className="text-2xl font-bold text-red-600">{badge.overdueAll}</div>
+      </Link>
+      <Link href="/approvals?status=PENDING" className="rounded-2xl border bg-white p-4 shadow-sm hover:bg-slate-50">
+        <div className="text-xs text-slate-500">Eskaluar</div><div className="text-2xl font-bold text-amber-700">{badge.escalatedAll}</div>
       </Link>
     </div>
 
@@ -84,7 +88,7 @@ export default async function Page({ searchParams }: { searchParams?: Promise<Se
       <div className="border-b bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">Requests</div>
       <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="border-b bg-white"><tr>{['Status', 'Request', 'Entity', 'Amount', 'Step', 'SLA', 'Requested By', 'Requested At', 'Actions'].map((title) => <th key={title} className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap">{title}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">
         {data.items.length === 0 ? <tr><td colSpan={9} className="px-4 py-12 text-center text-slate-400">Nuk ka approval requests për këtë filter.</td></tr> : data.items.map((item) => <tr key={item.id} className="hover:bg-slate-50/70">
-          <td className="px-3 py-3 whitespace-nowrap"><span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${statusClass(item.status)}`}>{item.status}</span></td>
+          <td className="px-3 py-3 whitespace-nowrap"><div className="flex flex-col gap-1"><span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${statusClass(item.status)}`}>{item.status}</span>{item.isEscalated ? <span className="inline-flex rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">ESKALUAR</span> : null}{item.isOverdue ? <span className="inline-flex rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">OVERDUE</span> : null}</div></td>
           <td className="px-3 py-3 min-w-72"><Link href={`/approvals/${item.id}`} className="font-semibold text-indigo-600 hover:text-indigo-800">{item.title}</Link><div className="text-xs text-slate-500">{item.description ?? item.policyName ?? '-'}</div></td>
           <td className="px-3 py-3 whitespace-nowrap"><div>{item.entityType}</div><div className="text-xs text-slate-400">{item.entityNo ?? '-'}</div></td>
           <td className="px-3 py-3 whitespace-nowrap font-semibold">{money(item.amount, item.currencyCode)}</td>
